@@ -1,0 +1,29 @@
+
+1. loading request header
+2. loading cookie
+3. loading user session, setup new session and cookie if needed
+4. get input data, CGI::params, postdata
+5. loading page session
+6. get page from input (CGI) or page session
+
+
+user session
+USER_SHR
+USER_SID
+
+$rea->get_sess( 'USER', 'PAGE', '' );
+
+
+# PUBLIC
+$rea->get_user_sess();
+$rea->get_page_sess();
+$rea->get_prev_sess( levels_back );
+$rea->get_from_sess();
+
+
+# PRIVATE
+LINK session
+
+
+
+$rea->get_arg();

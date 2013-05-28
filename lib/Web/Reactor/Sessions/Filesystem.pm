@@ -9,14 +9,14 @@
 ##############################################################################
 package Web::Reactor::Sessions::Filesystem;
 use strict;
-use Web::Reactor::Sess;
+use Web::Reactor::Sessions;
 use Web::Reactor::Utils;
 use POSIX;
 use Storable qw( freeze thaw lock_store lock_retrieve );
 use Data::Dumper; 
 use Carp;
 
-our @ISA = qw( Web::Reactor::Sess );
+our @ISA = qw( Web::Reactor::Sessions );
 
 ##############################################################################
 ##

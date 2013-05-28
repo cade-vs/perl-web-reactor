@@ -912,7 +912,7 @@ sub new_form
 
 =head1 NAME
 
-Web::Reactor application machinery.
+Web::Reactor perl-based web application machinery.
 
 =head1 SYNOPSIS
 
@@ -966,14 +966,14 @@ Action module example:
 
     my $text; # result html text
 
-    if(     $reo->get_input_form_name() eq 'PERSON_FORM' 
-        and $reo->get_input_button()    eq 'PERSON_CANCEL' )
+    if( $reo->get_input_button() eq 'FORM_CANCEL' )
       {
-      # if submitted form is what expected and clicked button is cancel
+      # if clicked form button is cancel,
       # return back to the calling/previous page/view with optional data
       return $reo->forward_back( ACTION_RETURN => 'IS_CANCEL' );
       }
 
+    # add some html content
     $text .= "<p>Reactor::Actions::demo::test here!<p>";
 
     # create link and hide its data. only accessible from inside web app.
@@ -995,7 +995,8 @@ Action module example:
     $text .= "<form method=post>";
     $text .= "<input type=hidden name=_ value=$bc>";
     $text .= "input <input name=inp>";
-    $text .= "<input type=submit name=button:testbutton>";
+    $text .= "<input type=submit name=button:form_ok>";
+    $text .= "<input type=submit name=button:form_cancel>";
     $text .= "</form>";
 
     my $form = $reo->new_form();
@@ -1029,6 +1030,16 @@ Web::Reactor is designed to allow extending or replacing some parts as:
 
 At the moment Web::Reactor is in beta. API is mostly frozen but it is fairly
 possible to be changed and/or extended. However drastic changes are not planned :)
+
+If you are interested in the project or have some notes etc, contact me at:
+
+  Vladi Belperchinov-Shabanski "Cade"
+  <cade@bis.bg> 
+  <cade@biscom.net> 
+  <cade@cpan.org> 
+  <cade@datamax.bg>
+
+further contact info, mailing list and github repository is listed below.
 
 =head1 FIXME: TODO: 
 

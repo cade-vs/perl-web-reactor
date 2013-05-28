@@ -1,166 +1,159 @@
-Web::Reactor(3)       User Contributed Perl Documentation      Web::Reactor(3)
+NAME
+    Web::Reactor perl-based web application machinery.
 
+SYNOPSIS
+    Startup CGI script example:
 
+      #!/usr/bin/perl
+      use strict;
+      use lib '/opt/perl/reactor/lib'; # if Reactor is custom location installed
+      use Web::Reactor;
 
-NNAAMMEE
-       Web::Reactor perl-based web application machinery.
+      my %cfg = (
+                'APP_NAME'     => 'demo',
+                'APP_ROOT'     => '/opt/reactor/demo/',
+                'LIB_DIRS'     => [ '/opt/reactor/demo/lib/'  ],
+                'HTML_DIRS'    => [ '/opt/reactor/demo/html/' ],
+                'SESS_VAR_DIR' => '/opt/reactor/demo/var/sess/',
+                'DEBUG'        => 4,
+                );
 
-SSYYNNOOPPSSIISS
-       Startup CGI script example:
+      eval { new Web::Reactor( %cfg )->run(); };
+      if( $@ )
+        {
+        print STDERR "REACTOR CGI EXCEPTION: $@";
+        print "content-type: text/html\n\nsystem is temporary unavailable";
+        }
 
-         #!/usr/bin/perl
-         use strict;
-         use lib '/opt/perl/reactor/lib'; # if Reactor is custom location installed
-         use Web::Reactor;
+    HTML page file example:
 
-         my %cfg = (
-                   'APP_NAME'     => 'demo',
-                   'APP_ROOT'     => '/opt/reactor/demo/',
-                   'LIB_DIRS'     => [ '/opt/reactor/demo/lib/'  ],
-                   'HTML_DIRS'    => [ '/opt/reactor/demo/html/' ],
-                   'SESS_VAR_DIR' => '/opt/reactor/demo/var/sess/',
-                   'DEBUG'        => 4,
-                   );
+      <#html_header>
 
-         eval { new Web::Reactor( %cfg )->run(); };
-         if( $@ )
-           {
-           print STDERR "REACTOR CGI EXCEPTION: $@";
-           print "content-type: text/html\n\nsystem is temporary unavailable";
-           }
+      <$app_name>
 
-       HTML page file example:
+      <#menu>
 
-         <#html_header>
+      testing page html file
 
-         <$app_name>
+      action test: <&test>
 
-         <#menu>
+      <#html_footer>
 
-         testing page html file
+    Action module example:
 
-         action test: <&test>
+      package Reactor::Actions::demo::test;
+      use strict;
+      use Data::Dumper;
+      use Web::Reactor::HTML::FormEngine;
 
-         <#html_footer>
+      sub main
+      {
+        my $reo = shift; # Web::Reactor object. Provides all API and context.
 
-       Action module example:
+        my $text; # result html text
 
-         package Reactor::Actions::demo::test;
-         use strict;
-         use Data::Dumper;
-         use Web::Reactor::HTML::FormEngine;
+        if( $reo->get_input_button() eq 'FORM_CANCEL' )
+          {
+          # if clicked form button is cancel,
+          # return back to the calling/previous page/view with optional data
+          return $reo->forward_back( ACTION_RETURN => 'IS_CANCEL' );
+          }
 
-         sub main
-         {
-           my $reo = shift; # Web::Reactor object. Provides all API and context.
+        # add some html content
+        $text .= "<p>Reactor::Actions::demo::test here!<p>";
 
-           my $text; # result html text
+        # create link and hide its data. only accessible from inside web app.
+        my $grid_href = $reo->args_new( _PN => 'grid', TABLE => 'testtable', );
+        $text .= "<a href=?_=$grid_href>go to grid</a><p>";
 
-           if( $reo->get_input_button() eq 'FORM_CANCEL' )
-             {
-             # if clicked form button is cancel,
-             # return back to the calling/previous page/view with optional data
-             return $reo->forward_back( ACTION_RETURN => 'IS_CANCEL' );
-             }
+        # access page session. it will be auto-loaded on demand
+        my $page_session_hr = $reo->get_page_session();
+        my $fortune = $page_session_hr->{ 'FORTUNE' } ||= `/usr/games/fortune`;
+        
+    # access input (form) data. $i and $e are hashrefs
+        my $i = $reo->get_user_input(); # get plain user input (hashref)
+        my $e = $reo->get_safe_input(); # get safe data (never reach user browser)
 
-           # add some html content
-           $text .= "<p>Reactor::Actions::demo::test here!<p>";
+        $text .= "<p><hr><p>$fortune<hr>";
 
-           # create link and hide its data. only accessible from inside web app.
-           my $grid_href = $reo->args_new( _PN => 'grid', TABLE => 'testtable', );
-           $text .= "<a href=?_=$grid_href>go to grid</a><p>";
+        my $bc = $reo->args_here(); # session keeper, this is manual use
 
-           # access page session. it will be auto-loaded on demand
-           my $page_session_hr = $reo->get_page_session();
-           my $fortune = $page_session_hr->{ 'FORTUNE' } ||= `/usr/games/fortune`;
+        $text .= "<form method=post>";
+        $text .= "<input type=hidden name=_ value=$bc>";
+        $text .= "input <input name=inp>";
+        $text .= "<input type=submit name=button:form_ok>";
+        $text .= "<input type=submit name=button:form_cancel>";
+        $text .= "</form>";
 
-           # access input (form) data. $i and $e are hashrefs
-           my $i = $reo->get_user_input(); # get plain user input (hashref)
-           my $e = $reo->get_safe_input(); # get safe data (never reach user browser)
+        my $form = $reo->new_form();
 
-           $text .= "<p><hr><p>$fortune<hr>";
+        $text .= "<p><hr><p>";
 
-           my $bc = $reo->args_here(); # session keeper, this is manual use
+        return $text;
+      }
 
-           $text .= "<form method=post>";
-           $text .= "<input type=hidden name=_ value=$bc>";
-           $text .= "input <input name=inp>";
-           $text .= "<input type=submit name=button:form_ok>";
-           $text .= "<input type=submit name=button:form_cancel>";
-           $text .= "</form>";
+      1;
 
-           my $form = $reo->new_form();
+DESCRIPTION
+    Web::Reactor provides automation of most of the usual and frequent tasks
+    when constructing a web application. Such tasks include:
 
-           $text .= "<p><hr><p>";
+      * User session handling (creation, cookies support, storage)
+      * Page (web screen/view) session handling (similar to user sessions attributes)
+      * Sessions (user/page/etc.) data storage and auto load/ssave
+      * Inter-page relations and data transport (hides real data from the end-user)
+      * HTML page creation and expansion (i.e. including preprocessing :))
+      * Optional HTML forms creation and data handling
 
-           return $text;
-         }
+    Web::Reactor is designed to allow extending or replacing some parts as:
 
-         1;
+      * Session storage (data store on filesystem, database, remote or vmem)
+      * HTML creation/expansion/preprocessing
+      * Page actions/modules execution (can be skipped if custom HTML prep used)
 
-DDEESSCCRRIIPPTTIIOONN
-       Web::Reactor provides automation of most of the usual and frequent
-       tasks when constructing a web application. Such tasks include:
+PROJECT STATUS
+    At the moment Web::Reactor is in beta. API is mostly frozen but it is
+    fairly possible to be changed and/or extended. However drastic changes
+    are not planned :)
 
-         * User session handling (creation, cookies support, storage)
-         * Page (web screen/view) session handling (similar to user sessions attributes)
-         * Sessions (user/page/etc.) data storage and auto load/ssave
-         * Inter-page relations and data transport (hides real data from the end-user)
-         * HTML page creation and expansion (i.e. including preprocessing :))
-         * Optional HTML forms creation and data handling
+    If you are interested in the project or have some notes etc, contact me
+    at:
 
-       Web::Reactor is designed to allow extending or replacing some parts as:
+      Vladi Belperchinov-Shabanski "Cade"
+      <cade@bis.bg> 
+      <cade@biscom.net> 
+      <cade@cpan.org> 
+      <cade@datamax.bg>
 
-         * Session storage (data store on filesystem, database, remote or vmem)
-         * HTML creation/expansion/preprocessing
-         * Page actions/modules execution (can be skipped if custom HTML prep used)
+    further contact info, mailing list and github repository is listed
+    below.
 
-PPRROOJJEECCTT SSTTAATTUUSS
-       At the moment Web::Reactor is in beta. API is mostly frozen but it is
-       fairly possible to be changed and/or extended. However drastic changes
-       are not planned :)
+FIXME: TODO:
+      * config examples
+      * pages example
+      * actions example
+      * API description (input data, safe data, sessions, forwarding, actions, html)
+      * ...
 
-       If you are interested in the project or have some notes etc, contact me
-       at:
+DEMO APPLICATION
+    Documentation will be improved shortly, but meanwhile you can check
+    'demo' directory inside distribution tarball or inside the github
+    repository. This is fully functional (however stupid :)) application. It
+    shows how data is processed, calling pages/views, inspecting page
+    (calling views) stack, html forms automation, forwarding.
 
-         Vladi Belperchinov-Shabanski "Cade"
-         <cade@bis.bg>
-         <cade@biscom.net>
-         <cade@cpan.org>
-         <cade@datamax.bg>
+MAILING LIST
+      web-reactor@googlegroups.com
 
-       further contact info, mailing list and github repository is listed
-       below.
+GITHUB REPOSITORY
+      https://github.com/cade4/perl-web-reactor
+      
+  git clone git://github.com/cade4/perl-web-reactor.git
 
-FFIIXXMMEE:: TTOODDOO::
-         * config examples
-         * pages example
-         * actions example
-         * API description (input data, safe data, sessions, forwarding, actions, html)
-         * ...
+AUTHOR
+      Vladi Belperchinov-Shabanski "Cade"
 
-DDEEMMOO AAPPPPLLIICCAATTIIOONN
-       Documentation will be improved shortly, but meanwhile you can check
-       'demo' directory inside distribution tarball or inside the github
-       repository. This is fully functional (however stupid :)) application.
-       It shows how data is processed, calling pages/views, inspecting page
-       (calling views) stack, html forms automation, forwarding.
+      <cade@biscom.net> <cade@datamax.bg> <cade@cpan.org>
 
-MMAAIILLIINNGG LLIISSTT
-         web-reactor@googlegroups.com
+      http://cade.datamax.bg
 
-GGIITTHHUUBB RREEPPOOSSIITTOORRYY
-         https://github.com/cade4/perl-web-reactor
-
-         git clone git://github.com/cade4/perl-web-reactor.git
-
-AAUUTTHHOORR
-         Vladi Belperchinov-Shabanski "Cade"
-
-         <cade@biscom.net> <cade@datamax.bg> <cade@cpan.org>
-
-         http://cade.datamax.bg
-
-
-
-perl v5.10.0                      2013-05-28                   Web::Reactor(3)

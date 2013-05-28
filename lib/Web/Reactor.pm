@@ -73,9 +73,9 @@ sub new
 #    $self->{ 'ENV' }{ 'HTML_DIRS' } = [ "$root/html" ];
 #    }
 
-  my $reo_sess_class = $env{ 'REO_SESS_CLASS' } ||= 'Web::Reactor::Sess::Filesystem';
-  my $reo_prep_class = $env{ 'REO_PREP_CLASS' } ||= 'Web::Reactor::Prep::Expander';
-  my $reo_acts_class = $env{ 'REO_ACTS_CLASS' } ||= 'Web::Reactor::Acts::Native';
+  my $reo_sess_class = $env{ 'REO_SESS_CLASS' } ||= 'Web::Reactor::Sessions::Filesystem';
+  my $reo_prep_class = $env{ 'REO_PREP_CLASS' } ||= 'Web::Reactor::Preprocessor::Expander';
+  my $reo_acts_class = $env{ 'REO_ACTS_CLASS' } ||= 'Web::Reactor::Actions::Native';
 
   my $reo_sess_class_file = perl_package_to_file( $reo_sess_class );
   my $reo_prep_class_file = perl_package_to_file( $reo_prep_class );

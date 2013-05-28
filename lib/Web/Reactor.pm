@@ -18,7 +18,7 @@ use Data::Tools;
 use Data::Dumper;
 use Exception::Sink;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 ##############################################################################
 

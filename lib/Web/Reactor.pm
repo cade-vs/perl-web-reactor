@@ -22,17 +22,10 @@ our $VERSION = '0.01';
 
 ##############################################################################
 
-=pod
-
-minimum config:
-
-my %cfg = (
-          '' => ,
-#         '' => ,
-          );
-
-
-=cut
+#minimum config:
+#my %cfg = (
+#          '' => ,
+#          );
 
 our @HTTP_VARS_CHECK = qw(
                            REMOTE_ADDR
@@ -552,27 +545,6 @@ sub __make_headers
 }
 
 ##############################################################################
-
-=pod
-sub __update_session_data_sha1
-{
-  my $self = shift;
-
-  my $mod_cache = $self->{ 'CACHE' }{ 'SESSION_DATA_SHA1' } ||= {};
-
-  for my $type ( qw( USER PAGE LINK ) )
-    {
-    while( my ( $sid, $shr ) = each %{ $self->{ 'SESSIONS' }{ 'DATA' }{ $type } } )
-      {
-      $self->boom( "SESSION:DATA:$type:$sid is not hashref" ) unless ref( $shr ) eq 'HASH';
-
-      my $sha1   = sha1_hex( freeze( $shr ) );
-
-      $mod_cache->{ $type }{ $sid } = $sha1;
-      }
-    }
-}
-=cut
 
 sub save
 {

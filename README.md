@@ -95,8 +95,8 @@ SYNOPSIS
       1;
 
 DESCRIPTION
-    Web::Reactor provides automation of most of the usual and frequent tasks
-    when constructing a web application. Such tasks include:
+    Web::Reactor (WR) provides automation of most of the usual and frequent
+    tasks when constructing a web application. Such tasks include:
 
       * User session handling (creation, cookies support, storage)
       * Page (web screen/view) session handling (similar to user sessions attributes)
@@ -110,6 +110,71 @@ DESCRIPTION
       * Session storage (data store on filesystem, database, remote or vmem)
       * HTML creation/expansion/preprocessing
       * Page actions/modules execution (can be skipped if custom HTML prep used)
+
+HTTP PARAMETERS NAMES
+    WR uses underscore and one or two letters for its system http/html
+    parameters. Some of the system params are:
+
+      _PN  -- html page name (points to file template, restricted to alphanumeric)
+      _P   -- page session
+      _R   -- referer (caller) page session
+
+    More details about how those params are used can be found below.
+
+USER SESSIONS
+    WR creates unique session for each connected user. The session is kept
+    by a cookie. Usually WR needs justthis cookie to handle all user/server
+    interaction. Inside WR action code, user session is represented as a
+    hash reference. It may hold arbitrary data. "System" or WR-specific data
+    inside user session has colon as prefix:
+
+      # $reo is Web::Reactor object (i.e. context) passed to the action/module code
+      my $user_session = $reo->get_user_session();
+      print STDERR $user_session->{ ':CTIME_STR' };
+      # prints in http log the create time in human friendly form
+
+    All data saved inside user session is automatically saved. When needed
+    it can be explicitly with:
+
+      $reo->save();
+      # saves all modified context to disk or other storage
+
+PAGE SESSIONS
+    Each page presented to the user has own session. It is very similar to
+    the user session (it is hash reference, may hold any data, can be saved
+    with $reo->save()). It is expected that page sessions hold all context
+    data needed for any page to display properly. To preserve page session
+    it is needed that it is included in any link to this page instance or in
+    any html form used.
+
+    When called for the first time, each page request needs page name (_PN).
+    Afterwards a unique page session is created and page name is saved
+    inside. At this moment this page instance can be accessed (i.e. given
+    control to) only with a page session id (_P):
+
+      $page_sid = ...; # taken from somewhere
+      # to pass control to the page instance:
+      $reo->forward( _P => $page_sid );
+      # the page instance will pull data from its page session and display in
+      # its last known state
+
+    Not always page session are needed. For example, when forward to the
+    caller is needed, you just need to:
+
+       $reo->forward_back();
+       # this is equivalent to
+       my $ref_page_sid = $reo->get_ref_page_session_id();
+       $reo->forward( _P => $ref_page_sid );
+
+    Each page instance knows the caller page session and can give control
+    back to. However it may pass more data when returning back to the
+    caller:
+
+       $reo->forward_back( MORE_DATA => 'is here', OPTIONS_LIST => \@list );
+
+    When new page instance has to be called (created):
+
+       $reo->forward_new( _PN => 'some_page_name' );
 
 PROJECT STATUS
     At the moment Web::Reactor is in beta. API is mostly frozen but it is

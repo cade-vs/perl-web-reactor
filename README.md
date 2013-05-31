@@ -140,7 +140,7 @@ HTML content may include other files (also limited to be alphanumeric):
     file included: other_file.html
     
 
-Page names may be requested from the edn user side, but include html files may
+Page names may be requested from the end user side, but include html files may
 be used only from the pages already requested.
 
 # ACTIONS/MODULES/CALLBACKS
@@ -219,7 +219,18 @@ When new page instance has to be called (created):
     $reo->forward_new( _PN => 'some_page_name' );
     
 
+# API FUNCTIONS
 
+    # TODO: input
+    # TODO: sessions
+    # TODO: arguments, constructing links
+    # TODO: forwarding
+    # TODO: html, forms, session keeping
+
+# DEPLOYMENT, DIRECTORIES, FILESYSTEM STRUCTURE
+
+    # TODO: install, cpan, manual, github, custom locations
+    # TODO: sessions dir, custom storage/session handling
 
 # PROJECT STATUS
 

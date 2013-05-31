@@ -1,6 +1,10 @@
 Revision history for Perl extension Web::Reactor
 
 
+0.03  2013.05.29
+
+    1. fixed perl package
+
 0.02  2013.05.29
 
     1. fixed pod

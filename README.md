@@ -115,6 +115,38 @@ Web::Reactor is designed to allow extending or replacing some parts as:
     * HTML creation/expansion/preprocessing
     * Page actions/modules execution (can be skipped if custom HTML prep used)
 
+# PAGE NAMES, HTML FILE TEMPLATES, PAGE INSTANCES
+
+WR has a notion of a "page" which represents visible output to the end user 
+browser. It has (i.e. uses) the following attributes:
+
+    * html file template (page name)
+    * page session data
+    * actions code (i.e. callbacks) used inside html text
+    
+
+All of those represent "page instance" and produce end user html visible page.
+
+"Page names" are limited to be alphanumeric and are mapped to file 
+(or other storage) html content:
+
+                     page name: example
+    html file template will be: page_example.html
+    
+
+HTML content may include other files (also limited to be alphanumeric):
+
+     include text: <#other_file>
+    file included: other_file.html
+    
+
+Page names may be requested from the edn user side, but include html files may
+be used only from the pages already requested.
+
+# ACTIONS/MODULES/CALLBACKS
+
+\# TODO
+
 # HTTP PARAMETERS NAMES
 
 WR uses underscore and one or two letters for its system http/html parameters.
@@ -124,6 +156,7 @@ Some of the system params are:
     _P   -- page session
     _R   -- referer (caller) page session
 
+Usually those names should not be directly used or visible inside actions code.
 More details about how those params are used can be found below.
 
 # USER SESSIONS

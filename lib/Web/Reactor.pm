@@ -1020,7 +1020,7 @@ HTML content may include other files (also limited to be alphanumeric):
    include text: <#other_file>
   file included: other_file.html
   
-Page names may be requested from the edn user side, but include html files may
+Page names may be requested from the end user side, but include html files may
 be used only from the pages already requested.
 
 =head1 ACTIONS/MODULES/CALLBACKS

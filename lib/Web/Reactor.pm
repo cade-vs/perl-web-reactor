@@ -1095,6 +1095,18 @@ When new page instance has to be called (created):
 
    $reo->forward_new( _PN => 'some_page_name' );
    
+=head1 API FUNCTIONS
+
+  # TODO: input
+  # TODO: sessions
+  # TODO: arguments, constructing links
+  # TODO: forwarding
+  # TODO: html, forms, session keeping
+
+=head1 DEPLOYMENT, DIRECTORIES, FILESYSTEM STRUCTURE
+
+  # TODO: install, cpan, manual, github, custom locations
+  # TODO: sessions dir, custom storage/session handling
 
 =head1 PROJECT STATUS
 

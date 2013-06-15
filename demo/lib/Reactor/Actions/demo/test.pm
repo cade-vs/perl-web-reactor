@@ -83,6 +83,11 @@ sub main
                     SAFE  => 1,
                   },
                   {
+                    NAME  => 'PERSON_FILE',
+                    TYPE  => 'FILE',
+                    LABEL => 'File upload test',
+                  },
+                  {
                     NAME  => 'PERSON_ACTIVE',
                     TYPE  => 'CHECKBOX',
                     LABEL => 'Active',
@@ -114,6 +119,18 @@ sub main
   my $form_text = html_form_engine_display( $reo, $form_def, NAME => 'PERSON_FORM', INPUT_DATA => $form_data, INPUT_ERRORS => $form_errors );
 
   $text .= $form_text;
+
+  if( $reo->get_input_form_name() eq 'PERSON_FORM' and $reo->get_input_button() eq 'PERSON_OK' )
+    {
+    my $in = $reo->get_user_input();
+    my $file_name   = $in->{ 'PERSON_FILE' };
+    my $file_handle = $in->{ 'PERSON_FILE' };
+    my $file_info   = $in->{ 'PERSON_FILE:UPLOAD_INFO' };
+    local $/ = undef;
+    my $file_body = <$file_handle>;
+    $text .= "<p> file length is: " . length( $file_body ) . "<p>";
+    $text .= "<p> file length is: " . Dumper( $file_name, $file_info ) . "<p>";
+    }
 
   $text .= "<hr><h1>DEBUG</h1><pre>";
   local $Data::Dumper::sortkeys = 1;

@@ -84,7 +84,7 @@ sub begin
   $page_session->{ ':FORM_DEF' }{ $form_name } = {};
 
   my $state_keeper = $reo->args_here( FORM_NAME => $form_name ); # keep state and more args
-  $text .= "<form action='$action' method='$method'>";
+  $text .= "<form action='$action' method='$method' enctype='multipart/form-data'>";
   $text .= "<input type=hidden name=_ value=$state_keeper>";
 
   return $text;

@@ -84,7 +84,10 @@ print STDERR Dumper( 'html_form_engine_import_input: safe/user input hrs:', $use
       $data = $user_input_hr->{ $name } if $exists;
       }
 
-print STDERR " form iiiiiiiiiiiiiiiiiiiiiiiiiiii [$name] [$data] [$re] [$exists]\n";
+
+    next if ref( $data ); # strip objects, i.e. file uploads
+      
+# print STDERR " form iiiiiiiiiiiiiiiiiiiiiiiiiiii [$name] [$data] [$re] [$exists] {".ref($data)."}\n";
     
 #    next unless $exists;  # FIXME: should be an option
     
@@ -170,7 +173,7 @@ sub html_form_engine_display
     $text .= "<td align=right>$label</td>";
     $text .= "<td align=left>";
 
-print STDERR " form ffffffffffffffffffffffffffff [$name] [$value] [$re_help]\n";
+    # print STDERR " form ffffffffffffffffffffffffffff [$name] [$value] [$re_help]\n";
 
     if( $type =~ /^(STRING|STR|CHAR|TEXT|INPUT)$/ )
       {
@@ -187,6 +190,10 @@ print STDERR " form ffffffffffffffffffffffffffff [$name] [$value] [$re_help]\n";
     elsif( $type =~ /^(BUTTON|SUBMIT)$/ )
       {
       $text .= $form->button( NAME => $name, VALUE => $value );
+      }
+    elsif( $type =~ /^(FILE)$/ )
+      {
+      $text .= "<input type='file' name='$name' size='16'>";
       }
     else
       {

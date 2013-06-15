@@ -190,7 +190,9 @@ sub main_process
       }
     my $v = CGI::param( $n );
     my @v = CGI::param( $n );
-print STDERR "cgiiiiiiiiiiiiiiiiiiiii [$n] [$v] [@v]\n";
+
+    print STDERR "cgiiiiiiiiiiiiiiiiiiiii [$n] [$v] [@v]\n";
+    
     if( $self->__input_cgi_skip_invalid_value( $n, $v ) )
       {
       $self->log( "error: invalid CGI/input value for parameter: [$n]" );
@@ -208,6 +210,11 @@ print STDERR "cgiiiiiiiiiiiiiiiiiiiii [$n] [$v] [@v]\n";
       {
       $n = uc $n;
       $input_user_hr->{ $n } = $v;
+      if( ref( $v ) eq 'Fh' )
+        {
+        # this is file upload, get more info
+        $input_user_hr->{ "$n:UPLOAD_INFO" } = CGI::uploadInfo( $v );
+        }
       }
     }
 

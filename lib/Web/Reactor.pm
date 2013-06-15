@@ -191,7 +191,7 @@ sub main_process
     my $v = CGI::param( $n );
     my @v = CGI::param( $n );
 
-    print STDERR "cgiiiiiiiiiiiiiiiiiiiii [$n] [$v] [@v]\n";
+    $self->debug( "debug: CGI input param [$n] value [$v] [@v]" );
     
     if( $self->__input_cgi_skip_invalid_value( $n, $v ) )
       {
@@ -258,12 +258,10 @@ sub main_process
 
   # 6. remap form input data, post to safe input
   my $form_name = $input_safe_hr->{ 'FORM_NAME' }; # FIXME: replace with _FN
-    print STDERR Dumper( 'ret map SHR ------ 'x10, "$page_shr", $page_shr );
   if( $form_name and exists $page_shr->{ ':FORM_DEF' }{ $form_name } )
     {
     my $rm = $page_shr->{ ':FORM_DEF' }{ $form_name }{ 'RET_MAP' };
 
-    print STDERR Dumper( 'ret map 'x10, "$page_shr", $page_shr, $rm );
     for my $k ( keys %$rm )
       {
       $input_safe_hr->{ $k } = $rm->{ $k }{ $input_user_hr->{ $k } };
@@ -278,9 +276,6 @@ sub main_process
 
   # 8. render output page
   $self->render( $page_name );
-
-#    print STDERR Dumper( '**** end *** ret map 'x10, "$page_shr", $page_shr );
-
 }
 
 sub __create_new_user_session

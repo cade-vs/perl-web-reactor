@@ -84,7 +84,7 @@ print STDERR Dumper( 'html_form_engine_import_input: safe/user input hrs:', $use
       $data = $user_input_hr->{ $name } if $exists;
       }
 
-
+    next unless $exists;
     next if ref( $data ); # strip objects, i.e. file uploads
       
 # print STDERR " form iiiiiiiiiiiiiiiiiiiiiiiiiiii [$name] [$data] [$re] [$exists] {".ref($data)."}\n";
@@ -197,7 +197,7 @@ sub html_form_engine_display
       }
     else
       {
-      confess "invalid form entry type\n"; # TODO: dump and function arguments
+      confess "invalid form entry type [$type]\n"; # TODO: dump and function arguments
       }
     $text .= "<span style='color: #f00'>$re_help</span>" if $error;
     $text .= "</td>";

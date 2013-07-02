@@ -110,7 +110,7 @@ sub __process_tag
   my $path = $opt->{ 'PATH' };
 
   die "preprocess loop detected, tag [$type$tag] path [$path]" if $opt->{ 'SEEN:' . $type . $tag }++;
-  die "empty tag" unless $tag =~ /^[a-zA-Z_0-9]+$/;
+  die "empty or invalid tag" unless $tag =~ /^[a-zA-Z_0-9]+$/;
 
   $tag = lc $tag;
 

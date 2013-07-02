@@ -68,16 +68,22 @@ sub __find_act_pkg
     $dirs = [ "$app_root/lib" ]; # FIXME: 'act' actions ?
     }
 
+  my @asl = @{ $self->{ 'ENV' }{ 'ACTIONS_SET_LIST' } || [] };
+  @asl = ( $app_name, "Base" ) unless @ap_ns_prefix > 0;
+
   # action package
-  for my $ap ( "Reactor::Actions::${app_name}::${name}", "Reactor::Actions::Base::${name}" )
+  for my $asl ( @asl )
   {
+    my $ap = 'Web::Reactor::Actions::' . $asl . '::' . $name;
     my $fn = $ap;
     $fn =~ s/::/\//g;
     # paths
     for my $p ( @$dirs )
       {
       my $ffn = "$p/$fn.pm";
-    print STDERR "actions: $ap --> $fn --> $ffn\n";
+  
+      print STDERR "actions: $ap --> $fn --> $ffn\n";
+  
       next unless -e $ffn;
       # FIXME: check require status!
       require $ffn;

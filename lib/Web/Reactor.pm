@@ -145,7 +145,7 @@ sub main_process
     {
     $self->log( "status: user session expired or closed [$user_sid]" );
     # not logged-in sessions dont expire
-    $user_shr->{ ':XTIME_AT_STR' } = scalar localtime() if time() > $user_shr->{ ':XTIME' };
+    $user_shr->{ ':XTIME_STR' } = scalar localtime() if time() > $user_shr->{ ':XTIME' };
     $user_shr->{ ':CLOSED'       } = 1;
     $user_shr->{ ':ETIME'        } = time();
     $user_shr->{ ':ETIME_STR'    } = scalar localtime();
@@ -832,6 +832,25 @@ sub need_login
   
   # return $self->forward( _PN => 'login' );
 }
+
+# returns unix time at which user session will expire, undef if no expire time specified
+sub get_user_session_expire_time
+{
+  my $self = shift;
+
+  my $user_shr = $self->get_user_session();
+  return exists $user_shr->{ ':XTIME' } ? $user_shr->{ ':XTIME' } : undef;
+}
+
+# returns time period in seconds, in which user session will expire, undef if no expire time specified
+sub get_user_session_expire_time_in
+{
+  my $self = shift;
+
+  my $xi = $self->get_user_session_expire_time() - time();
+  return $xi > 0 ? $xi : undef;
+}
+
 
 ##############################################################################
 

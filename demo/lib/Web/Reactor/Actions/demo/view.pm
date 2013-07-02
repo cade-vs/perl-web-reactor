@@ -1,4 +1,4 @@
-package Reactor::Actions::demo::view;
+package Web::Reactor::Actions::demo::view;
 use strict;
 use Data::Dumper;
 use Web::Reactor::HTML::FormEngine;

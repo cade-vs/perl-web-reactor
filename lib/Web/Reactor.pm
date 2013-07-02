@@ -18,7 +18,7 @@ use Data::Tools;
 use Data::Dumper;
 use Exception::Sink;
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 ##############################################################################
 
@@ -51,6 +51,9 @@ sub new
   my %env = @_;
 
   # FIXME: verify %env content! Data::Validate::Struct
+  
+  # FIXME: alpha/beta development changes sanity
+  boom "LIB_DIRS is replaced by ACTIONS_DIRS and ACTIONS_SETS" if exists $env{ 'LIB_DIRS' };
 
   $class = ref( $class ) || $class;
   my $self = {
@@ -919,7 +922,8 @@ Startup CGI script example:
   my %cfg = (
             'APP_NAME'     => 'demo',
             'APP_ROOT'     => '/opt/reactor/demo/',
-            'LIB_DIRS'     => [ '/opt/reactor/demo/lib/'  ],
+            'ACTIONS_DIRS' => [ '/opt/reactor/demo/lib/'  ],
+            'ACTIONS_SETS' => [ 'demo', 'Base', 'Core' ],
             'HTML_DIRS'    => [ '/opt/reactor/demo/html/' ],
             'SESS_VAR_DIR' => '/opt/reactor/demo/var/sess/',
             'DEBUG'        => 4,
@@ -1115,6 +1119,26 @@ When new page instance has to be called (created):
 
 
    $reo->forward_new( _PN => 'some_page_name' );
+
+=head1 CONFIG ENTRIES
+
+Upon creation, Web:Reactor instance gets hash with config entries/keys:
+
+  * APP_NAME      -- alphanumeric application name (plus underscore)
+  * APP_ROOT      -- application root dir, used for app components search
+  * ACTIONS_DIRS  -- directories in which actions are searched
+  * ACTIONS_SETS  -- list of action "sets", appended to ACTIONS_DIRS
+  * HTML_DIRS     -- html file inlude directories
+  * SESS_VAR_DIR  -- used by filesystem session handling to store sess data
+  * DEBUG         -- positive number, enables debugging with verbosity level
+
+Some entries may be omitted and default values are:
+
+  * ACTIONS_DIRS  -- [ "$APP_ROOT/lib"  ]
+  * ACTIONS_SETS  -- [ $APP_NAME, 'Base', 'Core' ]
+  * HTML_DIRS     -- [ "$APP_ROOT/html" ]
+  * SESS_VAR_DIR  -- [ "$APP_ROOT/var"  ]
+  * DEBUG         -- 0
    
 =head1 API FUNCTIONS
 
@@ -1151,6 +1175,14 @@ further contact info, mailing list and github repository is listed below.
   * actions example
   * API description (input data, safe data, sessions, forwarding, actions, html)
   * ...
+
+=head1 REQUIRED ADDITIONAL MODULES
+
+Reactor uses mostly perl core modules but it needs few others:
+
+  * CGI
+  * Exception::Sink
+  * Data::Tools
 
 =head1 DEMO APPLICATION
 

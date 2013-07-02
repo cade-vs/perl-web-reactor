@@ -1,4 +1,4 @@
-package Reactor::Actions::demo::test;
+package Web::Reactor::Actions::demo::test;
 use strict;
 use Data::Dumper;
 use Web::Reactor::HTML::FormEngine;
@@ -16,7 +16,7 @@ sub main
     return $reo->forward_back( OPA => 'hehe' );
     }
 
-  $text .= "Reactor::Actions::demo::test here! \n";
+  $text .= "<p>Reactor::Actions::demo::test here! <&expire_hint>\n";
 
   my $grid_href = $reo->args_new( _PN => 'grid', TABLE => 'testtable', );
   $text .= "<a href=?_=$grid_href>go to grid | $grid_href</a><p>";

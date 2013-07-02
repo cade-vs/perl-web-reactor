@@ -9,6 +9,7 @@
 ##############################################################################
 package Web::Reactor::Actions::Native;
 use strict;
+use Exception::Sink;
 use Carp;
 use Web::Reactor::Actions;
 use Data::Dumper;
@@ -59,17 +60,22 @@ sub __find_act_pkg
   my $self  = shift;
 
   my $name = lc shift;
+  
+  my $act_cache = $self->{ 'ACT_PKG_CACHE' };
+  
+  return $act_cache->{ $name } if exists $act_cache->{ $name };
 
   my $app_name = lc $self->{ 'ENV' }{ 'APP_NAME' };
   my $dirs = $self->{ 'ENV' }{ 'LIB_DIRS' } || [];
   if( @$dirs == 0 )
     {
     my $app_root = $self->{ 'ENV' }{ 'APP_ROOT' };
+    boom "missing APP_ROOT" unless -d $app_root; # FIXME: function? get_app_root()
     $dirs = [ "$app_root/lib" ]; # FIXME: 'act' actions ?
     }
 
-  my @asl = @{ $self->{ 'ENV' }{ 'ACTIONS_SET_LIST' } || [] };
-  @asl = ( $app_name, "Base" ) unless @ap_ns_prefix > 0;
+  my @asl = @{ $self->{ 'ENV' }{ 'ACTIONS_SETS' } || [] };
+  @asl = ( $app_name, "Base", "Core" ) unless @asl > 0;
 
   # action package
   for my $asl ( @asl )
@@ -88,6 +94,7 @@ sub __find_act_pkg
       # FIXME: check require status!
       require $ffn;
       # print "FOUND ", %INC;
+      $act_cache->{ $name } = $ap;
       return $ap;
       }
   }

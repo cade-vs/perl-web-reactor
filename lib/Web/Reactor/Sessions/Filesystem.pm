@@ -9,6 +9,7 @@
 ##############################################################################
 package Web::Reactor::Sessions::Filesystem;
 use strict;
+use Exception::Sink;
 use Web::Reactor::Sessions;
 use Web::Reactor::Utils;
 use POSIX;
@@ -151,7 +152,13 @@ sub _key_to_fn
   confess "invalid key component 0, needs ALPHANUMERIC type, got [$r]" unless $r =~ /^[A-Z]+$/;
   
   my $vd = $self->{ 'ENV' }{ 'SESS_VAR_DIR' };
-  confess "missing SESS_VAR_DIR" unless $vd;
+  if( ! $vd )
+    {
+    my $app_root = $self->{ 'ENV' }{ 'APP_ROOT' };
+    boom "missing APP_ROOT" unless -d $app_root; # FIXME: function? get_app_root()
+    $vd = "$app_root/var";
+    }
+  confess "missing SESS_VAR_DIR or APP_ROOT/var" unless -d $vd;
 
   while( @key > 0 )
     {

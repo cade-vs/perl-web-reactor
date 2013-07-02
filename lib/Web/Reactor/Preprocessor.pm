@@ -9,6 +9,7 @@
 ##############################################################################
 package Web::Reactor::Preprocessor;
 use strict;
+use Exception::Sink;
 use Carp;
 use Data::Tools;
 
@@ -52,6 +53,7 @@ sub load_file
   if( @$dirs == 0 )
     {
     my $app_root = $self->{ 'ENV' }{ 'APP_ROOT' };
+    boom "missing APP_ROOT" unless -d $app_root; # FIXME: function? get_app_root()
     $dirs = [ "$app_root/html" ];
     }
 

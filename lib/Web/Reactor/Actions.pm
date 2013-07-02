@@ -17,7 +17,8 @@ sub new
   
   $class = ref( $class ) || $class;
   my $self = {
-             'ENV'       => \%env,
+             'ENV'           => \%env,
+             'ACT_PKG_CACHE' => {},
              };
   bless $self, $class;
   # rcd_log( "debug: $self created" );

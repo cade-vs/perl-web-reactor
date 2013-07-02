@@ -1,4 +1,4 @@
-package Reactor::Actions::demo::grid;
+package Web::Reactor::Actions::demo::grid;
 use strict;
 use Data::Dumper;
 use Web::Reactor::HTML::FormEngine;

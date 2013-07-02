@@ -158,6 +158,7 @@ sub _key_to_fn
     boom "missing APP_ROOT" unless -d $app_root; # FIXME: function? get_app_root()
     $vd = "$app_root/var";
     }
+  dir_path_check( $vd ) unless -d $vd;
   confess "missing SESS_VAR_DIR or APP_ROOT/var" unless -d $vd;
 
   while( @key > 0 )

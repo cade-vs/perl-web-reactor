@@ -73,6 +73,14 @@ sub new
     push @INC, $lib_dir;
     }
 
+  # sanity, remove '.' from include list, TODO: optionally remove other entries by config (%env)
+  for my $z ( 0 .. scalar( @INC ) - 1 )
+    {
+    next unless $INC[ $z ] eq '.';
+    splice @INC, $z, 1;
+    last;
+    }
+
   my $reo_sess_class = $env{ 'REO_SESS_CLASS' } ||= 'Web::Reactor::Sessions::Filesystem';
   my $reo_prep_class = $env{ 'REO_PREP_CLASS' } ||= 'Web::Reactor::Preprocessor::Expander';
   my $reo_acts_class = $env{ 'REO_ACTS_CLASS' } ||= 'Web::Reactor::Actions::Native';
@@ -926,7 +934,7 @@ Startup CGI script example:
   my %cfg = (
             'APP_NAME'     => 'demo',
             'APP_ROOT'     => '/opt/reactor/demo/',
-            'ACTIONS_DIRS' => [ '/opt/reactor/demo/lib/'  ],
+            'LIB_DIRS'     => [ '/opt/reactor/demo/lib/'  ],
             'ACTIONS_SETS' => [ 'demo', 'Base', 'Core' ],
             'HTML_DIRS'    => [ '/opt/reactor/demo/html/' ],
             'SESS_VAR_DIR' => '/opt/reactor/demo/var/sess/',
@@ -1130,7 +1138,7 @@ Upon creation, Web:Reactor instance gets hash with config entries/keys:
 
   * APP_NAME      -- alphanumeric application name (plus underscore)
   * APP_ROOT      -- application root dir, used for app components search
-  * ACTIONS_DIRS  -- directories in which actions are searched
+  * LIB_DIRS      -- directories from which actions and other libs are loaded
   * ACTIONS_SETS  -- list of action "sets", appended to ACTIONS_DIRS
   * HTML_DIRS     -- html file inlude directories
   * SESS_VAR_DIR  -- used by filesystem session handling to store sess data
@@ -1138,7 +1146,7 @@ Upon creation, Web:Reactor instance gets hash with config entries/keys:
 
 Some entries may be omitted and default values are:
 
-  * ACTIONS_DIRS  -- [ "$APP_ROOT/lib"  ]
+  * LIB_DIRS      -- [ "$APP_ROOT/lib"  ]
   * ACTIONS_SETS  -- [ $APP_NAME, 'Base', 'Core' ]
   * HTML_DIRS     -- [ "$APP_ROOT/html" ]
   * SESS_VAR_DIR  -- [ "$APP_ROOT/var"  ]

@@ -52,9 +52,6 @@ sub new
 
   # FIXME: verify %env content! Data::Validate::Struct
   
-  # FIXME: alpha/beta development changes sanity
-  boom "LIB_DIRS is replaced by ACTIONS_DIRS and ACTIONS_SETS" if exists $env{ 'LIB_DIRS' };
-
   $class = ref( $class ) || $class;
   my $self = {
              'ENV' => \%env,
@@ -68,6 +65,13 @@ sub new
 #    {
 #    $self->{ 'ENV' }{ 'HTML_DIRS' } = [ "$root/html" ];
 #    }
+
+  my $lib_dirs = $env{ 'LIB_DIRS' } || [];
+  for my $lib_dir ( @$lib_dirs )
+    {
+    boom "invalid or not accessible LIB_DIR [$lib_dir]" unless -d $lib_dir;
+    push @INC, $lib_dir;
+    }
 
   my $reo_sess_class = $env{ 'REO_SESS_CLASS' } ||= 'Web::Reactor::Sessions::Filesystem';
   my $reo_prep_class = $env{ 'REO_PREP_CLASS' } ||= 'Web::Reactor::Preprocessor::Expander';

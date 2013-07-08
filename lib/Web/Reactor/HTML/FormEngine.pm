@@ -60,7 +60,7 @@ sub html_form_engine_import_input
 
   %data = %{ $page_session_hr->{ 'FORM_INPUT_DATA' }{ $form_name } } if exists $page_session_hr->{ 'FORM_INPUT_DATA' }{ $form_name };
 
-print STDERR Dumper( 'html_form_engine_import_input: safe/user input hrs:', $user_input_hr,$safe_input_hr);
+  # print STDERR Dumper( 'html_form_engine_import_input: safe/user input hrs:', $user_input_hr, $safe_input_hr );
 
   for my $er ( @$form_def )
     {
@@ -95,7 +95,7 @@ print STDERR Dumper( 'html_form_engine_import_input: safe/user input hrs:', $use
     # FIXME: callback check per type
     if( $re )
       {
-      my $qr = qr($re);
+      my $qr = qr/$re/;
       if( $data =~ $qr )
         {
         $ok = 1;

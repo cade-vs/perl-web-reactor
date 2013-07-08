@@ -1,11 +1,13 @@
 Revision history for Perl extension Web::Reactor
 
-0.04  2013.07.03
+0.04  2013.07.09
 
     1. code cleanup, actions sets, config changes ACTION_DIRS, ACTIONS_SETS
     2. file upload support, fixed forms enctype, added file upload info
     3. added Base/expire_hint action to the demo app
     4. actions caching (avoids package reloading)
+    5. direct actions (instead of page loading) as option
+    6. moved to name-inherited actions, not file based anymore
 
 0.03  2013.05.29
 

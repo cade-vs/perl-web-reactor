@@ -43,6 +43,10 @@ our @HTTP_VARS_SAVE  = qw(
                            HTTP_USER_AGENT
                          );
 
+our %ENV_ALLOWED_KEYS = {
+
+                        };
+
 ##############################################################################
 
 sub new
@@ -284,13 +288,37 @@ sub main_process
       }
     }
 
-  # 7. get page from input (USER/CGI) or page session
+  # 7. get action from input (USER/CGI) or page session
+  my $action_name = lc( $input_safe_hr->{ '_AN' } || $input_user_hr->{ '_AN' } || $page_shr->{ ':ACTION_NAME' } );
+  if( $action_name =~ /^[a-z_0-9]+$/ )
+    {
+    $page_shr->{ ':ACTION_NAME' } = $action_name;
+    }
+  else
+    {
+    $self->log( "error: invalid action name [$action_name]" );
+    }  
+
+  # 8. get page from input (USER/CGI) or page session
   my $page_name = lc( $input_safe_hr->{ '_PN' } || $input_user_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || 'index' );
-  $page_shr->{ ':PAGE_NAME' } = $page_name;
+  if( $page_name =~ /^[a-z_0-9]+$/ )
+    {
+    $page_shr->{ ':PAGE_NAME' } = $page_name;
+    }
+  else
+    {
+    $self->log( "error: invalid page name [$page_name]" );
+    }  
 
-
-  # 8. render output page
-  $self->render( $page_name );
+  # 9. render output action/page
+  if( $action_name )
+    {
+    $self->render( ACTION => $action_name );
+    }
+  else
+    {
+    $self->render( PAGE => $page_name );
+    }  
 }
 
 sub __create_new_user_session
@@ -735,23 +763,49 @@ sub __input_cgi_skip_invalid_value
 sub render
 {
   my $self = shift;
-  my $page = shift;
+  my %opt = @_;
+  
+  my $action = $opt{ 'ACTION' };
+  my $page   = $opt{ 'PAGE'   };
+
+  # FIXME: content vars handling set_content()/etc.
+  my $ah = $self->args_here();
+  $self->{ 'REO_PREP' }{ 'ENV' }{ 'CONTENT' }{ 'form_input_session_keeper' } = "<input type=hidden name=_ value=$ah>";
+
+  my $page_text;
+
+  if( $action )
+    {
+    # FIXME: handle content type also!
+    $page_text = $self->act_call( $action );
+    }
+  elsif( $page )
+    {
+    $page_text = $self->prep_load_file( "page_$page" );
+    }
+  else
+    {
+    boom "render() needs PAGE or ACTION";
+    }    
+
+  # FIXME: preprocess and translation only for content-type text/*
+  $page_text = $self->prep_process( $page_text );
+  # FIXME: translation
+  $page_text =~ s/<~(([^<>]*))>/$1/g;
 
   my $page_headers = $self->__make_headers();
-
-  my $page_text = $self->prep_load_file( "page_$page" );
-  $page_text = $self->prep_process( $page_text );
 
   print $page_headers;
   print $page_text;
 
 #$self->log( Dumper( $page, "[$page_headers]", $page_text ) );
 
-  {
-  local $Data::Dumper::sortkeys = 1;
-  #print STDERR "<hr><pre>" . Dumper( $self ) . "</pre>";
-  print "<hr><pre>" . Dumper( $self ) . "</pre>";
-  }
+  if( $self->is_debug() )
+    {
+    local $Data::Dumper::sortkeys = 1;
+    #print STDERR "<hr><pre>" . Dumper( $self ) . "</pre>";
+    print "<hr><pre>" . Dumper( $self ) . "</pre>";
+    }
 
   sink 'CONTENT';
 }

@@ -11,7 +11,7 @@ package Web::Reactor;
 use strict;
 use Web::Reactor::Utils;
 use Web::Reactor::HTML::Form;
-use Storable qw( freeze thaw ); # FIXME: move to Data::Tools (data_freeze/data_thaw)
+use Storable qw( dclone freeze thaw ); # FIXME: move to Data::Tools (data_freeze/data_thaw)
 use CGI;
 use CGI::Cookie;
 use Data::Tools;
@@ -814,9 +814,17 @@ sub render
 
   if( $self->is_debug() )
     {
-    local $Data::Dumper::sortkeys = 1;
-    #print STDERR "<hr><pre>" . Dumper( $self ) . "</pre>";
-    print "<hr><pre>" . Dumper( $self ) . "</pre>";
+    local $Data::Dumper::Sortkeys = 1;
+    local $Data::Dumper::Terse = 1;
+    local $Data::Dumper::Indent = 3;
+    print "<hr><pre>";
+    print Dumper( 'USER INPUT:'.'_'x80, $self->{ 'INPUT_USER_HR' } );
+    print Dumper( 'SAFE INPUT:'.'_'x80, $self->{ 'INPUT_SAFE_HR' } );
+    print Dumper( 'PAGE SESSION:'.'_'x80, $self->{ 'SESSIONS' }{ 'DATA' }{ 'PAGE' }{ $self->{ 'SESSIONS' }{ 'SID' }{ 'PAGE' } } );
+    print Dumper( 'USER SESSION:'.'_'x80, $self->{ 'SESSIONS' }{ 'DATA' }{ 'USER' }{ $self->{ 'SESSIONS' }{ 'SID' }{ 'USER' } } );
+    print "<hr>";
+    print Dumper( $self );
+    print "</pre><hr>";
     }
 
   sink 'CONTENT';

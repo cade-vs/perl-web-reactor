@@ -171,7 +171,7 @@ sub main_process
 
     ( $user_sid, $user_shr ) = $self->__create_new_user_session();
 
-    $self->render( 'eexpired' );
+    $self->render( PAGE => 'eexpired' );
     }
 
   for my $k ( keys %{ $user_shr->{ ":HTTP_CHECK_HR" } } )
@@ -187,7 +187,7 @@ sub main_process
 
     ( $user_sid, $user_shr ) = $self->__create_new_user_session();
 
-    $self->render( 'einvalid' );
+    $self->render( PAGE => 'einvalid' );
     last;
     }
 
@@ -391,6 +391,17 @@ sub get_page_session
   return $page_shr;
 }
 
+sub get_http_env
+{
+  my $self  = shift;
+
+  my $user_shr = $self->get_user_session();
+
+  boom "missing HTTP_ENV inside user session" unless exists $user_shr->{ ':HTTP_ENV_HR' };
+  
+  return $user_shr->{ ':HTTP_ENV_HR' };
+}
+
 sub get_page_session_id
 {
   my $self  = shift;
@@ -560,6 +571,7 @@ sub set_headers
   my $self  = shift;
   my %h = @_;
 
+  $self->{ 'OUTPUT' }{ 'HEADERS' } ||= {};
   $self->{ 'OUTPUT' }{ 'HEADERS' } = { %{ $self->{ 'OUTPUT' }{ 'HEADERS' } }, %h };
 }
 
@@ -900,6 +912,26 @@ sub need_login
   return $self->forward_url( "?_=$fw" );
   
   # return $self->forward( _PN => 'login' );
+}
+
+sub set_user_session_expire_time
+{
+  my $self  = shift;
+  my $xtime = shift;
+
+  my $user_shr = $self->get_user_session();
+  $user_shr->{ ':XTIME'     } = $xtime; # FIXME: sanity?
+  $user_shr->{ ':XTIME_STR' } = scalar localtime $user_shr->{ ':XTIME' };
+  return exists $user_shr->{ ':XTIME' } ? $user_shr->{ ':XTIME' } : undef;
+}
+
+sub set_user_session_expire_time_in
+{
+  my $self    = shift;
+  my $seconds = shift;
+
+  # FIXME: support for more user friendly time periods 10m 60s
+  return $self->set_user_session_expire_time( time() + $seconds );
 }
 
 # returns unix time at which user session will expire, undef if no expire time specified

@@ -296,7 +296,7 @@ sub main_process
     }
   else
     {
-    $self->log( "error: invalid action name [$action_name]" );
+    # $self->log( "error: invalid action name [$action_name]" );
     }  
 
   # 8. get page from input (USER/CGI) or page session

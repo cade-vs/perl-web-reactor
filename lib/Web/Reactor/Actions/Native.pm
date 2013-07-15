@@ -82,12 +82,12 @@ sub __find_act_pkg
   {
     my $ap = 'Web::Reactor::Actions::' . $asl . '::' . $name;
 
-    print STDERR "testing action: $ap\n";
+    # print STDERR "testing action: $ap\n";
+    my $fn = $ap;
+    $fn =~ s/::/\//g;
+    $fn .= '.pm';
     eval
       {
-      my $fn = $ap;
-      $fn =~ s/::/\//g;
-      $fn .= '.pm';
       require $fn;
       };
     if( ! $@ )  
@@ -96,9 +96,13 @@ sub __find_act_pkg
       $act_cache->{ $name } = $ap;
       return $ap;
       }
+    elsif( $@ =~ /Can't locate $fn/)
+      {
+      print STDERR "NOT FOUND: action: $ap: $fn\n";
+      }
     else
       {
-      print STDERR "NOT LOADED: action: $ap: $@\n";
+      print STDERR "ERROR LOADING: action: $ap: $@\n";
       }  
     
 

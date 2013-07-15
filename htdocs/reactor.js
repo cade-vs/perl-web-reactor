@@ -47,7 +47,7 @@ function toggle_display_tr( eid )
   var elem = document.getElementById( eid );
   if( elem.style.display == "none" )
     {
-    if( is_msie_shit )
+    if( is_msie )
       elem.style.display = "block";
     else
       elem.style.display = "table-row";

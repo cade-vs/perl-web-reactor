@@ -62,7 +62,7 @@ function html_block_show( block )
 {
   var ds = "block"; // display style
   
-  if( ds.tagName == "TR" && ! is_msie )
+  if( block.tagName == "TR" && ! is_msie )
     ds = "table-row";
 
   block.style.display = ds;

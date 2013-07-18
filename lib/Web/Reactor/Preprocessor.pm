@@ -92,11 +92,10 @@ sub process
 
   # FIXME: cache here? moje bi ne, zaradi modulite
   $text =~ s/<([\$\&\#])([a-zA-Z_0-9]+)(\s*[^>]*)*>/$self->__process_tag( $1, $2, $3, $opt )/ge;
-
+  $text =~ s/reactor_((new|back|here)_)href=([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"']*)/$self->__process_href( $2, $3, $4 )/gie;
 
   return $text;
 }
-
 
 sub __process_tag
 {
@@ -148,6 +147,38 @@ sub __process_tag
   $text = $self->process( $text, $opt );
 
   return $text;
+}
+
+sub __process_href
+{
+  my $self   = shift;
+  
+  my $type   = lc shift || 'here';
+  my $script = shift;
+  my $data   = shift;
+  
+  my $data_hr = url2hash( $data );
+  my $reo = $self->{ 'REO_REACTOR' };
+
+  my $href;
+  if( $type eq 'new' )
+    {
+    $href = $reo->args_new( $data_hr );
+    }
+  elsif( $type eq 'back' )
+    {
+    $href = $reo->args_back( $data_hr );
+    }
+  elsif( $type eq 'here' )
+    {
+    $href = $reo->args_here( $data_hr );
+    }
+  else
+    {
+    boom "invalid first argument, expected one of (new|back|here)";
+    }
+  
+  return "href=?$href";  
 }
 
 ##############################################################################

@@ -113,6 +113,8 @@ sub __process_tag
   die "preprocess loop detected, tag [$type$tag] path [$path]" if $opt->{ 'SEEN:' . $type . $tag }++;
   die "empty or invalid tag" unless $tag =~ /^[a-zA-Z_0-9]+$/;
 
+  my $reo = $self->{ 'REO_REACTOR' };
+
   $tag = lc $tag;
 
   my $text;
@@ -120,8 +122,8 @@ sub __process_tag
   if( $type eq '$' )
     {
     # FIXME: get content from reactor?
-    $text = undef unless exists $self->{ 'ENV' }{ 'CONTENT' }{ $tag };
-    $text = $self->{ 'ENV' }{ 'CONTENT' }{ $tag };
+    $text = undef unless exists $reo->{ 'HTML_CONTENT' }{ $tag };
+    $text = $reo->{ 'HTML_CONTENT' }{ $tag };
     }
   elsif( $type eq '#' )
     {
@@ -137,7 +139,7 @@ sub __process_tag
       my $v = $4 || $5 || $6 || 1;
       $args{ $k } = $v;
       }
-    $text = $self->{ 'REO_REACTOR' }->act_call( $tag, ARGS => \%args );
+    $text = $reo->act_call( $tag, ARGS => \%args );
     }
   else
     {

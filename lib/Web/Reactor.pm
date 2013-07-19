@@ -782,7 +782,7 @@ sub render
 
   # FIXME: content vars handling set_content()/etc.
   my $ah = $self->args_here();
-  $self->{ 'REO_PREP' }{ 'ENV' }{ 'CONTENT' }{ 'form_input_session_keeper' } = "<input type=hidden name=_ value=$ah>";
+  $self->{ 'HTML_CONTENT' }{ 'form_input_session_keeper' } = "<input type=hidden name=_ value=$ah>";
 
   my $page_text;
 

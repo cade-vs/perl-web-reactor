@@ -72,7 +72,7 @@ DEMO:
               SKIP  => YES,
               };
 
-  $text .= html_table( \@data, ARG => 'width=100%' );
+  $text .= html_table( \@data, ARGS => 'width=100%' );
 
 =cut
 

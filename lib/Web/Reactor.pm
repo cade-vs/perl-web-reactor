@@ -878,6 +878,60 @@ sub forward_new
 ## helpers
 ##
 
+sub __param
+{
+  my $self = shift;
+  my $safe = shift; # 1 safe_input, 0 user_input
+
+  my $input_hr;
+  my $save_key;
+  if( $safe )
+    {
+    $input_hr = $self->get_safe_input();
+    $save_key = 'SAVE_SAFE_INPUT';
+    }
+  else
+    {
+    $input_hr = $self->get_user_input();
+    $save_key = 'SAVE_USER_INPUT';
+    }
+    
+  my $ps = $self->get_page_session();
+  
+  $ps->{ $save_key } ||= {};  
+  
+  my @res;
+  while( @_ )
+    {
+    my $p = uc shift;
+    if( exists $input_hr->{ $p } )
+      {
+      $ps->{ $save_key }{ $p } = $input_hr->{ $p };
+      }
+    push @res, $ps->{ $save_key }{ $p };  
+    }
+  
+  return wantarray ? @res : shift( @res );
+}
+
+sub param_unsafe
+{
+  my $self = shift;
+  return $self->__param( 0, @_ );
+}
+
+sub param
+{
+  my $self = shift;
+  return $self->__param( 1, @_ );
+}
+
+sub param_safe
+{
+  my $self = shift;
+  return $self->param( @_ );
+}
+
 sub is_logged_in
 {
   my $self = shift;
@@ -910,6 +964,7 @@ sub logout
   my ( $user_sid, $user_shr ) = $self->__create_new_user_session();
 }
 
+# FIXME: s?
 sub need_login
 {
   my $self = shift;

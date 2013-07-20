@@ -31,7 +31,7 @@ sub new
              };
 
   my $reo = $env{ 'REO_REACTOR' };
-  if( ref( $reo ) eq 'Web::Reactor' )
+  if( ref( $reo ) =~ /^Web::Reactor(::|$)/ )
     {
     $self->{ 'REO_REACTOR' } = $reo;
     }
@@ -454,7 +454,7 @@ sub image_button
   return $text;
 }
 
-sub image_submit_default
+sub image_button_default
 {
   my $self = shift;
 
@@ -471,7 +471,7 @@ sub image_submit_default
   $opt{ 'WIDTH'  } = 0;
   $opt{ 'CLASS'  } = $opt{ 'CLASS'  } || $default_class;
 
-  $self->image_submit( %opt );
+  $self->image_button( %opt );
 }
 
 =pod

@@ -42,6 +42,8 @@ sub load_file
 
   die "invalid page name, expected ALPHANUMERIC, got [$pn]" unless $pn =~ /^[a-z_0-9]+$/;
 
+  my $reo = $self->{ 'REO_REACTOR' };
+
   if( exists $self->{ 'FILE_CACHE' }{ $pn } )
     {
     # FIXME: log: debug: file cache hit
@@ -69,8 +71,8 @@ sub load_file
 
   if( ! $fn )
     {
-    use Data::Dumper;
-    print STDERR Dumper( $dirs, $fn );
+    # FIXME: not a error really, more like warning, should be able to disable :))
+    $reo->log( "error: cannot find file [$fn] dirs list [@$dirs]" );
     return undef;
     }
 
@@ -139,7 +141,7 @@ sub __process_tag
       my $v = $4 || $5 || $6 || 1;
       $args{ $k } = $v;
       }
-    $text = $reo->act_call( $tag, ARGS => \%args );
+    $text = $reo->act_call( $tag, HTML_ARGS => \%args );
     }
   else
     {

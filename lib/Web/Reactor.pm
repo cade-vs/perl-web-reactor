@@ -210,7 +210,7 @@ sub main_process
     my $v = CGI::param( $n );
     my @v = CGI::param( $n );
 
-    $self->debug( "debug: CGI input param [$n] value [$v] [@v]" );
+    $self->log_debug( "debug: CGI input param [$n] value [$v] [@v]" );
     
     if( $self->__input_cgi_skip_invalid_value( $n, $v ) )
       {
@@ -537,7 +537,7 @@ sub get_cookie
   my $name = shift;
 
   my $cookie = CGI::cookie( $name );
-  $self->debug( "get_cookie: name [$name] value [$cookie]" );
+  $self->log_debug( "get_cookie: name [$name] value [$cookie]" );
   return $cookie;
 }
 
@@ -596,7 +596,7 @@ sub __make_headers
 
   $headers .= "\n\n";
 
-  $self->debug_dumper( 'HEADERS', $headers );
+  $self->log_dumper( 'HEADERS', $headers );
 
   return $headers;
 }
@@ -620,7 +620,7 @@ sub save
 
       next if $sha1 eq $cache1;
 
-      $self->debug( "saving session data [$type:$sid]" );
+      $self->log_debug( "saving session data [$type:$sid]" );
 
       $mod_cache->{ $type }{ $sid } = $sha1;
 
@@ -701,44 +701,49 @@ sub crypto_thaw_hex
 
 ##############################################################################
 
-# FIXME: remove and use only Exception::Sink::boom();
-sub boom2
-{
-  my $self = shift;
-
-  my $msg = shift;
-  chomp( $msg );
-  $msg = "boom: fatal: [$$] $msg\n";
-  my @st = ( $msg );
-  my $i = 0;
-  while ( my ( $pack, $file, $line, $subname ) = caller($i++) )
-    {
-    push @st, "      [$$] $i: called from: ($file:$line) $pack::$subname\n";
-    }
-  die( @st );
-}
-
-sub debug
+sub set_debug
 {
   my $self = shift;
   
-  return unless $self->is_debug();
-  $self->log( "debug: " . join( ' ', @_ ) );
+  if( @_ > 0 )
+    {
+    $self->{ 'ENV' }{ 'DEBUG' } = shift() ? 1 : 0;
+    }
+  return $self->{ 'ENV' }{ 'DEBUG' };
 }
 
-sub debug_dumper
+sub is_debug
 {
   my $self = shift;
 
-  return unless $self->is_debug();
-  $self->log( "debug: " . Dumper( @_ ) );
+  return $self->{ 'ENV' }{ 'DEBUG' };
 }
+
+#-----------------------------------------------------------------------------
 
 sub log
 {
   my $self = shift;
 
   print STDERR @_;
+}
+
+sub log_debug
+{
+  my $self = shift;
+  
+  return unless $self->is_debug();
+  my $msg = join( ' ', @_ );
+  $msg = "debug: $msg" unless $msg =~ /^debug:/i;
+  $self->log( $msg );
+}
+
+sub log_dumper
+{
+  my $self = shift;
+
+  return unless $self->is_debug();
+  $self->log_debug( Dumper( @_ ) );
 }
 
 ##############################################################################
@@ -1017,26 +1022,6 @@ sub get_user_session_expire_time_in
 
 
 ##############################################################################
-
-sub set_debug
-{
-  my $self = shift;
-  
-  if( @_ > 0 )
-    {
-    $self->{ 'ENV' }{ 'DEBUG' } = shift() ? 1 : 0;
-    }
-  return $self->{ 'ENV' }{ 'DEBUG' };
-}
-
-sub is_debug
-{
-  my $self = shift;
-
-  return $self->{ 'ENV' }{ 'DEBUG' };
-}
-
-##############################################################################
 ##
 ## REO proxies
 ##
@@ -1211,7 +1196,65 @@ be used only from the pages already requested.
 
 =head1 ACTIONS/MODULES/CALLBACKS
 
-# TODO
+Actions are loaded and executed by package names. In the HTML source files they
+can be called this way:
+
+  <&test_action arg1=val1 arg2=val2 flag1 flag2...>
+  <&test_action>
+  
+This will instruct Reactor action handler to look for this package name inside
+standard or user-added library directories:
+
+  Web/Reactor/Actions/*/test_action.pm
+
+Asterisk will be replaced with the name of the used "action sets" give in config
+hash:
+
+       'ACTIONS_SETS' => [ 'demo', 'Base', 'Core' ],
+
+So the result list in this example will be:
+
+  Web/Reactor/Actions/demo/test_action.pm
+  Web/Reactor/Actions/Base/test_action.pm
+  Web/Reactor/Actions/Core/test_action.pm
+
+This is used to allow overriding of standard modules or modules you dont have
+write access to.
+
+Another way to call a module is directly from another module code with:
+
+  $reo->act_call( 'test_action', @args );
+  
+The package file will look like this:
+
+   package Web/Reactor/Actions/demo/test_action;
+   use strict;
+   
+   sub main
+   {
+     my $reo  = shift; # Web::Reactor object/instance
+     my %args = @_; # all args passed to the action
+     
+     my $html_args = $args{ 'HTML_ARGS' }; # all
+     ...
+     return $result_data; # usually html text
+   }
+   
+$html_args is hashref with all args give inside the html code if this action 
+is called from a html text. If you look the example above:
+
+  <&test_action arg1=val1 arg2=val2 flag1 flag2...>
+  
+The $html_args will look like this:
+
+  $html_args = {
+               'arg1'  => 'val1',
+               'arg2'  => 'val2',
+               'flag1' => 1,
+               'flag2' => 1,
+               };
+
+
 
 =head1 HTTP PARAMETERS NAMES
 

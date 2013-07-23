@@ -14,7 +14,7 @@ Startup CGI script example:
     my %cfg = (
               'APP_NAME'     => 'demo',
               'APP_ROOT'     => '/opt/reactor/demo/',
-              'ACTIONS_DIRS' => [ '/opt/reactor/demo/lib/'  ],
+              'LIB_DIRS'     => [ '/opt/reactor/demo/lib/'  ],
               'ACTIONS_SETS' => [ 'demo', 'Base', 'Core' ],
               'HTML_DIRS'    => [ '/opt/reactor/demo/html/' ],
               'SESS_VAR_DIR' => '/opt/reactor/demo/var/sess/',
@@ -146,12 +146,78 @@ be used only from the pages already requested.
 
 # ACTIONS/MODULES/CALLBACKS
 
-\# TODO
+Actions are loaded and executed by package names. In the HTML source files they
+can be called this way:
+
+    <&test_action arg1=val1 arg2=val2 flag1 flag2...>
+    <&test_action>
+    
+
+This will instruct Reactor action handler to look for this package name inside
+standard or user-added library directories:
+
+    Web/Reactor/Actions/*/test_action.pm
+
+Asterisk will be replaced with the name of the used "action sets" give in config
+hash:
+
+       'ACTIONS_SETS' => [ 'demo', 'Base', 'Core' ],
+
+So the result list in this example will be:
+
+    Web/Reactor/Actions/demo/test_action.pm
+    Web/Reactor/Actions/Base/test_action.pm
+    Web/Reactor/Actions/Core/test_action.pm
+
+This is used to allow overriding of standard modules or modules you dont have
+write access to.
+
+Another way to call a module is directly from another module code with:
+
+    $reo->act_call( 'test_action', @args );
+    
+
+The package file will look like this:
+
+    package Web/Reactor/Actions/demo/test_action;
+    use strict;
+    
+
+    sub main
+    {
+      my $reo  = shift; # Web::Reactor object/instance
+      my %args = @_; # all args passed to the action
+      
+
+      my $html_args = $args{ 'HTML_ARGS' }; # all
+      ...
+      return $result_data; # usually html text
+    }
+    
+
+$html\_args is hashref with all args give inside the html code if this action 
+is called from a html text. If you look the example above:
+
+    <&test_action arg1=val1 arg2=val2 flag1 flag2...>
+    
+
+The $html\_args will look like this:
+
+    $html_args = {
+                 'arg1'  => 'val1',
+                 'arg2'  => 'val2',
+                 'flag1' => 1,
+                 'flag2' => 1,
+                 };
+
+
+
+
 
 # HTTP PARAMETERS NAMES
 
-WR uses underscore and one or two letters for its system http/html parameters.
-Some of the system params are:
+Web::Reactor uses underscore and one or two letters for its system http/html 
+parameters. Some of the system params are:
 
     _PN  -- html page name (points to file template, restricted to alphanumeric)
     _P   -- page session
@@ -225,7 +291,7 @@ Upon creation, Web:Reactor instance gets hash with config entries/keys:
 
     * APP_NAME      -- alphanumeric application name (plus underscore)
     * APP_ROOT      -- application root dir, used for app components search
-    * ACTIONS_DIRS  -- directories in which actions are searched
+    * LIB_DIRS      -- directories from which actions and other libs are loaded
     * ACTIONS_SETS  -- list of action "sets", appended to ACTIONS_DIRS
     * HTML_DIRS     -- html file inlude directories
     * SESS_VAR_DIR  -- used by filesystem session handling to store sess data
@@ -233,7 +299,7 @@ Upon creation, Web:Reactor instance gets hash with config entries/keys:
 
 Some entries may be omitted and default values are:
 
-    * ACTIONS_DIRS  -- [ "$APP_ROOT/lib"  ]
+    * LIB_DIRS      -- [ "$APP_ROOT/lib"  ]
     * ACTIONS_SETS  -- [ $APP_NAME, 'Base', 'Core' ]
     * HTML_DIRS     -- [ "$APP_ROOT/html" ]
     * SESS_VAR_DIR  -- [ "$APP_ROOT/var"  ]

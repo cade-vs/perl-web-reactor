@@ -1258,8 +1258,8 @@ The $html_args will look like this:
 
 =head1 HTTP PARAMETERS NAMES
 
-WR uses underscore and one or two letters for its system http/html parameters.
-Some of the system params are:
+Web::Reactor uses underscore and one or two letters for its system http/html 
+parameters. Some of the system params are:
 
   _PN  -- html page name (points to file template, restricted to alphanumeric)
   _P   -- page session

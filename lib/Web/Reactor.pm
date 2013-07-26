@@ -1020,6 +1020,18 @@ sub get_user_session_expire_time_in
   return $xi > 0 ? $xi : undef;
 }
 
+sub need_post_method
+{
+  my $self = shift;
+
+  my $he = $self->get_http_env();
+  
+  print STDERR Dumper( $he ); 
+  return if $he->{ 'REQUEST_METHOD' } eq 'POST';
+
+  $self->logout();
+  $self->render( PAGE => 'epostrequired' );
+}
 
 ##############################################################################
 ##

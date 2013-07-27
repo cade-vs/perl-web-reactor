@@ -67,6 +67,8 @@ sub begin
   my $method    = uc $opt{ 'METHOD' } || 'POST';
   my $action    =    $opt{ 'ACTION' } || '?';
 
+  $self->{ 'CLASS_MAP' } = $opt{ 'CLASS_MAP' } || {};
+
   $form_name =~ /^[A-Z_0-9:]+$/ or confess "invalid or empty NAME attribute";
   $method    =~ /^(POST|GET)$/  or confess "METHOD can either POST or GET";
 
@@ -135,7 +137,7 @@ sub checkbox
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || 'checkbox';
+  my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'CHECKBOX' } || 'checkbox';
   my $value =    $opt{ 'VALUE' };
 
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
@@ -166,7 +168,7 @@ sub radio
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || 'radio';
+  my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'RADIO' } || 'radio';
   my $on    =    $opt{ 'ON'    }; # active?
   my $val   =    $opt{ 'VAL'   };
   my $ret   =    $opt{ 'RET'   } || $opt{ 'RETURN' } || 1; # map return value!
@@ -226,7 +228,7 @@ sub select
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || 'select';
+  my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'SELECT' } || 'select';
   my $rows  =    $opt{ 'SIZE'  } || $opt{ 'ROWS'  } || 1;
 
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
@@ -324,7 +326,7 @@ sub textarea
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || 'textarea';
+  my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'TEXTAREA' } || 'textarea';
   my $id    =    $opt{ 'ID'    };
   my $data  =    $opt{ 'DATA'  };
   my $rows  =    $opt{ 'ROWS'  } || 10;
@@ -365,7 +367,7 @@ sub input
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || 'input';
+  my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'INPUT' } || 'line';
   my $value =    $opt{ 'VALUE' };
   my $id    =    $opt{ 'ID' };
   # FIXME: default data?
@@ -417,6 +419,8 @@ sub button
 
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
   my $text;
+  
+  $name =~ s/^button://i;
 
   $text .= "<input class='$class' type='submit' name='button:$name' value='$value' onDblClick='return false;' >";
 

@@ -50,7 +50,7 @@ sub call
 
   $text = $cr->( $self->{ 'REO_REACTOR' }, \%args );
 
-  print STDERR "reactor::actions::call result: $text\n";
+  # print STDERR "reactor::actions::call result: $text\n";
 
   return $text;
 }

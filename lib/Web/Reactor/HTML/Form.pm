@@ -328,7 +328,7 @@ sub textarea
   my $name  = uc $opt{ 'NAME'  };
   my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'TEXTAREA' } || 'textarea';
   my $id    =    $opt{ 'ID'    };
-  my $data  =    $opt{ 'DATA'  };
+  my $data  =    $opt{ 'VALUE' };
   my $rows  =    $opt{ 'ROWS'  } || 10;
   my $cols  =    $opt{ 'COLS'  } ||  5;
   my $geo   =    $opt{ 'GEOMETRY' }  || $opt{ 'GEO' };

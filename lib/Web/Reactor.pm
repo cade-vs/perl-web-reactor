@@ -468,6 +468,8 @@ sub args
 {
   my $self = shift;
   my %args = @_;
+  
+  hash_uc_ipl( \%args );
 
   my $link_sid;
   my $link_shr;

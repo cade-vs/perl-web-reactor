@@ -147,7 +147,7 @@ sub checkbox
 
   my $text;
 
-print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
+#print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
   $text .= "<input type='checkbox' name='$name' value='1' $options>";
 
   return $text;
@@ -277,7 +277,7 @@ sub select
       my $value = $hr->{ 'VALUE'    };
 
       $sel = 'selected' if $sel_hr and $sel_hr->{ $key };
-print STDERR "sssssssssssssssssssssssss RADIO [$name] [$value] [$key] $sel\n";
+#print STDERR "sssssssssssssssssssssssss RADIO [$name] [$value] [$key] $sel\n";
       $text .= $self->radio( NAME => $name, RET => $key, ON => $sel ) . " $value";
       $text .= "<br>" if $opt{ 'RADIO' } != 2;
       }
@@ -298,7 +298,7 @@ print STDERR "sssssssssssssssssssssssss RADIO [$name] [$value] [$key] $sel\n";
       $self->__set_ret_map( $name, $id => $key );
 
       $sel = 'selected' if $sel_hr and $sel_hr->{ $key };
-print STDERR "sssssssssssssssssssssssss RADIO [$name] [$value] [$key] $sel\n";
+#print STDERR "sssssssssssssssssssssssss RADIO [$name] [$value] [$key] $sel\n";
       $text .= "<option value='$id' $sel>$value$pad</option>";
       }
 

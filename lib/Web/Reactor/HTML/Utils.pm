@@ -22,7 +22,6 @@ our @EXPORT = qw(
                 );
 use strict;
 use Data::Tools;
-use Web::Reactor::HTML::Tab;
 my %HTML_ESCAPES = (
                    '>' => '&gt;',
                    '<' => '&lt;',

@@ -365,10 +365,10 @@ forwarding.
 
 # GITHUB REPOSITORY
 
-    https://github.com/cade4/perl-web-reactor
+    https://github.com/cade-vs/perl-web-reactor
     
 
-    git clone git://github.com/cade4/perl-web-reactor.git
+    git clone git://github.com/cade-vs/perl-web-reactor.git
 
 # AUTHOR
 

@@ -18,7 +18,7 @@ use Data::Tools;
 use Data::Dumper;
 use Exception::Sink;
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 ##############################################################################
 
@@ -796,7 +796,7 @@ sub render
   if( $action )
     {
     # FIXME: handle content type also!
-    $page_text = $self->act_call( $action );
+    $page_text = $self->action_call( $action );
     }
   elsif( $page )
     {
@@ -1051,7 +1051,7 @@ sub sess_exists    { my $self = shift; $self->{ 'REO_SESS' }->exists(  @_ ) };
 sub prep_process   { my $self = shift; $self->{ 'REO_PREP' }->process(   @_ ) };
 sub prep_load_file { my $self = shift; $self->{ 'REO_PREP' }->load_file( @_ ) };
 
-sub act_call       { my $self = shift; $self->{ 'REO_ACTS' }->call(  @_ ) };
+sub action_call    { my $self = shift; $self->{ 'REO_ACTS' }->call(  @_ ) };
 
 sub new_form
 {
@@ -1237,7 +1237,7 @@ write access to.
 
 Another way to call a module is directly from another module code with:
 
-  $reo->act_call( 'test_action', @args );
+  $reo->action_call( 'test_action', @args );
   
 The package file will look like this:
 

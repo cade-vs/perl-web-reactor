@@ -141,7 +141,7 @@ sub __process_tag
       my $v = $4 || $5 || $6 || 1;
       $args{ $k } = $v;
       }
-    $text = $reo->act_call( $tag, HTML_ARGS => \%args );
+    $text = $reo->action_call( $tag, HTML_ARGS => \%args );
     }
   else
     {

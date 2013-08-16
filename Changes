@@ -1,5 +1,10 @@
 Revision history for Perl extension Web::Reactor
 
+0.05  2013.08.13
+
+    1. more docs
+    2. fixed github url
+
 0.04  2013.07.09
 
     1. code cleanup, actions sets, config changes ACTION_DIRS, ACTIONS_SETS

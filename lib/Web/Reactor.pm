@@ -779,6 +779,35 @@ sub __input_cgi_skip_invalid_value
 
 ##############################################################################
 
+sub html_content
+{
+  my $self = shift;
+  my %hc   = @_;
+
+  hash_lc_ipl( \%hc );
+  $self->{ 'HTML_CONTENT' } ||= {};
+  %{ $self->{ 'HTML_CONTENT' } } = ( %{ $self->{ 'HTML_CONTENT' } }, %hc );
+  
+  return $self->{ 'HTML_CONTENT' };
+}
+
+sub html_content_clear
+{
+  my $self = shift;
+
+  $self->{ 'HTML_CONTENT' } ||= {};
+}
+
+sub html_content_set
+{
+  my $self = shift;
+  
+  $self->html_content_clear();
+  return $self->html_content( @_ );
+}
+
+##############################################################################
+
 sub render
 {
   my $self = shift;

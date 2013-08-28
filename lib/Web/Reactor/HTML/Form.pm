@@ -369,7 +369,7 @@ sub input
   my $name  = uc $opt{ 'NAME'  };
   my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'INPUT' } || 'line';
   my $value =    $opt{ 'VALUE' };
-  my $id    =    $opt{ 'ID' };
+  my $id    = uc $opt{ 'ID' } || $name;
   # FIXME: default data?
   my $size  =    $opt{ 'SIZE'    } || $opt{ 'LEN' } || $opt{ 'WIDTH' };
   my $maxl  =    $opt{ 'MAXLEN'  } || $opt{ 'MAX' };

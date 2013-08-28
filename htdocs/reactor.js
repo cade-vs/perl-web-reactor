@@ -210,4 +210,44 @@ function ftree_click( ftree_id, branch_id )
 
 }
 
+/***************************************************************************/
+
+function current_date()
+  {
+  var now = new Date();
+  var d = now.getDate();
+  var m = now.getMonth() + 1;
+  var y = now.getYear();
+  if( ! is_msie ) y += 1900;
+  if( d < 10 ) d = '0' + d;
+  if( m < 10 ) m = '0' + m;
+  return d + '.' + m + '.' + y;
+  }
+
+function current_time()
+  {
+  var now = new Date();
+  var h = now.getHours();
+  var m = now.getMinutes();
+  var s = now.getSeconds();
+  if( h < 10 ) h = '0' + h;
+  if( m < 10 ) m = '0' + m;
+  if( s < 10 ) s = '0' + s;
+  return  h + ':' + m + ':' + s;
+  }
+
+function current_utime()
+  {
+  var now = new Date();
+  return current_date() + ' ' + current_time();
+  }
+
+/* used for input html elements with onClick=js:etc... */
+function set_value( id_name, val )
+  {
+  var e = document.getElementById( id_name );
+  e.value = val;
+  return false;
+  }
+
 /***EOF*********************************************************************/

@@ -840,6 +840,7 @@ sub render
   $page_text = $self->prep_process( $page_text );
   # FIXME: translation
   $page_text =~ s/<~(([^<>]*))>/$1/g;
+  $page_text =~ s/\[~(([^<>]*))\]/$1/g;
 
   my $page_headers = $self->__make_headers();
 

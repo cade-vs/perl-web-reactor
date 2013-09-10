@@ -158,6 +158,9 @@ sub main_process
   $self->{ 'SESSIONS' }{ 'SID'  }{ 'USER' } = $user_sid;
   $self->{ 'SESSIONS' }{ 'DATA' }{ 'USER' }{ $user_sid } = $user_shr;
 
+  # read http environment data, used for checks and info
+  $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $ENV{ $_ } } @HTTP_VARS_SAVE  };
+
   if( ( $user_shr->{ ':LOGGED_IN' } and $user_shr->{ ':XTIME' } > 0 and time() > $user_shr->{ ':XTIME' } )
       or
       ( $user_shr->{ ':CLOSED' } ) )
@@ -347,7 +350,6 @@ sub __create_new_user_session
   $user_shr->{ ':XTIME'      } = time() + $user_session_expire;
   $user_shr->{ ':XTIME_STR'  } = scalar localtime( $user_shr->{ ':XTIME' } );
 
-  $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $ENV{ $_ } } @HTTP_VARS_SAVE  };
   $user_shr->{ ":HTTP_CHECK_HR" } = { map { $_ => $ENV{ $_ } } @HTTP_VARS_CHECK };
 
   return ( $user_sid, $user_shr );

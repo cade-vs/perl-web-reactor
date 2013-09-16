@@ -1,4 +1,4 @@
-package Web::Reactor::Actions::demo::test;
+package Web::Reactor::Actions::demo::test1;
 use strict;
 use Data::Dumper;
 use Web::Reactor::HTML::FormEngine;
@@ -132,6 +132,11 @@ sub main
     $text .= "<p> file length is: " . Dumper( $file_name, $file_info ) . "<p>";
     }
 
+  my $gi = $reo->args_new( _AN => 'getimg' );
+  $text .= "<p><a href=?_=$gi>getting an image</a><p>";
+
+#----------debug-start--------------------------------------------------------
+
   $text .= "<hr><h1>DEBUG</h1><pre>";
   local $Data::Dumper::sortkeys = 1;
   $text .= Dumper( {
@@ -143,6 +148,9 @@ sub main
                    "$page_session_hr"
                  );
   $text .= "</pre><hr><p>";
+  
+#----------debug-end----------------------------------------------------------
+  
 
   return $text;
 }

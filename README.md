@@ -124,7 +124,6 @@ browser. It has (i.e. uses) the following attributes:
     * html file template (page name)
     * page session data
     * actions code (i.e. callbacks) used inside html text
-    
 
 All of those represent "page instance" and produce end user html visible page.
 
@@ -220,10 +219,11 @@ Web::Reactor uses underscore and one or two letters for its system http/html
 parameters. Some of the system params are:
 
     _PN  -- html page name (points to file template, restricted to alphanumeric)
+    _AN  -- action name (points to action package name, restricted to alphanumeric)
     _P   -- page session
     _R   -- referer (caller) page session
 
-Usually those names should not be directly used or visible inside actions code.
+Usually those names SHOULD NOT be directly used or visible inside actions code.
 More details about how those params are used can be found below.
 
 # USER SESSIONS
@@ -271,7 +271,6 @@ needed, you just need to:
     # this is equivalent to
     my $ref_page_sid = $reo->get_ref_page_session_id();
     $reo->forward( _P => $ref_page_sid );
-    
 
 Each page instance knows the caller page session and can give control back to.
 However it may pass more data when returning back to the caller:

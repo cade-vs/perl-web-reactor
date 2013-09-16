@@ -598,7 +598,7 @@ sub __make_headers
     $headers .= "$k: $v\n";
     }
 
-  $headers .= "\n\n";
+  $headers .= "\n"; # just single newline separator
 
   $self->log_dumper( 'HEADERS', $headers );
 
@@ -707,11 +707,12 @@ sub crypto_thaw_hex
 
 sub set_debug
 {
-  my $self = shift;
+  my $self  = shift;
+  my $level = int(shift);
   
   if( @_ > 0 )
     {
-    $self->{ 'ENV' }{ 'DEBUG' } = shift() ? 1 : 0;
+    $self->{ 'ENV' }{ 'DEBUG' } = $level > 0 ? $level : 0;
     }
   return $self->{ 'ENV' }{ 'DEBUG' };
 }
@@ -822,36 +823,59 @@ sub render
   my $ah = $self->args_here();
   $self->{ 'HTML_CONTENT' }{ 'form_input_session_keeper' } = "<input type=hidden name=_ value=$ah>";
 
-  my $page_text;
+
+  my $portray_data;
 
   if( $action )
     {
     # FIXME: handle content type also!
-    $page_text = $self->action_call( $action );
+    $portray_data = $self->action_call( $action );
     }
   elsif( $page )
     {
-    $page_text = $self->prep_load_file( "page_$page" );
+    $portray_data = $self->prep_load_file( "page_$page" );
     }
   else
     {
     boom "render() needs PAGE or ACTION";
-    }    
+    }
+    
+  if( ref( $portray_data ) eq 'HASH' )
+    {
+    # nothing, ok
+    }
+  elsif( ref( $portray_data ) )
+    {
+    boom "expected portray data (i.e. HASHREF) but got different reference";
+    }
+  else
+    {
+    # default portray type is html
+    $portray_data = $self->portray( $portray_data, 'text/html' );  
+    }
 
-  # FIXME: preprocess and translation only for content-type text/*
-  $page_text = $self->prep_process( $page_text );
-  # FIXME: translation
-  $page_text =~ s/<~(([^<>]*))>/$1/g;
-  $page_text =~ s/\[~(([^<>]*))\]/$1/g;
+  my $page_data =    $portray_data->{ 'DATA' };
+  my $page_type = lc $portray_data->{ 'TYPE' };
+
+  if( $page_type eq 'text/html' )
+    {
+    # FIXME: preprocess and translation only for content-type text/*
+    $page_data = $self->prep_process( $page_data );
+    # FIXME: translation
+    $page_data =~ s/<~(([^<>]*))>/$1/g;
+    $page_data =~ s/\[~(([^<>]*))\]/$1/g;
+    }
+
+  $self->set_headers( 'content-type' => $page_type );
 
   my $page_headers = $self->__make_headers();
 
   print $page_headers;
-  print $page_text;
+  print $page_data;
 
-#$self->log( Dumper( $page, "[$page_headers]", $page_text ) );
+  $self->log_debug( "debug: page response content: page, action, type, headers, data: " . Dumper( $page, $action, $page_type, $page_headers, $page_type =~ /^text\// ? $page_data : '*binary*' ) ) if $self->is_debug() > 1;
 
-  if( $self->is_debug() )
+  if( $self->is_debug() and $page_type eq 'text/html' )
     {
     local $Data::Dumper::Sortkeys = 1;
     local $Data::Dumper::Terse = 1;
@@ -868,6 +892,30 @@ sub render
 
   sink 'CONTENT';
 }
+
+my %SIMPLE_PORTRAY_TYPE_MAP = (
+                              html => 'text/html',
+                              text => 'text/plain',
+                              jpeg => 'image/jpeg',
+                              png  => 'image/png',
+                              bin  => 'application/octet-stream',
+                              );
+
+sub portray
+{
+  my $self = shift;
+  my $data = shift;
+  my $type = lc shift; # mime type text/html
+  my %opt  = @_; # file name, charset, etc.
+
+  $type = $SIMPLE_PORTRAY_TYPE_MAP{ $type } || $type;
+
+  boom "portray needs mime type xxx/xxx as arg 2, got [$type]" unless $type =~ /^[a-z\-_0-9]+\/[a-z\-_0-9]+$/;
+  
+  return { DATA => $data, TYPE => $type };
+}
+
+##############################################################################
 
 sub forward_url
 {
@@ -910,6 +958,26 @@ sub forward_new
   
   my $fw = $self->args_new( @_ );
   return $self->forward_url( "?_=$fw" );
+}
+
+sub forward_new_page
+{
+  my $self = shift;
+  my $page = shift;
+
+  boom "expected page name + even number of arguments" unless @_ % 2 == 0;
+
+  return $self->forward_new( _PN => $page, @_ );
+}
+
+sub forward_new_action
+{
+  my $self = shift;
+  my $actn = shift;
+
+  boom "expected action name + even number of arguments" unless @_ % 2 == 0;
+
+  return $self->forward_new( _AN => $actn, @_ );
 }
 
 ##############################################################################

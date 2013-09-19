@@ -922,6 +922,7 @@ sub forward_url
   my $self = shift;
   my $url  = shift;
 
+  # FIXME: use render+portray
   $self->set_headers( location => $url );
   
   my $page_headers = $self->__make_headers();
@@ -937,6 +938,16 @@ sub forward
   boom "expected even number of arguments" unless @_ % 2 == 0;
   
   my $fw = $self->args( @_ );
+  return $self->forward_url( "?_=$fw" );
+}
+
+sub forward_here
+{
+  my $self = shift;
+
+  boom "expected even number of arguments" unless @_ % 2 == 0;
+  
+  my $fw = $self->args_here( @_ );
   return $self->forward_url( "?_=$fw" );
 }
 

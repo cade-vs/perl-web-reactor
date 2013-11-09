@@ -51,8 +51,11 @@ sub html_new_id
 {
   my $self = shift;
 
+  my $form_name = $self->{ 'FORM_NAME' };
+  $form_name or confess "empty form name, need begin() first";
+
   $self->{ 'HTML_ID_COUNTER' }++;
-  return $self->{ 'HTML_ID_COUNTER' };
+  return $form_name . "_EID_" . $self->{ 'HTML_ID_COUNTER' };
 }
 
 ##############################################################################
@@ -64,6 +67,7 @@ sub begin
   my %opt = @_;
 
   my $form_name = uc $opt{ 'NAME'   };
+  my $form_id   = uc $opt{ 'ID'     } || $form_name;
   my $method    = uc $opt{ 'METHOD' } || 'POST';
   my $action    =    $opt{ 'ACTION' } || '?';
 
@@ -78,7 +82,7 @@ sub begin
 
   my $text;
 
-# FIXME: TODO: debug info inside html text, begin formname end etc.
+  # FIXME: TODO: debug info inside html text, begin formname end etc.
 
   my $reo = $self->{ 'REO_REACTOR' };
 
@@ -109,6 +113,7 @@ sub end
   my $form_name = $self->{ 'FORM_NAME' };
   $page_session->{ ':FORM_DEF' }{ $form_name }{ 'RET_MAP' } = $self->{ 'RET_MAP' };
 
+  $text .= "\n";
   return $text;
 }
 
@@ -125,7 +130,7 @@ sub __set_ret_map
     %{ $self->{ 'RET_MAP' }{ $name } } = ( %{ $self->{ 'RET_MAP' }{ $name } }, @_ );
     }
 
-  $self->{ 'RET_MAP' }{ $name };
+  return $self->{ 'RET_MAP' }{ $name };
 }
 
 ##############################################################################
@@ -138,7 +143,7 @@ sub checkbox
 
   my $name  = uc $opt{ 'NAME'  };
   my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'CHECKBOX' } || 'checkbox';
-  my $value =    $opt{ 'VALUE' };
+  my $value =    $opt{ 'VALUE' } ? 1 : 0;
 
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
 
@@ -147,9 +152,14 @@ sub checkbox
 
   my $text;
 
-#print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
-  $text .= "<input type='checkbox' name='$name' value='1' $options>";
+  my $ch_id = $self->html_new_id(); # checkbox data holder
 
+  #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
+  #$text .= "<input type='checkbox' name='$name' value='1' $options>";
+  $text .= "<input type='hidden'   name='$name' id='$ch_id' value='$value'>\n";
+  $text .= qq[ <input type='checkbox' $options onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
+
+  $text .= "\n";
   return $text;
 }
 
@@ -183,6 +193,7 @@ sub radio
   $self->__set_ret_map( $name, $val => $ret ) if defined $ret;
   $self->{ 'RET_MAP' }{ $val } = $ret;
 
+  $text .= "\n";
   return $text;
 }
 
@@ -299,12 +310,14 @@ sub select
 
       $sel = 'selected' if $sel_hr and $sel_hr->{ $key };
 #print STDERR "sssssssssssssssssssssssss RADIO [$name] [$value] [$key] $sel\n";
-      $text .= "<option value='$id' $sel>$value$pad</option>";
+      $text .= "<option value='$id' $sel>$value$pad</option>\n";
       }
 
     $text .= "</select>";
     }
 # print STDERR "FOOOOOOOOOOOOOOOOOOOOOORM[$text](@$sel){@$order}";
+
+  $text .= "\n";
   return $text;
 }
 
@@ -314,7 +327,7 @@ sub combo
 
   my %opt = @_;
   $opt{ 'ROWS'  } ||= 1;
-  $self->select( %opt );
+  return $self->select( %opt );
 }
 
 ##############################################################################
@@ -355,6 +368,7 @@ sub textarea
 
   $text .= "<textarea class='$class' name='$name' rows='$rows' cols='$cols' $options>$data</textarea>";
 
+  $text .= "\n";
   return $text;
 }
 
@@ -398,6 +412,7 @@ sub input
 
   $text .= "<input class='$class' name='$name' value='$value' $options>";
 
+  $text .= "\n";
   return $text;
 }
 
@@ -424,6 +439,7 @@ sub button
 
   $text .= "<input class='$class' type='submit' name='button:$name' value='$value' onDblClick='return false;' >";
 
+  $text .= "\n";
   return $text;
 }
 
@@ -453,6 +469,7 @@ sub image_button
 
   $text .= "<input class='$class' type='image' name='$name' src='$src' border=0 $options onDblClick='return false;' >";
 
+  $text .= "\n";
   return $text;
 }
 
@@ -473,7 +490,7 @@ sub image_button_default
   $opt{ 'WIDTH'  } = 0;
   $opt{ 'CLASS'  } = $opt{ 'CLASS'  } || $default_class;
 
-  $self->image_button( %opt );
+  return $self->image_button( %opt );
 }
 
 =pod

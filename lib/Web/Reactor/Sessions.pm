@@ -15,13 +15,13 @@ sub new
 {
   my $class = shift;
   my %env = @_;
-  
+ 
   $class = ref( $class ) || $class;
   my $self = {
              'ENV'       => \%env,
              };
   bless $self, $class;
-  
+ 
   return $self;
 }
 
@@ -37,7 +37,7 @@ sub new
 # returns:
 #       new session id or undef when failed
 sub create
-{ 
+{
   my $self = shift;
   my $type = uc shift;
   my $len  = shift || 128;
@@ -61,11 +61,11 @@ sub create
       {
       $id = undef;
       # FIXME: report error
-      # re_log( "error: cannot create new session: timeout, key[@key]" );
+      die "Web::Reactor::Sess::create: cannot create new session: timeout, key[@key]";
       return undef;
       }
     }
-    
+ 
   return $id;
 };
 
@@ -192,7 +192,7 @@ sub _storage_exists { die "Web::Reactor::Sess::*::_storage_exists() is not imple
 
 ##############################################################################
 ##
-##  
+##
 ##
 
 # return string with new session id with given LEN argument or default length
@@ -202,11 +202,11 @@ sub _storage_exists { die "Web::Reactor::Sess::*::_storage_exists() is not imple
 #                  must be non-whitespace characters string with no duplicates
 # returns:
 #       id -- session id string
-sub create_id  
-{ 
+sub create_id
+{
   my $self = shift;
   my $env  = $self->_renv();
-  
+ 
   my $len = shift() || $env->{ 'SESS_LENGTH'  } || 128;
   my $let = shift() || $env->{ 'SESS_LETTERS' } || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
@@ -224,13 +224,13 @@ sub compose_key_from_id
   my $id   = shift;
 
   confess "Web::Reactor::Sess::compose_key_from_id: invalid type, expected ALPHANUMERIC" unless $type =~ /^[A-Z0-9]+$/;
-  
+ 
   my @key;
-  
+ 
   push @key, $type;
   push @key, $self->get_user_sid() if $type ne 'USER'; # FIXME: not only! UPDs also! (user permanent data)
   push @key, $id;
-  
+ 
   return @key;
 }
 
@@ -253,7 +253,7 @@ sub get_user_sid
 sub _renv
 {
   my $self = shift;
-  
+ 
 }
 
 ##############################################################################

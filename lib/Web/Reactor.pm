@@ -1157,8 +1157,6 @@ sub load_trans
 
   my $lang = lc $self->{ 'ENV' }{ 'LANG' };
 
-print STDERR Dumper( 'TRANS -- 'x10, $lang );
-
   return 0 if $lang !~ /^[a-z][a-z]$/;
   
   $self->{ 'TRANS' }{ 'LANG' } = $lang;
@@ -1190,8 +1188,6 @@ print STDERR Dumper( 'TRANS -- 'x10, $lang );
     @temp = ();
     @{ $tr }{ keys %$hr } = values %$hr;
     }
-
-print STDERR Dumper( 'TRANS -- 'x10, $tr );
 
   return 1;
 }

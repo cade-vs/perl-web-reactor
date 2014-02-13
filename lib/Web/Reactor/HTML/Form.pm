@@ -156,7 +156,7 @@ sub checkbox
 
   #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
   #$text .= "<input type='checkbox' name='$name' value='1' $options>";
-  $text .= "<input type='hidden'   name='$name' id='$ch_id' value='$value'>\n";
+  $text .= "<input type=hidden   name='$name' id='$ch_id' value='$value'>\n";
   $text .= qq[ <input type='checkbox' $options onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
 
   $text .= "\n";

@@ -499,7 +499,6 @@ sub args
 
   $link_shr->{ $link_key } = \%args;
 
-  $self->save();
   return $link_sid . '.' . $link_key;
 }
 
@@ -741,6 +740,13 @@ sub log_debug
   my $msg = join( ' ', @_ );
   $msg = "debug: $msg" unless $msg =~ /^debug:/i;
   $self->log( $msg );
+}
+
+sub log_stack
+{
+  my $self = shift;
+  
+  $self->log_debug( @_, "\n", Exception::Sink::get_stack_trace() );
 }
 
 sub log_dumper

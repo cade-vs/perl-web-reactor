@@ -44,12 +44,15 @@ sub load_file
 
   my $reo = $self->{ 'REO_REACTOR' };
 
-  if( exists $self->{ 'FILE_CACHE' }{ $pn } )
+  my $lang = $self->{ 'ENV' }{ 'LANG' };
+
+  if( exists $self->{ 'FILE_CACHE' }{ $lang }{ $pn } )
     {
     # FIXME: log: debug: file cache hit
-    return $self->{ 'FILE_CACHE' }{ $pn };
+    return $self->{ 'FILE_CACHE' }{ $lang }{ $pn };
     }
 
+  # FIXME: move to preprocessing/init/contructor
   my $pn = "$pn.html";
   my $dirs = $self->{ 'ENV' }{ 'HTML_DIRS' } || [];
   if( @$dirs == 0 )
@@ -59,8 +62,23 @@ sub load_file
     $dirs = [ "$app_root/html" ];
     }
 
+  # FIXME: move to preprocessing/init/contructor
+  my @dirs;
+  if( $lang )
+    {
+    for( @$dirs )
+      {
+      push @dirs, "$_/$lang/";
+      push @dirs, $_;
+      }
+    }
+  else
+    {
+    @dirs = @$dirs;
+    }    
+
   my $fn;
-  for my $dir ( @$dirs )
+  for my $dir ( @dirs )
     {
     # FIXME: move this check on create/new of reactor
     confess "not accessible HTML include dir [$dir]" unless -d $dir;
@@ -77,7 +95,7 @@ sub load_file
     }
 
   my $fdata = file_load( $fn );
-  $self->{ 'FILE_CACHE' }{ $pn } = $fdata;
+  $self->{ 'FILE_CACHE' }{ $lang }{ $pn } = $fdata;
 
   return $fdata;
 }

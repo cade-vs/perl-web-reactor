@@ -499,7 +499,6 @@ sub args
 
   $link_shr->{ $link_key } = \%args;
 
-  $self->save();
   return $link_sid . '.' . $link_key;
 }
 
@@ -743,6 +742,13 @@ sub log_debug
   $self->log( $msg );
 }
 
+sub log_stack
+{
+  my $self = shift;
+  
+  $self->log_debug( @_, "\n", Exception::Sink::get_stack_trace() );
+}
+
 sub log_dumper
 {
   my $self = shift;
@@ -861,9 +867,12 @@ sub render
     {
     # FIXME: preprocess and translation only for content-type text/*
     $page_data = $self->prep_process( $page_data );
+
     # FIXME: translation
-    $page_data =~ s/<~(([^<>]*))>/$1/g;
-    $page_data =~ s/\[~(([^<>]*))\]/$1/g;
+    $self->load_trans();
+    my $tr = $self->{ 'TRANS' }{ $self->{ 'ENV' }{ 'LANG' } } || {};
+    $page_data =~ s/<~(([^<>]*))>/$tr->{ $1 } || $1/ge;
+    $page_data =~ s/\[~(([^<>]*))\]/$tr->{ $1 } || $1/ge;
     }
 
   $self->set_headers( 'content-type' => $page_type );
@@ -1144,6 +1153,49 @@ sub need_post_method
 
   $self->logout();
   $self->render( PAGE => 'epostrequired' );
+}
+
+##############################################################################
+
+sub load_trans
+{
+  my $self = shift;
+
+  my $lang = lc $self->{ 'ENV' }{ 'LANG' };
+
+  return 0 if $lang !~ /^[a-z][a-z]$/;
+  
+  $self->{ 'TRANS' }{ 'LANG' } = $lang;
+
+  return 1 if $self->{ 'TRANS' }{ $lang };
+
+  my $tr = $self->{ 'TRANS' }{ $lang } = {};
+
+  my $trans_dirs = $self->{ 'ENV' }{ 'TRANS_DIRS' };
+
+  my @tf;
+  for my $dir ( @$trans_dirs )
+    {
+    push @tf, glob( "$dir/$lang/*.tr" );
+    push @tf, glob( "$dir/$lang/text/*.tr" );
+    }
+
+  for my $tf ( @tf )
+    {
+    my $hr = hash_load( $tf );
+    # trim whitespace
+    my @temp = %$hr;
+    for( @temp )
+      {
+      s/^\s*//;
+      s/\s*$//;
+      }
+    %$hr = @temp;
+    @temp = ();
+    @{ $tr }{ keys %$hr } = values %$hr;
+    }
+
+  return 1;
 }
 
 ##############################################################################

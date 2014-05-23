@@ -69,9 +69,9 @@ sub html_form_engine_import_input
     my $re      =    $er->{ 'RE'      };
 
     my $data;
-    
+
     # FIXME: checkboxes! usual checkboxes does not return input data if unchecked! so exists below won't work
-    
+
     my $exists = 0;
     if( $safe )
       {
@@ -86,11 +86,11 @@ sub html_form_engine_import_input
 
     next unless $exists;
     next if ref( $data ); # strip objects, i.e. file uploads
-      
+
 # print STDERR " form iiiiiiiiiiiiiiiiiiiiiiiiiiii [$name] [$data] [$re] [$exists] {".ref($data)."}\n";
-    
+
 #    next unless $exists;  # FIXME: should be an option
-    
+
     my $ok = 0;
     # FIXME: callback check per type
     if( $re )
@@ -109,9 +109,9 @@ sub html_form_engine_import_input
     else
       {
       $ok = 1;
-      }  
-    
-    next unless $ok;  
+      }
+
+    next unless $ok;
     $data{ $name } = $data;
     }
 
@@ -154,7 +154,7 @@ sub html_form_engine_display
   $text .= $form->begin( NAME => $form_name );
 
   my %values;
-    
+
   $text .= "<table border=0>";
   for my $er ( @$form_def )
     {
@@ -165,6 +165,7 @@ sub html_form_engine_display
     my $maxlen  = $er->{ 'MAXLEN'  };
     my $value   = $er->{ 'VALUE'   };
     my $re_help = $er->{ 'RE_HELP' };
+    my $pass    = $er->{'PASS'};
 
     my $data    = $form_input_data->{ $name };
     my $error   = $form_input_errors->{ $name };
@@ -177,7 +178,7 @@ sub html_form_engine_display
 
     if( $type =~ /^(STRING|STR|CHAR|TEXT|INPUT)$/ )
       {
-      $text .= $form->input( NAME => $name, SIZE => $size, MAXLEN => $maxlen, VALUE=> $data );
+      $text .= $form->input( NAME => $name, SIZE => $size, MAXLEN => $maxlen, VALUE=> $data, PASS => $pass );
       }
     elsif( $type =~ /^(CB|CHECK|CHECKBOX)$/ )
       {

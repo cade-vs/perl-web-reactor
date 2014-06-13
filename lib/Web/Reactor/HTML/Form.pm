@@ -142,7 +142,7 @@ sub checkbox
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'CHECKBOX' } || 'checkbox';
+  my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'CHECKBOX' } || 'checkbox';
   my $value =    $opt{ 'VALUE' } ? 1 : 0;
 
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
@@ -178,7 +178,7 @@ sub radio
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'RADIO' } || 'radio';
+  my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'RADIO' } || 'radio';
   my $on    =    $opt{ 'ON'    }; # active?
   my $val   =    $opt{ 'VAL'   };
   my $ret   =    $opt{ 'RET'   } || $opt{ 'RETURN' } || 1; # map return value!
@@ -239,7 +239,7 @@ sub select
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'SELECT' } || 'select';
+  my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'SELECT' } || 'select';
   my $rows  =    $opt{ 'SIZE'  } || $opt{ 'ROWS'  } || 1;
 
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
@@ -339,7 +339,7 @@ sub textarea
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'TEXTAREA' } || 'textarea';
+  my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'TEXTAREA' } || 'textarea';
   my $id    =    $opt{ 'ID'    };
   my $data  =    $opt{ 'VALUE' };
   my $rows  =    $opt{ 'ROWS'  } || 10;
@@ -381,7 +381,7 @@ sub input
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'INPUT' } || 'line';
+  my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'INPUT' } || 'line';
   my $value =    $opt{ 'VALUE' };
   my $id    = uc $opt{ 'ID' } || $name;
   # FIXME: default data?
@@ -426,7 +426,7 @@ sub button
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || 'button';
+  my $class =    $opt{ 'CLASS' } || 'button';
   my $value =    $opt{ 'VALUE' };
 
   $value =~ s/'//g;
@@ -450,7 +450,7 @@ sub image_button
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || 'image_button';
+  my $class =    $opt{ 'CLASS' } || 'image_button';
   my $src   =    $opt{ 'SRC'   } || $opt{ 'IMG' };
   my $extra =    $opt{ 'EXTRA' };
 

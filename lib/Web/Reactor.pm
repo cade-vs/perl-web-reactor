@@ -18,7 +18,7 @@ use Data::Tools;
 use Data::Dumper;
 use Exception::Sink;
 
-our $VERSION = '0.05';
+our $VERSION = '2.05';
 
 ##############################################################################
 
@@ -92,7 +92,7 @@ sub new
     }
 
   my $reo_sess_class = $env{ 'REO_SESS_CLASS' } ||= 'Web::Reactor::Sessions::Filesystem';
-  my $reo_prep_class = $env{ 'REO_PREP_CLASS' } ||= 'Web::Reactor::Preprocessor::Expander';
+  my $reo_prep_class = $env{ 'REO_PREP_CLASS' } ||= 'Web::Reactor::Preprocessor::Native';
   my $reo_acts_class = $env{ 'REO_ACTS_CLASS' } ||= 'Web::Reactor::Actions::Native';
 
   my $reo_sess_class_file = perl_package_to_file( $reo_sess_class );
@@ -826,14 +826,14 @@ sub html_content_set
 sub render
 {
   my $self = shift;
-  my %opt = @_;
+  my %opt  = @_;
   
   my $action = $opt{ 'ACTION' };
   my $page   = $opt{ 'PAGE'   };
 
   # FIXME: content vars handling set_content()/etc.
   my $ah = $self->args_here();
-  $self->{ 'HTML_CONTENT' }{ 'form_input_session_keeper' } = "<input type=hidden name=_ value=$ah>";
+  $self->html_content( 'FORM_INPUT_SESSION_KEEPER' => "<input type=hidden name=_ value=$ah>" );
 
 
   my $portray_data;

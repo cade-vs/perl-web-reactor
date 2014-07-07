@@ -809,6 +809,28 @@ sub html_content_set
   return $self->html_content( @_ );
 }
 
+sub html_content_accumulator
+{
+  my $self = shift;
+  my $name = shift;
+  my $text = shift;
+
+  $self->{ 'HTML_CONTENT' } ||= {};
+  $self->{ 'HTML_CONTENT' }{ $name }{ $text }++;
+  
+  $self->html_content_set( $name, join '', keys %{ $self->{ 'HTML_CONTENT' }{ $name } } );
+}
+
+sub html_content_accumulator_js
+{
+  my $self = shift;
+  my $name = shift;
+  my $text = shift;
+
+  $text = "<script src='$text'></script>";
+  $self->html_content_accumulator( $name, $text );
+}
+
 ##############################################################################
 
 sub render

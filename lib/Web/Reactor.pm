@@ -18,7 +18,7 @@ use Data::Tools;
 use Data::Dumper;
 use Exception::Sink;
 
-our $VERSION = '0.05';
+our $VERSION = '2.05';
 
 ##############################################################################
 
@@ -70,6 +70,12 @@ sub new
 #    $self->{ 'ENV' }{ 'HTML_DIRS' } = [ "$root/html" ];
 #    }
 
+  if( ! $env{ 'LIB_DIRS' } or @{ $env{ 'LIB_DIRS' } } < 1 )
+    {
+    my $root = $env{ 'APP_ROOT' };
+    $env{ 'LIB_DIRS' } = [ "$root/lib" ];
+    }
+  
   my $lib_dirs = $env{ 'LIB_DIRS' } || [];
   for my $lib_dir ( @$lib_dirs )
     {
@@ -86,7 +92,7 @@ sub new
     }
 
   my $reo_sess_class = $env{ 'REO_SESS_CLASS' } ||= 'Web::Reactor::Sessions::Filesystem';
-  my $reo_prep_class = $env{ 'REO_PREP_CLASS' } ||= 'Web::Reactor::Preprocessor::Expander';
+  my $reo_prep_class = $env{ 'REO_PREP_CLASS' } ||= 'Web::Reactor::Preprocessor::Native';
   my $reo_acts_class = $env{ 'REO_ACTS_CLASS' } ||= 'Web::Reactor::Actions::Native';
 
   my $reo_sess_class_file = perl_package_to_file( $reo_sess_class );
@@ -499,7 +505,6 @@ sub args
 
   $link_shr->{ $link_key } = \%args;
 
-  $self->save();
   return $link_sid . '.' . $link_key;
 }
 
@@ -743,6 +748,13 @@ sub log_debug
   $self->log( $msg );
 }
 
+sub log_stack
+{
+  my $self = shift;
+  
+  $self->log_debug( @_, "\n", Exception::Sink::get_stack_trace() );
+}
+
 sub log_dumper
 {
   my $self = shift;
@@ -836,14 +848,14 @@ sub html_content_accumulator_js
 sub render
 {
   my $self = shift;
-  my %opt = @_;
+  my %opt  = @_;
   
   my $action = $opt{ 'ACTION' };
   my $page   = $opt{ 'PAGE'   };
 
   # FIXME: content vars handling set_content()/etc.
   my $ah = $self->args_here();
-  $self->{ 'HTML_CONTENT' }{ 'form_input_session_keeper' } = "<input type=hidden name=_ value=$ah>";
+  $self->html_content( 'FORM_INPUT_SESSION_KEEPER' => "<input type=hidden name=_ value=$ah>" );
 
 
   my $portray_data;

@@ -29,6 +29,30 @@ sub new
   bless $self, $class;
   # rcd_log( "debug: rcd_rec:$self created" );
 
+  # FIXME: common directories setup code?
+  if( ! $env{ 'HTML_DIRS' } or @{ $env{ 'HTML_DIRS' } } < 1 )
+    {
+    my $root = $self->{ 'ENV' }{ 'APP_ROOT' };
+    my $lang = $self->{ 'ENV' }{ 'LANG' };
+    if( $lang )
+      {
+      $env{ 'HTML_DIRS' } = [ "$root/html/$lang", "$root/html/default" ];
+      }
+    else
+      {  
+      $env{ 'HTML_DIRS' } = [ "$root/html/default" ];
+      }
+    }
+  
+  my $html_dirs = $env{ 'HTML_DIRS' } || [];
+  my $html_dirs_ok = 0;
+  for my $html_dir ( @$html_dirs )
+    {
+    next unless -d $html_dir;
+    $html_dirs_ok++;
+    }
+  boom "invalid or not accessible HTML_DIR's [@$html_dirs]" unless $html_dirs_ok;
+
   return $self;
 }
 
@@ -55,36 +79,12 @@ sub load_file
     return $self->{ 'FILE_CACHE' }{ $lang }{ $pn };
     }
 
-  # FIXME: move to preprocessing/init/contructor
   my $pn = "$pn.html";
-  my $dirs = $self->{ 'ENV' }{ 'HTML_DIRS' } || [];
-  if( @$dirs == 0 )
-    {
-    my $app_root = $self->{ 'ENV' }{ 'APP_ROOT' };
-    boom "missing APP_ROOT" unless -d $app_root; # FIXME: function? get_app_root()
-    $dirs = [ "$app_root/html" ];
-    }
-
-  # FIXME: move to preprocessing/init/contructor
-  my @dirs;
-  if( $lang )
-    {
-    for( @$dirs )
-      {
-      push @dirs, "$_/$lang/";
-      push @dirs, $_;
-      }
-    }
-  else
-    {
-    @dirs = @$dirs;
-    }    
+  my $dirs = $self->{ 'ENV' }{ 'HTML_DIRS' };
 
   my $fn;
-  for my $dir ( @dirs )
+  for my $dir ( @$dirs )
     {
-    # FIXME: move this check on create/new of reactor
-    confess "not accessible HTML include dir [$dir]" unless -d $dir;
     next unless -e "$dir/$pn";
     $fn = "$dir/$pn";
     last;
@@ -93,7 +93,7 @@ sub load_file
   if( ! $fn )
     {
     # FIXME: not a error really, more like warning, should be able to disable :))
-    $reo->log( "error: cannot find file [$fn] dirs list [@$dirs]" );
+    #$reo->log( "warning: cannot find file for page [$pn] dirs list is [@$dirs]" );
     return undef;
     }
 

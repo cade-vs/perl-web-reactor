@@ -108,11 +108,8 @@ sub html_table
   # c_* cell  attr
 
   my $t_args;
-  $t_args ||= $opt{ 'ARGS' } || $opt{ 'ARG' };
+  $t_args ||= $opt{ 'ARGS' };
   $t_args ||= 'class=' . $opt{ 'CLASS' } if $opt{ 'CLASS' };
-
-use Data::Dumper;
-print STDERR "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ [$t_args]\n" . Dumper( \%opt );
 
   my $tr1 = $opt{ 'TR1' } || $opt{ 'TR-1' } || 'tr-1';
   my $tr2 = $opt{ 'TR2' } || $opt{ 'TR-2' } || 'tr-2';
@@ -460,22 +457,22 @@ arguments: array_ref, opt_hash
 array_ref is list of hash refs with this content:
 
     LABEL          -- label text for the this tab handle
-    LABEL_TD_ARG   -- further optional arguments for the label TD
+    LABEL_TD_ARGS  -- further optional arguments for the label TD
     TEXT           -- text to show when tab handle clicked
-    TEXT_TD_ARG    -- TD element args, same as above
+    TEXT_TD_ARGS   -- TD element args, same as above
     ON             -- if true, this tab will be initially visible
     TAB_ID         -- html id for this tab
 
 opt_hash is inline with the following items:
 
-    LABELS_TABLE_ARG -- args for the table containing labels
-    TEXT_TABLE_ARG   -- same as above
+    LABELS_TABLE_ARGS -- args for the table containing labels
+    TEXT_TABLE_ARGS   -- same as above
 
-    LABEL_CLASS_ON   -- active TD class for tab handle labels
-    LABEL_CLASS_OFF  -- inactive TD class for tab handle labels
+    LABEL_CLASS_ON    -- active TD class for tab handle labels
+    LABEL_CLASS_OFF   -- inactive TD class for tab handle labels
 
-    ARGS             -- args for containing TABLE element
-    VERTICAL         -- if true, tabs will be vertical
+    ARGS              -- args for containing TABLE element
+    VERTICAL          -- if true, tabs will be vertical
     
     ACTIVE_TAB_FORM_FEEDBACK_ID -- html INPUT element to hold active tab id
 
@@ -486,14 +483,14 @@ example:
   for my $z ( 1 .. 5 )
     {
     push @tabs, {
-                  LABEL        => "TAB $z",
-                  TEXT         => "$z " x 128,
-                  LABEL_TD_ARG => "class=tab-label style='cursor: pointer;'",
-                  TEXT_TD_ARG  => "class=tab-text",
+                  LABEL         => "TAB $z",
+                  TEXT          => "$z " x 128,
+                  LABEL_TD_ARGS => "class=tab-label style='cursor: pointer;'",
+                  TEXT_TD_ARGS  => "class=tab-text",
                 };
     }
 
-  $html = html_tabs_table( \@tabs, ARG => "width=70% border=2", VERTICAL => 1 );
+  $html = html_tabs_table( \@tabs, ARGS => "width=70% border=2", VERTICAL => 1 );
 
 =cut
 
@@ -525,7 +522,7 @@ sub html_tabs_table
     my $label      = $e->{ 'LABEL'         };
     my $label_args = $e->{ 'LABEL_TD_ARGS' };
     my $text       = $e->{ 'TEXT'          };
-    my $text_arg   = $e->{ 'TEXT_TD_ARGS'  };
+    my $text_args  = $e->{ 'TEXT_TD_ARGS'  };
     my $on         = $e->{ 'ON'            };
     my $tab_id     = $e->{ 'TAB_ID'        };
 

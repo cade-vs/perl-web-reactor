@@ -70,6 +70,7 @@ sub new
 #    $self->{ 'ENV' }{ 'HTML_DIRS' } = [ "$root/html" ];
 #    }
 
+  # FIXME: common directories setup code?
   if( ! $env{ 'LIB_DIRS' } or @{ $env{ 'LIB_DIRS' } } < 1 )
     {
     my $root = $env{ 'APP_ROOT' };
@@ -77,11 +78,14 @@ sub new
     }
   
   my $lib_dirs = $env{ 'LIB_DIRS' } || [];
+  my $lib_dirs_ok = 0;
   for my $lib_dir ( @$lib_dirs )
     {
-    boom "invalid or not accessible LIB_DIR [$lib_dir]" unless -d $lib_dir;
+    next unless -d $lib_dir;
     push @INC, $lib_dir;
+    $lib_dirs_ok++;
     }
+  boom "invalid or not accessible LIB_DIR's [@$lib_dirs]" unless $lib_dirs_ok;
 
   # sanity, remove '.' from include list, TODO: optionally remove other entries by config (%env)
   for my $z ( 0 .. scalar( @INC ) - 1 )
@@ -211,6 +215,7 @@ sub main_process
   # import plain parameters from GET/POST request
   for my $n ( CGI::param() )
     {
+    $n = uc $n;
     if( $n !~ /^[A-Za-z0-9\-\_\.\:]+$/o )
       {
       $self->log( "error: invalid CGI/input parameter name: [$n]" );
@@ -319,6 +324,17 @@ sub main_process
     $self->log( "error: invalid page name [$page_name]" );
     }  
 
+  # pre-9. print debug status...
+  if( $self->is_debug() )
+    {
+    $self->log_dumper( "USER INPUT-------------------------------------", $self->get_user_input()   );
+    $self->log_dumper( "SAFE INPUT-------------------------------------", $self->get_safe_input()   );
+    $self->log_dumper( "PAGE SESSION-----------------------------------", $self->get_page_session() );
+    $self->log_dumper( "REFP SESSION-----------------------------------", $self->get_page_session( 1 ) );
+    # $self->log_dumper( "USER SESSION-----------------------------------", $self->get_user_session() );
+    }
+
+    print STDERR "+++++++++++++++++++++++++ PRE RENDER!\n";
   # 9. render output action/page
   if( $action_name )
     {
@@ -328,6 +344,7 @@ sub main_process
     {
     $self->render( PAGE => $page_name );
     }  
+    print STDERR "+++++++++++++++++++++++++ POST RENDER!\n";
 }
 
 sub __create_new_user_session
@@ -735,7 +752,7 @@ sub log
 {
   my $self = shift;
 
-  print STDERR @_;
+  print STDERR @_, "\n";
 }
 
 sub log_debug
@@ -743,7 +760,7 @@ sub log_debug
   my $self = shift;
   
   return unless $self->is_debug();
-  my $msg = join( ' ', @_ );
+  my $msg = join( "\n", @_ );
   $msg = "debug: $msg" unless $msg =~ /^debug:/i;
   $self->log( $msg );
 }
@@ -927,6 +944,7 @@ sub render
     print "</pre><hr>";
     }
 
+    print STDERR "+++++++++++++++++++++++++ END RENDER, PRE SINK CONTENT!\n";
   sink 'CONTENT';
 }
 
@@ -1191,7 +1209,7 @@ sub load_trans
 
   my $lang = lc $self->{ 'ENV' }{ 'LANG' };
 
-  return 0 if $lang !~ /^[a-z][a-z]$/;
+  return 0 if $lang !~ /^[a-z][a-z]$/; # FIXME: move to init check! verofy hash etc. data::tools
   
   $self->{ 'TRANS' }{ 'LANG' } = $lang;
 

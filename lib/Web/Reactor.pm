@@ -215,7 +215,6 @@ sub main_process
   # import plain parameters from GET/POST request
   for my $n ( CGI::param() )
     {
-    $n = uc $n;
     if( $n !~ /^[A-Za-z0-9\-\_\.\:]+$/o )
       {
       $self->log( "error: invalid CGI/input parameter name: [$n]" );
@@ -223,6 +222,8 @@ sub main_process
       }
     my $v = CGI::param( $n );
     my @v = CGI::param( $n );
+
+    $n = uc $n;
 
     $self->log_debug( "debug: CGI input param [$n] value [$v] [@v]" );
     
@@ -479,6 +480,16 @@ sub get_input_button_id
   return $input_user_hr->{ 'BUTTON_ID' };
 }
 
+sub get_input_button_and_remove
+{
+  my $self  = shift;
+  
+  my $input_user_hr = $self->get_user_input();
+  my $button = $input_user_hr->{ 'BUTTON' };
+  delete $input_user_hr->{ 'BUTTON' };
+  return $button;
+}
+
 sub get_input_form_name
 {
   my $self  = shift;
@@ -531,6 +542,16 @@ sub args_back
   my %args = @_;
 
   $args{ '_P' } = $self->get_ref_page_session_id();
+
+  return $self->args( %args );
+}
+
+sub args_back_back
+{
+  my $self = shift;
+  my %args = @_;
+
+  $args{ '_P' } = $self->get_ref_page_session_id( 1 );
 
   return $self->args( %args );
 }
@@ -873,6 +894,7 @@ sub render
   # FIXME: content vars handling set_content()/etc.
   my $ah = $self->args_here();
   $self->html_content( 'FORM_INPUT_SESSION_KEEPER' => "<input type=hidden name=_ value=$ah>" );
+  $self->html_content( %opt );
 
 
   my $portray_data;
@@ -911,6 +933,7 @@ sub render
   if( $page_type eq 'text/html' )
     {
     # FIXME: preprocess and translation only for content-type text/*
+    $page_data = $self->prep_process( $page_data );
     $page_data = $self->prep_process( $page_data );
 
     # FIXME: translation

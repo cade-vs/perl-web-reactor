@@ -127,7 +127,7 @@ sub html_table
     if ( ref( $row ) eq 'ARRAY' )
       {
       $cols  = $row;
-      $r_args = "class=$r_class";
+      $r_args = "class='$r_class'";
       }
     elsif ( ref( $row ) eq 'HASH' )
       {
@@ -169,7 +169,7 @@ sub html_table
         $cell    = hash_uc( $cell );
         $val     = $cell->{ 'DATA' };
         $c_args ||= $cell->{ 'ARGS' };
-        $c_args ||= 'class=' . $cell->{ 'CLASS' } if $cell->{ 'CLASS' };
+        $c_args ||= "class='" . $cell->{ 'CLASS' } . "'" if $cell->{ 'CLASS' };
         }
       else
         {
@@ -177,7 +177,7 @@ sub html_table
         next;
         }
 
-      $c_args ||= 'class=' . $c_class;
+      $c_args ||= "class='" . $c_class . "'";
       $text .= "    <td $c_args>$val</td>\n";
       $col_num++;
       }

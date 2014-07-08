@@ -18,7 +18,7 @@ use Data::Tools;
 use Data::Dumper;
 use Exception::Sink;
 
-our $VERSION = '0.05';
+our $VERSION = '2.05';
 
 ##############################################################################
 
@@ -70,12 +70,22 @@ sub new
 #    $self->{ 'ENV' }{ 'HTML_DIRS' } = [ "$root/html" ];
 #    }
 
+  # FIXME: common directories setup code?
+  if( ! $env{ 'LIB_DIRS' } or @{ $env{ 'LIB_DIRS' } } < 1 )
+    {
+    my $root = $env{ 'APP_ROOT' };
+    $env{ 'LIB_DIRS' } = [ "$root/lib" ];
+    }
+  
   my $lib_dirs = $env{ 'LIB_DIRS' } || [];
+  my $lib_dirs_ok = 0;
   for my $lib_dir ( @$lib_dirs )
     {
-    boom "invalid or not accessible LIB_DIR [$lib_dir]" unless -d $lib_dir;
+    next unless -d $lib_dir;
     push @INC, $lib_dir;
+    $lib_dirs_ok++;
     }
+  boom "invalid or not accessible LIB_DIR's [@$lib_dirs]" unless $lib_dirs_ok;
 
   # sanity, remove '.' from include list, TODO: optionally remove other entries by config (%env)
   for my $z ( 0 .. scalar( @INC ) - 1 )
@@ -86,7 +96,7 @@ sub new
     }
 
   my $reo_sess_class = $env{ 'REO_SESS_CLASS' } ||= 'Web::Reactor::Sessions::Filesystem';
-  my $reo_prep_class = $env{ 'REO_PREP_CLASS' } ||= 'Web::Reactor::Preprocessor::Expander';
+  my $reo_prep_class = $env{ 'REO_PREP_CLASS' } ||= 'Web::Reactor::Preprocessor::Native';
   my $reo_acts_class = $env{ 'REO_ACTS_CLASS' } ||= 'Web::Reactor::Actions::Native';
 
   my $reo_sess_class_file = perl_package_to_file( $reo_sess_class );
@@ -213,6 +223,8 @@ sub main_process
     my $v = CGI::param( $n );
     my @v = CGI::param( $n );
 
+    $n = uc $n;
+
     $self->log_debug( "debug: CGI input param [$n] value [$v] [@v]" );
     
     if( $self->__input_cgi_skip_invalid_value( $n, $v ) )
@@ -313,6 +325,17 @@ sub main_process
     $self->log( "error: invalid page name [$page_name]" );
     }  
 
+  # pre-9. print debug status...
+  if( $self->is_debug() )
+    {
+    $self->log_dumper( "USER INPUT-------------------------------------", $self->get_user_input()   );
+    $self->log_dumper( "SAFE INPUT-------------------------------------", $self->get_safe_input()   );
+    $self->log_dumper( "PAGE SESSION-----------------------------------", $self->get_page_session() );
+    $self->log_dumper( "REFP SESSION-----------------------------------", $self->get_page_session( 1 ) );
+    # $self->log_dumper( "USER SESSION-----------------------------------", $self->get_user_session() );
+    }
+
+    print STDERR "+++++++++++++++++++++++++ PRE RENDER!\n";
   # 9. render output action/page
   if( $action_name )
     {
@@ -322,6 +345,7 @@ sub main_process
     {
     $self->render( PAGE => $page_name );
     }  
+    print STDERR "+++++++++++++++++++++++++ POST RENDER!\n";
 }
 
 sub __create_new_user_session
@@ -456,6 +480,16 @@ sub get_input_button_id
   return $input_user_hr->{ 'BUTTON_ID' };
 }
 
+sub get_input_button_and_remove
+{
+  my $self  = shift;
+  
+  my $input_user_hr = $self->get_user_input();
+  my $button = $input_user_hr->{ 'BUTTON' };
+  delete $input_user_hr->{ 'BUTTON' };
+  return $button;
+}
+
 sub get_input_form_name
 {
   my $self  = shift;
@@ -499,7 +533,6 @@ sub args
 
   $link_shr->{ $link_key } = \%args;
 
-  $self->save();
   return $link_sid . '.' . $link_key;
 }
 
@@ -509,6 +542,16 @@ sub args_back
   my %args = @_;
 
   $args{ '_P' } = $self->get_ref_page_session_id();
+
+  return $self->args( %args );
+}
+
+sub args_back_back
+{
+  my $self = shift;
+  my %args = @_;
+
+  $args{ '_P' } = $self->get_ref_page_session_id( 1 );
 
   return $self->args( %args );
 }
@@ -730,7 +773,7 @@ sub log
 {
   my $self = shift;
 
-  print STDERR @_;
+  print STDERR @_, "\n";
 }
 
 sub log_debug
@@ -738,9 +781,16 @@ sub log_debug
   my $self = shift;
   
   return unless $self->is_debug();
-  my $msg = join( ' ', @_ );
+  my $msg = join( "\n", @_ );
   $msg = "debug: $msg" unless $msg =~ /^debug:/i;
   $self->log( $msg );
+}
+
+sub log_stack
+{
+  my $self = shift;
+  
+  $self->log_debug( @_, "\n", Exception::Sink::get_stack_trace() );
 }
 
 sub log_dumper
@@ -809,19 +859,42 @@ sub html_content_set
   return $self->html_content( @_ );
 }
 
+sub html_content_accumulator
+{
+  my $self = shift;
+  my $name = shift;
+  my $text = shift;
+
+  $self->{ 'HTML_CONTENT' } ||= {};
+  $self->{ 'HTML_CONTENT' }{ $name }{ $text }++;
+  
+  $self->html_content_set( $name, join '', keys %{ $self->{ 'HTML_CONTENT' }{ $name } } );
+}
+
+sub html_content_accumulator_js
+{
+  my $self = shift;
+  my $name = shift;
+  my $text = shift;
+
+  $text = "<script src='$text'></script>";
+  $self->html_content_accumulator( $name, $text );
+}
+
 ##############################################################################
 
 sub render
 {
   my $self = shift;
-  my %opt = @_;
+  my %opt  = @_;
   
   my $action = $opt{ 'ACTION' };
   my $page   = $opt{ 'PAGE'   };
 
   # FIXME: content vars handling set_content()/etc.
   my $ah = $self->args_here();
-  $self->{ 'HTML_CONTENT' }{ 'form_input_session_keeper' } = "<input type=hidden name=_ value=$ah>";
+  $self->html_content( 'FORM_INPUT_SESSION_KEEPER' => "<input type=hidden name=_ value=$ah>" );
+  $self->html_content( %opt );
 
 
   my $portray_data;
@@ -861,9 +934,13 @@ sub render
     {
     # FIXME: preprocess and translation only for content-type text/*
     $page_data = $self->prep_process( $page_data );
+    $page_data = $self->prep_process( $page_data );
+
     # FIXME: translation
-    $page_data =~ s/<~(([^<>]*))>/$1/g;
-    $page_data =~ s/\[~(([^<>]*))\]/$1/g;
+    $self->load_trans();
+    my $tr = $self->{ 'TRANS' }{ $self->{ 'ENV' }{ 'LANG' } } || {};
+    $page_data =~ s/<~(([^<>]*))>/$tr->{ $1 } || $1/ge;
+    $page_data =~ s/\[~(([^<>]*))\]/$tr->{ $1 } || $1/ge;
     }
 
   $self->set_headers( 'content-type' => $page_type );
@@ -890,6 +967,7 @@ sub render
     print "</pre><hr>";
     }
 
+    print STDERR "+++++++++++++++++++++++++ END RENDER, PRE SINK CONTENT!\n";
   sink 'CONTENT';
 }
 
@@ -1144,6 +1222,49 @@ sub need_post_method
 
   $self->logout();
   $self->render( PAGE => 'epostrequired' );
+}
+
+##############################################################################
+
+sub load_trans
+{
+  my $self = shift;
+
+  my $lang = lc $self->{ 'ENV' }{ 'LANG' };
+
+  return 0 if $lang !~ /^[a-z][a-z]$/; # FIXME: move to init check! verofy hash etc. data::tools
+  
+  $self->{ 'TRANS' }{ 'LANG' } = $lang;
+
+  return 1 if $self->{ 'TRANS' }{ $lang };
+
+  my $tr = $self->{ 'TRANS' }{ $lang } = {};
+
+  my $trans_dirs = $self->{ 'ENV' }{ 'TRANS_DIRS' };
+
+  my @tf;
+  for my $dir ( @$trans_dirs )
+    {
+    push @tf, glob( "$dir/$lang/*.tr" );
+    push @tf, glob( "$dir/$lang/text/*.tr" );
+    }
+
+  for my $tf ( @tf )
+    {
+    my $hr = hash_load( $tf );
+    # trim whitespace
+    my @temp = %$hr;
+    for( @temp )
+      {
+      s/^\s*//;
+      s/\s*$//;
+      }
+    %$hr = @temp;
+    @temp = ();
+    @{ $tr }{ keys %$hr } = values %$hr;
+    }
+
+  return 1;
 }
 
 ##############################################################################

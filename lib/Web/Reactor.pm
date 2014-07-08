@@ -961,8 +961,8 @@ sub render
     print Dumper( 'SAFE INPUT:'.'_'x80, $self->{ 'INPUT_SAFE_HR' } );
     print Dumper( 'PAGE SESSION:'.'_'x80, $self->{ 'SESSIONS' }{ 'DATA' }{ 'PAGE' }{ $self->{ 'SESSIONS' }{ 'SID' }{ 'PAGE' } } );
     print Dumper( 'USER SESSION:'.'_'x80, $self->{ 'SESSIONS' }{ 'DATA' }{ 'USER' }{ $self->{ 'SESSIONS' }{ 'SID' }{ 'USER' } } );
-    print "<hr>";
-    print Dumper( $self );
+#    print "<hr>";
+#    print Dumper( $self );
     print "</pre><hr>";
     }
 

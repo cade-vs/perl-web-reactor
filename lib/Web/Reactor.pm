@@ -938,8 +938,8 @@ sub render
     # FIXME: translation
     $self->load_trans();
     my $tr = $self->{ 'TRANS' }{ $self->{ 'ENV' }{ 'LANG' } } || {};
-    $page_data =~ s/<~(([^<>]*))>/$tr->{ $1 } || $1/ge;
-    $page_data =~ s/\[~(([^<>]*))\]/$tr->{ $1 } || $1/ge;
+    $page_data =~ s/\<~([^\<\>]*)\>/$tr->{ $1 } || $1/ge;
+    $page_data =~ s/\[~([^\[\]]*)\]/$tr->{ $1 } || $1/ge;
     }
 
   $self->set_headers( 'content-type' => $page_type );

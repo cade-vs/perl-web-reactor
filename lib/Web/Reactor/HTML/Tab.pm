@@ -43,7 +43,7 @@ sub new
   $self->{ 'TABS' } = []; # contain tab IDs
 
   # rcd_log( "debug: rcd_rec:$self created" );
-  $reo->html_content_accumulator_js( 'ACCUMULATOR_JS', "js/review.js" );
+  $reo->html_content_accumulator_js( "js/review.js" );
 
   $self->{ 'OPT' } = { @_ };
 
@@ -118,7 +118,7 @@ sub finish
   $act_feed_input
 
   <script type="text/javascript">
-    
+
     var atf = document.getElementById( "$act_feed_id" );
 
     var active_tab_id = atf.value;

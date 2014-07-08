@@ -55,7 +55,7 @@ sub new
   my %env = @_;
 
   # FIXME: verify %env content! Data::Validate::Struct
-  
+
   $class = ref( $class ) || $class;
   my $self = {
              'ENV' => \%env,
@@ -76,7 +76,7 @@ sub new
     my $root = $env{ 'APP_ROOT' };
     $env{ 'LIB_DIRS' } = [ "$root/lib" ];
     }
-  
+
   my $lib_dirs = $env{ 'LIB_DIRS' } || [];
   my $lib_dirs_ok = 0;
   for my $lib_dir ( @$lib_dirs )
@@ -226,7 +226,7 @@ sub main_process
     $n = uc $n;
 
     $self->log_debug( "debug: CGI input param [$n] value [$v] [@v]" );
-    
+
     if( $self->__input_cgi_skip_invalid_value( $n, $v ) )
       {
       $self->log( "error: invalid CGI/input value for parameter: [$n]" );
@@ -312,7 +312,7 @@ sub main_process
   else
     {
     # $self->log( "error: invalid action name [$action_name]" );
-    }  
+    }
 
   # 8. get page from input (USER/CGI) or page session
   my $page_name = lc( $input_safe_hr->{ '_PN' } || $input_user_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || 'index' );
@@ -323,7 +323,7 @@ sub main_process
   else
     {
     $self->log( "error: invalid page name [$page_name]" );
-    }  
+    }
 
   # pre-9. print debug status...
   if( $self->is_debug() )
@@ -344,7 +344,7 @@ sub main_process
   else
     {
     $self->render( PAGE => $page_name );
-    }  
+    }
     print STDERR "+++++++++++++++++++++++++ POST RENDER!\n";
 }
 
@@ -424,7 +424,7 @@ sub get_http_env
   my $user_shr = $self->get_user_session();
 
   boom "missing HTTP_ENV inside user session" unless exists $user_shr->{ ':HTTP_ENV_HR' };
-  
+
   return $user_shr->{ ':HTTP_ENV_HR' };
 }
 
@@ -467,7 +467,7 @@ sub get_user_input
 sub get_input_button
 {
   my $self  = shift;
-  
+
   my $input_user_hr = $self->get_user_input();
   return $input_user_hr->{ 'BUTTON' };
 }
@@ -475,7 +475,7 @@ sub get_input_button
 sub get_input_button_id
 {
   my $self  = shift;
-  
+
   my $input_user_hr = $self->get_user_input();
   return $input_user_hr->{ 'BUTTON_ID' };
 }
@@ -483,7 +483,7 @@ sub get_input_button_id
 sub get_input_button_and_remove
 {
   my $self  = shift;
-  
+
   my $input_user_hr = $self->get_user_input();
   my $button = $input_user_hr->{ 'BUTTON' };
   delete $input_user_hr->{ 'BUTTON' };
@@ -504,7 +504,7 @@ sub args
 {
   my $self = shift;
   my %args = @_;
-  
+
   hash_uc_ipl( \%args );
 
   my $link_sid;
@@ -752,7 +752,7 @@ sub set_debug
 {
   my $self  = shift;
   my $level = int(shift);
-  
+
   if( @_ > 0 )
     {
     $self->{ 'ENV' }{ 'DEBUG' } = $level > 0 ? $level : 0;
@@ -779,7 +779,7 @@ sub log
 sub log_debug
 {
   my $self = shift;
-  
+
   return unless $self->is_debug();
   my $msg = join( "\n", @_ );
   $msg = "debug: $msg" unless $msg =~ /^debug:/i;
@@ -789,7 +789,7 @@ sub log_debug
 sub log_stack
 {
   my $self = shift;
-  
+
   $self->log_debug( @_, "\n", Exception::Sink::get_stack_trace() );
 }
 
@@ -840,7 +840,7 @@ sub html_content
   hash_lc_ipl( \%hc );
   $self->{ 'HTML_CONTENT' } ||= {};
   %{ $self->{ 'HTML_CONTENT' } } = ( %{ $self->{ 'HTML_CONTENT' } }, %hc );
-  
+
   return $self->{ 'HTML_CONTENT' };
 }
 
@@ -854,7 +854,7 @@ sub html_content_clear
 sub html_content_set
 {
   my $self = shift;
-  
+
   $self->html_content_clear();
   return $self->html_content( @_ );
 }
@@ -867,18 +867,17 @@ sub html_content_accumulator
 
   $self->{ 'HTML_CONTENT' } ||= {};
   $self->{ 'HTML_CONTENT' }{ $name }{ $text }++;
-  
+
   $self->html_content_set( $name, join '', keys %{ $self->{ 'HTML_CONTENT' }{ $name } } );
 }
 
 sub html_content_accumulator_js
 {
   my $self = shift;
-  my $name = shift;
   my $text = shift;
 
-  $text = "<script src='$text'></script>";
-  $self->html_content_accumulator( $name, $text );
+  $text = "<script type='text/javascript' src='$text'></script>";
+  $self->html_content_accumulator( "ACCUMULATOR_JS", $text );
 }
 
 ##############################################################################
@@ -887,7 +886,7 @@ sub render
 {
   my $self = shift;
   my %opt  = @_;
-  
+
   my $action = $opt{ 'ACTION' };
   my $page   = $opt{ 'PAGE'   };
 
@@ -912,7 +911,7 @@ sub render
     {
     boom "render() needs PAGE or ACTION";
     }
-    
+
   if( ref( $portray_data ) eq 'HASH' )
     {
     # nothing, ok
@@ -924,7 +923,7 @@ sub render
   else
     {
     # default portray type is html
-    $portray_data = $self->portray( $portray_data, 'text/html' );  
+    $portray_data = $self->portray( $portray_data, 'text/html' );
     }
 
   my $page_data =    $portray_data->{ 'DATA' };
@@ -989,7 +988,7 @@ sub portray
   $type = $SIMPLE_PORTRAY_TYPE_MAP{ $type } || $type;
 
   boom "portray needs mime type xxx/xxx as arg 2, got [$type]" unless $type =~ /^[a-z\-_0-9]+\/[a-z\-_0-9]+$/;
-  
+
   return { DATA => $data, TYPE => $type };
 }
 
@@ -1002,7 +1001,7 @@ sub forward_url
 
   # FIXME: use render+portray
   $self->set_headers( location => $url );
-  
+
   my $page_headers = $self->__make_headers();
   print $page_headers;
 
@@ -1014,7 +1013,7 @@ sub forward
   my $self = shift;
 
   boom "expected even number of arguments" unless @_ % 2 == 0;
-  
+
   my $fw = $self->args( @_ );
   return $self->forward_url( "?_=$fw" );
 }
@@ -1024,7 +1023,7 @@ sub forward_here
   my $self = shift;
 
   boom "expected even number of arguments" unless @_ % 2 == 0;
-  
+
   my $fw = $self->args_here( @_ );
   return $self->forward_url( "?_=$fw" );
 }
@@ -1034,7 +1033,7 @@ sub forward_back
   my $self = shift;
 
   boom "expected even number of arguments" unless @_ % 2 == 0;
-  
+
   my $fw = $self->args_back( @_ );
   return $self->forward_url( "?_=$fw" );
 }
@@ -1044,7 +1043,7 @@ sub forward_new
   my $self = shift;
 
   boom "expected even number of arguments" unless @_ % 2 == 0;
-  
+
   my $fw = $self->args_new( @_ );
   return $self->forward_url( "?_=$fw" );
 }
@@ -1091,11 +1090,11 @@ sub __param
     $input_hr = $self->get_user_input();
     $save_key = 'SAVE_USER_INPUT';
     }
-    
+
   my $ps = $self->get_page_session();
-  
-  $ps->{ $save_key } ||= {};  
-  
+
+  $ps->{ $save_key } ||= {};
+
   my @res;
   while( @_ )
     {
@@ -1104,9 +1103,9 @@ sub __param
       {
       $ps->{ $save_key }{ $p } = $input_hr->{ $p };
       }
-    push @res, $ps->{ $save_key }{ $p };  
+    push @res, $ps->{ $save_key }{ $p };
     }
-  
+
   return wantarray ? @res : shift( @res );
 }
 
@@ -1131,7 +1130,7 @@ sub param_safe
 sub is_logged_in
 {
   my $self = shift;
-    
+
   my $user_shr = $self->get_user_session();
   return $user_shr->{ ':LOGGED_IN' } ? 1 : 0;
 }
@@ -1139,7 +1138,7 @@ sub is_logged_in
 sub login
 {
   my $self = shift;
-    
+
   my $user_shr = $self->get_user_session();
   $user_shr->{ ':LOGGED_IN' } = 1;
   $user_shr->{ ':LTIME'      } = time();
@@ -1150,7 +1149,7 @@ sub login
 sub logout
 {
   my $self = shift;
-    
+
   my $user_shr = $self->get_user_session();
   $user_shr->{ ':LOGGED_IN' } = 0;
   $user_shr->{ ':CLOSED'       } = 1;
@@ -1164,12 +1163,12 @@ sub logout
 sub need_login
 {
   my $self = shift;
-  
+
   return if $self->is_logged_in();
 
   my $fw = $self->args_new( _PN => 'login' );
   return $self->forward_url( "?_=$fw" );
-  
+
   # return $self->forward( _PN => 'login' );
 }
 
@@ -1216,8 +1215,8 @@ sub need_post_method
   my $self = shift;
 
   my $he = $self->get_http_env();
-  
-  print STDERR Dumper( $he ); 
+
+  print STDERR Dumper( $he );
   return if $he->{ 'REQUEST_METHOD' } eq 'POST';
 
   $self->logout();
@@ -1233,7 +1232,7 @@ sub load_trans
   my $lang = lc $self->{ 'ENV' }{ 'LANG' };
 
   return 0 if $lang !~ /^[a-z][a-z]$/; # FIXME: move to init check! verofy hash etc. data::tools
-  
+
   $self->{ 'TRANS' }{ 'LANG' } = $lang;
 
   return 1 if $self->{ 'TRANS' }{ $lang };
@@ -1372,7 +1371,7 @@ Action module example:
     # access page session. it will be auto-loaded on demand
     my $page_session_hr = $reo->get_page_session();
     my $fortune = $page_session_hr->{ 'FORTUNE' } ||= `/usr/games/fortune`;
-    
+
     # access input (form) data. $i and $e are hashrefs
     my $i = $reo->get_user_input(); # get plain user input (hashref)
     my $e = $reo->get_safe_input(); # get safe data (never reach user browser)
@@ -1417,26 +1416,26 @@ Web::Reactor is designed to allow extending or replacing some parts as:
 
 =head1 PAGE NAMES, HTML FILE TEMPLATES, PAGE INSTANCES
 
-WR has a notion of a "page" which represents visible output to the end user 
+WR has a notion of a "page" which represents visible output to the end user
 browser. It has (i.e. uses) the following attributes:
 
   * html file template (page name)
   * page session data
   * actions code (i.e. callbacks) used inside html text
-  
+
 All of those represent "page instance" and produce end user html visible page.
 
-"Page names" are limited to be alphanumeric and are mapped to file 
+"Page names" are limited to be alphanumeric and are mapped to file
 (or other storage) html content:
 
                    page name: example
   html file template will be: page_example.html
-  
+
 HTML content may include other files (also limited to be alphanumeric):
 
    include text: <#other_file>
   file included: other_file.html
-  
+
 Page names may be requested from the end user side, but include html files may
 be used only from the pages already requested.
 
@@ -1447,7 +1446,7 @@ can be called this way:
 
   <&test_action arg1=val1 arg2=val2 flag1 flag2...>
   <&test_action>
-  
+
 This will instruct Reactor action handler to look for this package name inside
 standard or user-added library directories:
 
@@ -1470,27 +1469,27 @@ write access to.
 Another way to call a module is directly from another module code with:
 
   $reo->action_call( 'test_action', @args );
-  
+
 The package file will look like this:
 
    package Web/Reactor/Actions/demo/test_action;
    use strict;
-   
+
    sub main
    {
      my $reo  = shift; # Web::Reactor object/instance
      my %args = @_; # all args passed to the action
-     
+
      my $html_args = $args{ 'HTML_ARGS' }; # all
      ...
      return $result_data; # usually html text
    }
-   
-$html_args is hashref with all args give inside the html code if this action 
+
+$html_args is hashref with all args give inside the html code if this action
 is called from a html text. If you look the example above:
 
   <&test_action arg1=val1 arg2=val2 flag1 flag2...>
-  
+
 The $html_args will look like this:
 
   $html_args = {
@@ -1504,7 +1503,7 @@ The $html_args will look like this:
 
 =head1 HTTP PARAMETERS NAMES
 
-Web::Reactor uses underscore and one or two letters for its system http/html 
+Web::Reactor uses underscore and one or two letters for its system http/html
 parameters. Some of the system params are:
 
   _PN  -- html page name (points to file template, restricted to alphanumeric)
@@ -1559,12 +1558,12 @@ needed, you just need to:
    # this is equivalent to
    my $ref_page_sid = $reo->get_ref_page_session_id();
    $reo->forward( _P => $ref_page_sid );
-   
+
 Each page instance knows the caller page session and can give control back to.
 However it may pass more data when returning back to the caller:
 
    $reo->forward_back( MORE_DATA => 'is here', OPTIONS_LIST => \@list );
-   
+
 When new page instance has to be called (created):
 
 
@@ -1589,7 +1588,7 @@ Some entries may be omitted and default values are:
   * HTML_DIRS     -- [ "$APP_ROOT/html" ]
   * SESS_VAR_DIR  -- [ "$APP_ROOT/var"  ]
   * DEBUG         -- 0
-   
+
 =head1 API FUNCTIONS
 
   # TODO: input
@@ -1611,14 +1610,14 @@ possible to be changed and/or extended. However drastic changes are not planned 
 If you are interested in the project or have some notes etc, contact me at:
 
   Vladi Belperchinov-Shabanski "Cade"
-  <cade@bis.bg> 
-  <cade@biscom.net> 
-  <cade@cpan.org> 
+  <cade@bis.bg>
+  <cade@biscom.net>
+  <cade@cpan.org>
   <cade@datamax.bg>
 
 further contact info, mailing list and github repository is listed below.
 
-=head1 FIXME: TODO: 
+=head1 FIXME: TODO:
 
   * config examples
   * pages example
@@ -1641,7 +1640,7 @@ directory inside distribution tarball or inside the github repository. This is
 fully functional (however stupid :)) application. It shows how data is processed,
 calling pages/views, inspecting page (calling views) stack, html forms automation,
 forwarding.
-  
+
 =head1 MAILING LIST
 
   web-reactor@googlegroups.com
@@ -1649,7 +1648,7 @@ forwarding.
 =head1 GITHUB REPOSITORY
 
   https://github.com/cade-vs/perl-web-reactor
-  
+
   git clone git://github.com/cade-vs/perl-web-reactor.git
 
 =head1 AUTHOR

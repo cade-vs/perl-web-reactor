@@ -429,6 +429,7 @@ sub button
   my $name  = uc $opt{ 'NAME'  };
   my $class = uc $opt{ 'CLASS' } || 'button';
   my $value =    $opt{ 'VALUE' };
+  my $args  =    $opt{ 'ARGS'  };
 
   $value =~ s/'//g;
   $value = str_html_escape( $value );
@@ -438,7 +439,7 @@ sub button
   
   $name =~ s/^button://i;
 
-  $text .= "<input class='$class' type='submit' name='button:$name' value='$value' onDblClick='return false;' >";
+  $text .= "<input class='$class' type='submit' name='button:$name' value='$value' onDblClick='return false;' $args>";
 
   $text .= "\n";
   return $text;
@@ -452,8 +453,8 @@ sub image_button
 
   my $name  = uc $opt{ 'NAME'  };
   my $class = uc $opt{ 'CLASS' } || 'image_button';
-  my $src   =    $opt{ 'SRC'   } || $opt{ 'IMG' };
-  my $extra =    $opt{ 'EXTRA' };
+  my $src   =    $opt{ 'SRC'   } || $opt{ 'IMG'  };
+  my $args  =    $opt{ 'ARGS'  };
 
   my $options;
 
@@ -468,7 +469,7 @@ sub image_button
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
   my $text;
 
-  $text .= "<input class='$class' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;' >";
+  $text .= "<input class='$class' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;' $args>";
 
   $text .= "\n";
   return $text;

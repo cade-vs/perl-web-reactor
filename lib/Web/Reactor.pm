@@ -242,7 +242,7 @@ sub main_process
       }
     elsif( $n eq 'BUTTON_NAME' )  
       {
-      my ( $b, $i ) = split /:/, $v, 2;
+      my ( undef, $b, $i ) = split /:/, $v, 3;
       $input_user_hr->{ 'BUTTON'    } = uc $b;
       $input_user_hr->{ 'BUTTON_ID' } =    $i;
       }

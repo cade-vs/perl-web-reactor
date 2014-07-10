@@ -347,11 +347,10 @@ sub main_process
     $self->log_dumper( "USER INPUT-------------------------------------", $self->get_user_input()   );
     $self->log_dumper( "SAFE INPUT-------------------------------------", $self->get_safe_input()   );
     $self->log_dumper( "PAGE SESSION-----------------------------------", $self->get_page_session() );
-    $self->log_dumper( "REFP SESSION-----------------------------------", $self->get_page_session( 1 ) );
+    $self->log_dumper( "REF  SESSION-----------------------------------", $self->get_page_session( 1 ) );
     # $self->log_dumper( "USER SESSION-----------------------------------", $self->get_user_session() );
     }
 
-    print STDERR "+++++++++++++++++++++++++ PRE RENDER!\n";
   # 9. render output action/page
   if( $action_name )
     {
@@ -361,7 +360,6 @@ sub main_process
     {
     $self->render( PAGE => $page_name );
     }
-    print STDERR "+++++++++++++++++++++++++ POST RENDER!\n";
 }
 
 sub __create_new_user_session
@@ -997,7 +995,6 @@ sub render
     print "</pre><hr>";
     }
 
-    print STDERR "+++++++++++++++++++++++++ END RENDER, PRE SINK CONTENT!\n";
   sink 'CONTENT';
 }
 

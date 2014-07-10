@@ -297,7 +297,7 @@ sub main_process
     }
 
   # 6. remap form input data, post to safe input
-  my $form_name = $input_safe_hr->{ 'FORM_NAME' }; # FIXME: replace with _FN
+  my $form_name = $input_safe_hr->{ 'FORM_NAME' }; # FIXME: replace with _FO
   if( $form_name and exists $page_shr->{ ':FORM_DEF' }{ $form_name } )
     {
     my $rm = $page_shr->{ ':FORM_DEF' }{ $form_name }{ 'RET_MAP' };
@@ -308,6 +308,16 @@ sub main_process
       delete $input_user_hr->{ $k };
       }
     }
+
+  my $frame_name = $input_safe_hr->{ '_FR' };
+  if( $frame_name =~ /^[a-zA-Z_0-9]+$/ )
+    {
+    $page_shr->{ ':FRAME_NAME' } = $frame_name;
+    }
+  else
+    {
+    $self->log( "error: invalid frame name [$frame_name]" );
+    }  
 
   # 7. get action from input (USER/CGI) or page session
   my $action_name = lc( $input_safe_hr->{ '_AN' } || $input_user_hr->{ '_AN' } || $page_shr->{ ':ACTION_NAME' } );
@@ -506,6 +516,15 @@ sub get_input_form_name
   return $form_name;
 }
 
+sub get_page_frame
+{
+  my $self  = shift;
+
+  my $page_shr  = $self->get_page_session();
+  
+  return exists $page_shr->{ ':FRAME_NAME' } ? $page_shr->{ ':FRAME_NAME' } : undef;
+}
+
 sub args
 {
   my $self = shift;
@@ -568,6 +587,12 @@ sub args_new
   my %args = @_;
 
   $args{ '_R' } = $self->get_page_session_id();
+
+  my $page_shr = $self->get_page_session();
+  if( exists $page_shr->{ ':FRAME_NAME' } )
+    {
+    $args{ '_FR' } = $page_shr->{ ':FRAME_NAME' };
+    }
 
   return $self->args( %args );
 }

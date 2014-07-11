@@ -980,7 +980,7 @@ sub render
 
   $self->log_debug( "debug: page response content: page, action, type, headers, data: " . Dumper( $page, $action, $page_type, $page_headers, $page_type =~ /^text\// ? $page_data : '*binary*' ) ) if $self->is_debug() > 1;
 
-  if( $self->is_debug() and $page_type eq 'text/html' )
+  if( $self->is_debug() > 1 and $page_type eq 'text/html' )
     {
     local $Data::Dumper::Sortkeys = 1;
     local $Data::Dumper::Terse = 1;

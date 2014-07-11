@@ -310,14 +310,17 @@ sub main_process
     }
 
   my $frame_name = $input_safe_hr->{ '_FR' };
-  if( $frame_name =~ /^[a-zA-Z_0-9]+$/ )
+  if( $frame_name ne '' )
     {
-    $page_shr->{ ':FRAME_NAME' } = $frame_name;
-    }
-  else
-    {
-    $self->log( "error: invalid frame name [$frame_name]" );
-    }  
+    if( $frame_name =~ /^[a-zA-Z_0-9]+$/ )
+      {
+      $page_shr->{ ':FRAME_NAME' } = $frame_name;
+      }
+    else
+      {
+      $self->log( "error: invalid frame name [$frame_name]" );
+      }  
+    }   
 
   # 7. get action from input (USER/CGI) or page session
   my $action_name = lc( $input_safe_hr->{ '_AN' } || $input_user_hr->{ '_AN' } || $page_shr->{ ':ACTION_NAME' } );
@@ -332,22 +335,27 @@ sub main_process
 
   # 8. get page from input (USER/CGI) or page session
   my $page_name = lc( $input_safe_hr->{ '_PN' } || $input_user_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || 'index' );
-  if( $page_name =~ /^[a-z_0-9]+$/ )
+  if( $page_name ne '' )
     {
-    $page_shr->{ ':PAGE_NAME' } = $page_name;
-    }
-  else
-    {
-    $self->log( "error: invalid page name [$page_name]" );
-    }
+    if( $page_name =~ /^[a-z_0-9]+$/ )
+      {
+      $page_shr->{ ':PAGE_NAME' } = $page_name;
+      }
+    else
+      {
+      $self->log( "error: invalid page name [$page_name]" );
+      }
+    }      
 
   # pre-9. print debug status...
   if( $self->is_debug() )
     {
+    my $psid = $self->get_page_session_id( 0 ) || 'empty';
+    my $rsid = $self->get_page_session_id( 1 ) || 'empty';
     $self->log_dumper( "USER INPUT-------------------------------------", $self->get_user_input()   );
     $self->log_dumper( "SAFE INPUT-------------------------------------", $self->get_safe_input()   );
-    $self->log_dumper( "PAGE SESSION-----------------------------------", $self->get_page_session() );
-    $self->log_dumper( "REF  SESSION-----------------------------------", $self->get_page_session( 1 ) );
+    $self->log_dumper( "PAGE SESSION [$psid]-----------------------------------", $self->get_page_session() );
+    $self->log_dumper( "REF  SESSION [$rsid]-----------------------------------", $self->get_page_session( 1 ) );
     # $self->log_dumper( "USER SESSION-----------------------------------", $self->get_user_session() );
     }
 
@@ -564,7 +572,8 @@ sub args_back
   my $self = shift;
   my %args = @_;
 
-  $args{ '_P' } = $self->get_ref_page_session_id();
+  $args{ '_P'  } = $self->get_ref_page_session_id();
+  $args{ '_PN' } = 'empty' unless $args{ '_P' };
 
   return $self->args( %args );
 }
@@ -575,6 +584,7 @@ sub args_back_back
   my %args = @_;
 
   $args{ '_P' } = $self->get_ref_page_session_id( 1 );
+  $args{ '_PN' } = 'empty' unless $args{ '_P' };
 
   return $self->args( %args );
 }
@@ -672,7 +682,7 @@ sub __make_headers
 
   $headers .= "\n"; # just single newline separator
 
-  $self->log_dumper( 'HEADERS', $headers );
+  $self->log_dumper( 'HEADERS----------------------------------------', $headers );
 
   return $headers;
 }
@@ -810,6 +820,7 @@ sub log_debug
   my $self = shift;
 
   return unless $self->is_debug();
+  chomp( @_ );
   my $msg = join( "\n", @_ );
   $msg = "debug: $msg" unless $msg =~ /^debug:/i;
   $self->log( $msg );
@@ -978,9 +989,15 @@ sub render
   print $page_headers;
   print $page_data;
 
-  $self->log_debug( "debug: page response content: page, action, type, headers, data: " . Dumper( $page, $action, $page_type, $page_headers, $page_type =~ /^text\// ? $page_data : '*binary*' ) ) if $self->is_debug() > 1;
+  $self->log_debug( "debug: page response content: page, action, type, headers, data: " . Dumper( $page, $action, $page_type, $page_headers, $page_type =~ /^text\// ? $page_data : '*binary*' ) ) if $self->is_debug() > 2;
 
   if( $self->is_debug() > 1 and $page_type eq 'text/html' )
+    {
+    my $psid = $self->get_page_session_id( 0 ) || 'empty';
+    my $rsid = $self->get_page_session_id( 1 ) || 'empty';
+    print "<hr><pre>[$rsid] << [$psid]</pre>";
+    }
+  if( $self->is_debug() > 2 and $page_type eq 'text/html' )
     {
     local $Data::Dumper::Sortkeys = 1;
     local $Data::Dumper::Terse = 1;

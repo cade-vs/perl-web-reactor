@@ -54,8 +54,11 @@ sub html_new_id
   my $form_name = $self->{ 'FORM_NAME' };
   $form_name or confess "empty form name, need begin() first";
 
+  my $reo = $self->{ 'REO_REACTOR' };
+  my $psid = $reo->get_page_session_id();
   $self->{ 'HTML_ID_COUNTER' }++;
-  return $form_name . "_EID_" . $self->{ 'HTML_ID_COUNTER' };
+  # FIXME: hash $psid once more to hide...
+  return $form_name . "_EID_$psid\_" . $self->{ 'HTML_ID_COUNTER' };
 }
 
 ##############################################################################
@@ -66,10 +69,11 @@ sub begin
 
   my %opt = @_;
 
-  my $form_name = uc $opt{ 'NAME'   };
-  my $form_id   = uc $opt{ 'ID'     } || $form_name;
-  my $method    = uc $opt{ 'METHOD' } || 'POST';
-  my $action    =    $opt{ 'ACTION' } || '?';
+  my $form_name      = uc $opt{ 'NAME'   };
+  my $form_id        = uc $opt{ 'ID'     } || $form_name;
+  my $method         = uc $opt{ 'METHOD' } || 'POST';
+  my $action         =    $opt{ 'ACTION' } || '?';
+  my $default_button = $opt{ 'DEFAULT_BUTTON' };
 
   $self->{ 'CLASS_MAP' } = $opt{ 'CLASS_MAP' } || {};
 
@@ -92,6 +96,12 @@ sub begin
   my $state_keeper = $reo->args_here( FORM_NAME => $form_name ); # keep state and more args
   $text .= "<form action='$action' method='$method' enctype='multipart/form-data'>";
   $text .= "<input type=hidden name=_ value=$state_keeper>";
+  $text .= "<input style='display: none' name='__avoidiebug__'>"; # stupid IE bugs
+  if( $default_button )
+    {
+    $text .= "<input style='display: none' type='image' name='BUTTON:$default_button' src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQI12NgYGBgAAAABQABXvMqOgAAAABJRU5ErkJggg==' border=0 height=0 width=0 onDblClick='return false;'>"
+    }
+
 
   return $text;
 }
@@ -481,16 +491,14 @@ sub image_button_default
 
   my %opt = @_;
 
-  my $reo = $self->{ 'REO_REACTOR' };
-  my $user_session = $reo->get_user_session();
-  my $user_agent = $user_session->{ ':HTTP_ENV_HR' }{ 'HTTP_USER_AGENT' };
+  my $user_agent = $self->{ 'REO_REACTOR' }->get_user_session_agent();
 
   my $default_class = 'hidden';
   $default_class = 'hidden2' if $user_agent =~ /MSIE|Safari/;
 
   $opt{ 'HEIGHT' } = 0;
   $opt{ 'WIDTH'  } = 0;
-  $opt{ 'CLASS'  } = $opt{ 'CLASS'  } || $default_class;
+  $opt{ 'CLASS'  } = $opt{ 'CLASS' } || $default_class;
 
   return $self->image_button( %opt );
 }

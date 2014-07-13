@@ -1268,6 +1268,16 @@ sub need_post_method
   $self->render( PAGE => 'epostrequired' );
 }
 
+sub get_user_session_agent
+{
+  my $self = shift;
+
+  my $user_session = $self->get_user_session();
+  my $user_agent   = $user_session->{ ':HTTP_ENV_HR' }{ 'HTTP_USER_AGENT' };
+  
+  return $user_agent || 'n/a';
+}
+
 ##############################################################################
 
 sub load_trans

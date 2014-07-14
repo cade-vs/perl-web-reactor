@@ -81,6 +81,7 @@ sub begin
   $method    =~ /^(POST|GET)$/  or confess "METHOD can either POST or GET";
 
   $self->{ 'FORM_NAME' } = $form_name;
+  $self->{ 'FORM_ID'   } = $form_id;
   $self->{ 'RADIO'     } = {};
   $self->{ 'RET_MAP'   } = {}; # return data mapping (combo, checkbox, etc.)
 
@@ -94,14 +95,14 @@ sub begin
   $page_session->{ ':FORM_DEF' }{ $form_name } = {};
 
   my $state_keeper = $reo->args_here( FORM_NAME => $form_name ); # keep state and more args
-  $text .= "<form action='$action' method='$method' enctype='multipart/form-data'>";
-  $text .= "<input type=hidden name=_ value=$state_keeper>";
-  $text .= "<input style='display: none' name='__avoidiebug__'>"; # stupid IE bugs
+  $text .= "<form name='$form_name' id='$form_id' action='$action' method='$method' enctype='multipart/form-data'>";
+  $text .= "</form>";
+  $text .= "<input type=hidden name='_' value='$state_keeper' form='$form_id'>";
+  $text .= "<input style='display: none;' name='__avoidiebug__' form='$form_id'>"; # stupid IE bugs
   if( $default_button )
     {
-    $text .= "<input style='display: none' type='image' name='BUTTON:$default_button' src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQI12NgYGBgAAAABQABXvMqOgAAAABJRU5ErkJggg==' border=0 height=0 width=0 onDblClick='return false;'>"
+    $text .= "<input style='display: none;' type='image' name='BUTTON:$default_button' src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQI12NgYGBgAAAABQABXvMqOgAAAABJRU5ErkJggg==' border=0 height=0 width=0 onDblClick='return false;' form='$form_id'>"
     }
-
 
   return $text;
 }
@@ -113,7 +114,7 @@ sub end
   my $text;
 
   $text .= $self->end_radios();
-  $text .= "</form>";
+  # $text .= "</form>";
 
 # FIXME: TODO: debug info inside html text, begin formname end etc.
 
@@ -164,20 +165,15 @@ sub checkbox
 
   my $ch_id = $self->html_new_id(); # checkbox data holder
 
+  my $form_id = $self->{ 'FORM_ID' };
   #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
   #$text .= "<input type='checkbox' name='$name' value='1' $options>";
   $text .= "\n";
-  $text .= "<input type=hidden   name='$name' id='$ch_id' value='$value'>";
+  $text .= "<input type='hidden' name='$name' id='$ch_id' value='$value' form='$form_id'>";
   $text .= qq[ <input type='checkbox' $options onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
   $text .= "\n";
 
   return $text;
-}
-
-sub cb
-{
-  my $self = shift;
-  return $self->checkbox( @_ );
 }
 
 ##############################################################################
@@ -198,8 +194,9 @@ sub radio
 
   my $text;
 
+  my $form_id = $self->{ 'FORM_ID' };
   my $checked = $on ? 'checked' : undef;
-  $text .= "<input type='radio' $checked name='$name' value='$val'>";
+  $text .= "<input type='radio' $checked name='$name' value='$val' form='$form_id'>";
 
   $self->__set_ret_map( $name, $val => $ret ) if defined $ret;
   $self->{ 'RET_MAP' }{ $val } = $ret;
@@ -289,6 +286,7 @@ sub select
   hash_uc_ipl( $_ ) for @$sel_data;
 
   my $text;
+  my $form_id = $self->{ 'FORM_ID' };
 
   if( $opt{ 'RADIO' } )
     {
@@ -308,7 +306,7 @@ sub select
   else
     {
     my $multiple = 'multiple' if $opt{ 'MULTIPLE' };
-    $text .= "<select class='$class' name='$name' size='$rows' $multiple>";
+    $text .= "<select class='$class' name='$name' size='$rows' $multiple form='$form_id'>";
 
     my $pad = '&nbsp;' x 3;
     for my $hr ( @$sel_data )
@@ -376,8 +374,9 @@ sub textarea
   $data = str_html_escape( $data );
 
   my $text;
+  my $form_id = $self->{ 'FORM_ID' };
 
-  $text .= "<textarea class='$class' name='$name' rows='$rows' cols='$cols' $options>$data</textarea>";
+  $text .= "<textarea class='$class' name='$name' rows='$rows' cols='$cols' $options form='$form_id'>$data</textarea>";
 
   $text .= "\n";
   return $text;
@@ -421,7 +420,8 @@ sub input
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
   my $text;
 
-  $text .= "<input class='$class' name='$name' value='$value' $options>";
+  my $form_id = $self->{ 'FORM_ID' };
+  $text .= "<input class='$class' name='$name' value='$value' $options form='$form_id'>";
 
   $text .= "\n";
   return $text;
@@ -446,10 +446,11 @@ sub button
 
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
   my $text;
-  
+
   $name =~ s/^button://i;
 
-  $text .= "<input class='$class' type='submit' name='button:$name' value='$value' onDblClick='return false;' $args>";
+  my $form_id = $self->{ 'FORM_ID' };
+  $text .= "<input class='$class' type='submit' name='button:$name' value='$value' onDblClick='return false;' $args form='$form_id'>";
 
   $text .= "\n";
   return $text;
@@ -479,7 +480,8 @@ sub image_button
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
   my $text;
 
-  $text .= "<input class='$class' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;' $args>";
+  my $form_id = $self->{ 'FORM_ID' };
+  $text .= "<input class='$class' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;' $args form='$form_id'>";
 
   $text .= "\n";
   return $text;

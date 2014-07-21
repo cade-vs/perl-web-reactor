@@ -70,7 +70,7 @@ sub begin
   my %opt = @_;
 
   my $form_name      = uc $opt{ 'NAME'   };
-  my $form_id        = uc $opt{ 'ID'     } || $form_name;
+  my $form_id        = uc $opt{ 'ID'     };
   my $method         = uc $opt{ 'METHOD' } || 'POST';
   my $action         =    $opt{ 'ACTION' } || '?';
   my $default_button = $opt{ 'DEFAULT_BUTTON' };
@@ -86,7 +86,7 @@ sub begin
   $form_id .= "_$psid";
   
   $self->{ 'FORM_NAME' } = $form_name;
-  $self->{ 'FORM_ID'   } = $form_id;
+  $self->{ 'FORM_ID'   } = $form_id = $form_id || $self->html_new_id();
   $self->{ 'RADIO'     } = {};
   $self->{ 'RET_MAP'   } = {}; # return data mapping (combo, checkbox, etc.)
 

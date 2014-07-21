@@ -70,7 +70,7 @@ sub begin
   my %opt = @_;
 
   my $form_name      = uc $opt{ 'NAME'   };
-  my $form_id        = uc $opt{ 'ID'     } || $form_name;
+  my $form_id        = uc $opt{ 'ID'     };
   my $method         = uc $opt{ 'METHOD' } || 'POST';
   my $action         =    $opt{ 'ACTION' } || '?';
   my $default_button = $opt{ 'DEFAULT_BUTTON' };
@@ -81,7 +81,7 @@ sub begin
   $method    =~ /^(POST|GET)$/  or confess "METHOD can either POST or GET";
 
   $self->{ 'FORM_NAME' } = $form_name;
-  $self->{ 'FORM_ID'   } = $form_id;
+  $self->{ 'FORM_ID'   } = $form_id = $form_id || $self->html_new_id();
   $self->{ 'RADIO'     } = {};
   $self->{ 'RET_MAP'   } = {}; # return data mapping (combo, checkbox, etc.)
 
@@ -391,7 +391,7 @@ sub input
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'INPUT' } || 'line';
+  my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'INPUT' } || 'line';
   my $value =    $opt{ 'VALUE' };
   my $id    = uc $opt{ 'ID' } || $name;
   # FIXME: default data?

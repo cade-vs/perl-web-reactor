@@ -1350,6 +1350,18 @@ sub new_form
 
 ##############################################################################
 
+sub html_new_id
+{
+  my $self = shift;
+
+  my $psid = $self->get_page_session_id();
+  $self->{ 'HTML_ID_COUNTER' }++;
+  # FIXME: hash $psid once more to hide...
+  return "REO_EID_$psid\_" . $self->{ 'HTML_ID_COUNTER' };
+}
+
+##############################################################################
+
 =pod
 
 =head1 NAME

@@ -240,7 +240,7 @@ sub main_process
       $input_user_hr->{ 'BUTTON'    } = uc $1;
       $input_user_hr->{ 'BUTTON_ID' } =    $3;
       }
-    elsif( $n eq 'BUTTON_NAME' )  
+    elsif( $n eq '_BUTTON_NAME' )  
       {
       my ( undef, $b, $i ) = split /:/, $v, 3;
       $input_user_hr->{ 'BUTTON'    } = uc $b;

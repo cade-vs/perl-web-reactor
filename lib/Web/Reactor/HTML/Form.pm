@@ -85,7 +85,7 @@ sub begin
 
   $form_id ||= $form_name;
   $form_id .= "_$psid";
-  
+
   $self->{ 'FORM_NAME' } = $form_name;
   $self->{ 'FORM_ID'   } = $form_id = $form_id || $self->html_new_id();
   $self->{ 'RADIO'     } = {};
@@ -411,13 +411,13 @@ sub input
 
   my $options;
 
-  $options .= "size='$size' "      if $size > 0;
-  $options .= "maxlength='$maxl' " if $maxl > 0;
   $options .= $opt{ 'DISABLED' } ? 'disabled ' : '';
-  #$options .= "onFocus=\"this.value=''\" " if $opt{ 'FOCUS_AUTO_CLEAR' };
-  $options .= "ID='$id' "   if $id ne '';
-  #$options .= "ID='$name' " if $opt{ 'NAME_ID' } or $id eq '';
-  $options .= "type='password' " if $opt{ 'PASS' } || $opt{ 'PASSWORD' };
+  $options .= "size='$size' "                if $size > 0;
+  $options .= "maxlength='$maxl' "           if $maxl > 0;
+  # $options .= "onFocus=\"this.value=''\" "   if $opt{ 'FOCUS_AUTO_CLEAR' };
+  $options .= "ID='$id' "                    if $id ne '';
+  # $options .= "ID='$name' "                  if $opt{ 'NAME_ID' } or $id eq '';
+  $options .= "type='password' "             if $opt{ 'PASS' } || $opt{ 'PASSWORD' };
 
 #  my $extra = $opt{ 'EXTRA' };
   #$options .= " $extra ";

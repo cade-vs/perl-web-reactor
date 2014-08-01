@@ -70,7 +70,7 @@ sub begin
   my %opt = @_;
 
   my $form_name      = uc $opt{ 'NAME'   };
-  my $form_id        = uc $opt{ 'ID'     };
+  my $form_id        =    $opt{ 'ID'     };
   my $method         = uc $opt{ 'METHOD' } || 'POST';
   my $action         =    $opt{ 'ACTION' } || '?';
   my $default_button = $opt{ 'DEFAULT_BUTTON' };
@@ -83,6 +83,7 @@ sub begin
   my $reo = $self->{ 'REO_REACTOR' };
   my $psid = $reo->get_page_session_id();
 
+  $form_id ||= $form_name;
   $form_id .= "_$psid";
   
   $self->{ 'FORM_NAME' } = $form_name;
@@ -252,6 +253,7 @@ sub select
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
+  my $id    =    $opt{ 'ID'    };
   my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'SELECT' } || 'select';
   my $rows  =    $opt{ 'SIZE'  } || $opt{ 'ROWS'  } || 1;
 
@@ -311,7 +313,7 @@ sub select
   else
     {
     my $multiple = 'multiple' if $opt{ 'MULTIPLE' };
-    $text .= "<select class='$class' name='$name' size='$rows' $multiple form='$form_id'>";
+    $text .= "<select class='$class' id='$id' name='$name' size='$rows' $multiple form='$form_id'>";
 
     my $pad = '&nbsp;' x 3;
     for my $hr ( @$sel_data )
@@ -381,7 +383,7 @@ sub textarea
   my $text;
   my $form_id = $self->{ 'FORM_ID' };
 
-  $text .= "<textarea class='$class' name='$name' rows='$rows' cols='$cols' $options form='$form_id'>$data</textarea>";
+  $text .= "<textarea class='$class' id='$id' name='$name' rows='$rows' cols='$cols' $options form='$form_id'>$data</textarea>";
 
   $text .= "\n";
   return $text;
@@ -398,7 +400,7 @@ sub input
   my $name  = uc $opt{ 'NAME'  };
   my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'INPUT' } || 'line';
   my $value =    $opt{ 'VALUE' };
-  my $id    = uc $opt{ 'ID' } || $name;
+  my $id    =    $opt{ 'ID'    };
   # FIXME: default data?
   my $size  =    $opt{ 'SIZE'    } || $opt{ 'LEN' } || $opt{ 'WIDTH' };
   my $maxl  =    $opt{ 'MAXLEN'  } || $opt{ 'MAX' };
@@ -442,6 +444,7 @@ sub button
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
+  my $id    =    $opt{ 'ID'    };
   my $class =    $opt{ 'CLASS' } || 'button';
   my $value =    $opt{ 'VALUE' };
   my $args  =    $opt{ 'ARGS'  };
@@ -455,7 +458,7 @@ sub button
   $name =~ s/^button://i;
 
   my $form_id = $self->{ 'FORM_ID' };
-  $text .= "<input class='$class' type='submit' name='button:$name' value='$value' onDblClick='return false;' $args form='$form_id'>";
+  $text .= "<input class='$class' id='$id' type='submit' name='button:$name' value='$value' onDblClick='return false;' $args form='$form_id'>";
 
   $text .= "\n";
   return $text;
@@ -468,6 +471,7 @@ sub image_button
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
+  my $id    =    $opt{ 'ID'    };
   my $class =    $opt{ 'CLASS' } || 'image_button';
   my $src   =    $opt{ 'SRC'   } || $opt{ 'IMG'  };
   my $args  =    $opt{ 'ARGS'  };
@@ -486,7 +490,7 @@ sub image_button
   my $text;
 
   my $form_id = $self->{ 'FORM_ID' };
-  $text .= "<input class='$class' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;' $args form='$form_id'>";
+  $text .= "<input class='$class' id='$id' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;' $args form='$form_id'>";
 
   $text .= "\n";
   return $text;
@@ -508,6 +512,13 @@ sub image_button_default
   $opt{ 'CLASS'  } = $opt{ 'CLASS' } || $default_class;
 
   return $self->image_button( %opt );
+}
+
+sub get_id
+{
+  my $self = shift;
+
+  return $self->{ 'FORM_ID'   };
 }
 
 =pod

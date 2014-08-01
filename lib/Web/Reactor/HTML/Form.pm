@@ -84,7 +84,7 @@ sub begin
   my $psid = $reo->get_page_session_id();
 
   $form_id .= "_$psid";
-  
+
   $self->{ 'FORM_NAME' } = $form_name;
   $self->{ 'FORM_ID'   } = $form_id = $form_id || $self->html_new_id();
   $self->{ 'RADIO'     } = {};
@@ -398,7 +398,7 @@ sub input
   my $name  = uc $opt{ 'NAME'  };
   my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'INPUT' } || 'line';
   my $value =    $opt{ 'VALUE' };
-  my $id    = uc $opt{ 'ID' } || $name;
+  my $id    =    $opt{ 'ID'    } || $name;
   # FIXME: default data?
   my $size  =    $opt{ 'SIZE'    } || $opt{ 'LEN' } || $opt{ 'WIDTH' };
   my $maxl  =    $opt{ 'MAXLEN'  } || $opt{ 'MAX' };
@@ -409,13 +409,13 @@ sub input
 
   my $options;
 
-  $options .= "size='$size' "      if $size > 0;
-  $options .= "maxlength='$maxl' " if $maxl > 0;
   $options .= $opt{ 'DISABLED' } ? 'disabled ' : '';
-  #$options .= "onFocus=\"this.value=''\" " if $opt{ 'FOCUS_AUTO_CLEAR' };
-  $options .= "ID='$id' "   if $id ne '';
-  #$options .= "ID='$name' " if $opt{ 'NAME_ID' } or $id eq '';
-  $options .= "type='password' " if $opt{ 'PASS' } || $opt{ 'PASSWORD' };
+  $options .= "size='$size' "                if $size > 0;
+  $options .= "maxlength='$maxl' "           if $maxl > 0;
+  # $options .= "onFocus=\"this.value=''\" "   if $opt{ 'FOCUS_AUTO_CLEAR' };
+  $options .= "ID='$id' "                    if $id ne '';
+  # $options .= "ID='$name' "                  if $opt{ 'NAME_ID' } or $id eq '';
+  $options .= "type='password' "             if $opt{ 'PASS' } || $opt{ 'PASSWORD' };
 
 #  my $extra = $opt{ 'EXTRA' };
   #$options .= " $extra ";

@@ -16,7 +16,7 @@ use Exporter;
 our @ISA = qw( Exporter );
 our @EXPORT = qw(
                 html_next_id
-                
+
                 html_escape
                 html_table
 
@@ -126,7 +126,6 @@ sub html_table
   $text .= "<!--- BEGIN TABLE: $t_cmt --->\n" if $t_cmt;
   $text .= "<table $t_args>\n<tbody>\n";
 
-
   my $r_class = $tr1;
 
   my $row_num = 0;
@@ -188,8 +187,9 @@ sub html_table
         {
         $cell    = hash_uc( $cell );
         $val     = $cell->{ 'DATA' };
-        $c_args ||= $cell->{ 'ARGS' };
-        $c_args ||= "class='" . $cell->{ 'CLASS' } . "'" if $cell->{ 'CLASS' };
+        $c_args  = $cell->{ 'ARGS' };
+        $c_args .= " class='" . $cell->{ 'CLASS' } . "'" if $cell->{ 'CLASS' };
+        $c_args .= " width='" . $cell->{ 'WIDTH' } . "'" if $cell->{ 'WIDTH' };
         }
       else
         {
@@ -266,19 +266,19 @@ sub html_ftree
   $t_args ||= 'class=' . $opt{ 'CLASS' } if $opt{ 'CLASS' };
 
   $ftree_item_id++;
-  
+
   my $ftree_table_id = "FTREE_TABLE_$ftree_item_id";
 
   my $html;
-  
+
   $html .= "<table id=$ftree_table_id $t_args>";
-  $html .= "\n";  
-  
+  $html .= "\n";
+
   $html .= __html_ftree_branch( $data, $ftree_table_id, $ftree_table_id . '.' );
-  
+
   $html .= "</table>";
-  $html .= "\n";  
-  
+  $html .= "\n";
+
   return $html;
 }
 
@@ -290,7 +290,7 @@ sub __html_ftree_branch
   my $level          = shift;
 
   my $html;
-  
+
   for my $row ( @$data )
     {
     my $label;
@@ -309,12 +309,12 @@ sub __html_ftree_branch
     else
       {
       $label = $row;
-      }  
+      }
 
     $ftree_item_id++;
 
     my $row_id = $branch_id . $ftree_item_id . '.';
-    
+
     # $label = "($row_id) $label"; # DEBUG
 
     my $hidden = $level > 0 ? "style='display: none'" : undef;
@@ -328,11 +328,11 @@ sub __html_ftree_branch
     else
       {
       $html .= "<tr id=$row_id $hidden $r_args><td>$label</td></tr>";
-      }  
-    $html .= "\n";  
+      }
+    $html .= "\n";
     }
-  
-  return $html;  
+
+  return $html;
 }
 
 ##############################################################################
@@ -473,7 +473,7 @@ opt_hash is inline with the following items:
 
     ARGS              -- args for containing TABLE element
     VERTICAL          -- if true, tabs will be vertical
-    
+
     ACTIVE_TAB_FORM_FEEDBACK_ID -- html INPUT element to hold active tab id
 
 example:
@@ -512,7 +512,7 @@ sub html_tabs_table
 
   my $tab = new Web::Reactor::HTML::Tab(
                                    REO_REACTOR => $reo,
-                                   CLASS_ON    => $class_on, 
+                                   CLASS_ON    => $class_on,
                                    CLASS_OFF   => $class_off,
                                    ACTIVE_TAB_FORM_FEEDBACK_ID => $opt{ 'ACTIVE_TAB_FORM_FEEDBACK_ID' },
                                  );

@@ -70,6 +70,12 @@ sub new
 #    $self->{ 'ENV' }{ 'HTML_DIRS' } = [ "$root/html" ];
 #    }
 
+  if( ! $env{ 'LIB_DIRS' } or @{ $env{ 'LIB_DIRS' } } < 1 )
+    {
+    my $root = $env{ 'APP_ROOT' };
+    $env{ 'LIB_DIRS' } = [ "$root/lib" ];
+    }
+  
   my $lib_dirs = $env{ 'LIB_DIRS' } || [];
   for my $lib_dir ( @$lib_dirs )
     {

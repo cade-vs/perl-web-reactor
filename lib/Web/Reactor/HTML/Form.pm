@@ -54,8 +54,11 @@ sub html_new_id
   my $form_name = $self->{ 'FORM_NAME' };
   $form_name or confess "empty form name, need begin() first";
 
+  my $reo = $self->{ 'REO_REACTOR' };
+  my $psid = $reo->get_page_session_id();
   $self->{ 'HTML_ID_COUNTER' }++;
-  return $form_name . "_EID_" . $self->{ 'HTML_ID_COUNTER' };
+  # FIXME: hash $psid once more to hide...
+  return $form_name . "_EID_$psid\_" . $self->{ 'HTML_ID_COUNTER' };
 }
 
 ##############################################################################
@@ -66,17 +69,25 @@ sub begin
 
   my %opt = @_;
 
-  my $form_name = uc $opt{ 'NAME'   };
-  my $form_id   = uc $opt{ 'ID'     } || $form_name;
-  my $method    = uc $opt{ 'METHOD' } || 'POST';
-  my $action    =    $opt{ 'ACTION' } || '?';
+  my $form_name      = uc $opt{ 'NAME'   };
+  my $form_id        =    $opt{ 'ID'     };
+  my $method         = uc $opt{ 'METHOD' } || 'POST';
+  my $action         =    $opt{ 'ACTION' } || '?';
+  my $default_button = $opt{ 'DEFAULT_BUTTON' };
 
   $self->{ 'CLASS_MAP' } = $opt{ 'CLASS_MAP' } || {};
 
   $form_name =~ /^[A-Z_0-9:]+$/ or confess "invalid or empty NAME attribute";
   $method    =~ /^(POST|GET)$/  or confess "METHOD can either POST or GET";
 
+  my $reo = $self->{ 'REO_REACTOR' };
+  my $psid = $reo->get_page_session_id();
+
+  $form_id ||= $form_name;
+  $form_id .= "_$psid";
+
   $self->{ 'FORM_NAME' } = $form_name;
+  $self->{ 'FORM_ID'   } = $form_id = $form_id || $self->html_new_id();
   $self->{ 'RADIO'     } = {};
   $self->{ 'RET_MAP'   } = {}; # return data mapping (combo, checkbox, etc.)
 
@@ -90,8 +101,14 @@ sub begin
   $page_session->{ ':FORM_DEF' }{ $form_name } = {};
 
   my $state_keeper = $reo->args_here( FORM_NAME => $form_name ); # keep state and more args
-  $text .= "<form action='$action' method='$method' enctype='multipart/form-data'>";
-  $text .= "<input type=hidden name=_ value=$state_keeper>";
+  $text .= "<form name='$form_name' id='$form_id' action='$action' method='$method' enctype='multipart/form-data'>";
+  $text .= "</form>";
+  $text .= "<input type=hidden name='_' value='$state_keeper' form='$form_id'>";
+  $text .= "<input style='display: none;' name='__avoidiebug__' form='$form_id'>"; # stupid IE bugs
+  if( $default_button )
+    {
+    $text .= "<input style='display: none;' type='image' name='BUTTON:$default_button' src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQI12NgYGBgAAAABQABXvMqOgAAAABJRU5ErkJggg==' border=0 height=0 width=0 onDblClick='return false;' form='$form_id'>"
+    }
 
   return $text;
 }
@@ -103,7 +120,7 @@ sub end
   my $text;
 
   $text .= $self->end_radios();
-  $text .= "</form>";
+  # $text .= "</form>";
 
 # FIXME: TODO: debug info inside html text, begin formname end etc.
 
@@ -142,7 +159,7 @@ sub checkbox
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'CHECKBOX' } || 'checkbox';
+  my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'CHECKBOX' } || 'checkbox';
   my $value =    $opt{ 'VALUE' } ? 1 : 0;
 
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
@@ -154,20 +171,15 @@ sub checkbox
 
   my $ch_id = $self->html_new_id(); # checkbox data holder
 
+  my $form_id = $self->{ 'FORM_ID' };
   #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
   #$text .= "<input type='checkbox' name='$name' value='1' $options>";
   $text .= "\n";
-  $text .= "<input type=hidden   name='$name' id='$ch_id' value='$value'>";
+  $text .= "<input type='hidden' name='$name' id='$ch_id' value='$value' form='$form_id'>";
   $text .= qq[ <input type='checkbox' $options onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
   $text .= "\n";
 
   return $text;
-}
-
-sub cb
-{
-  my $self = shift;
-  return $self->checkbox( @_ );
 }
 
 ##############################################################################
@@ -179,7 +191,7 @@ sub radio
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'RADIO' } || 'radio';
+  my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'RADIO' } || 'radio';
   my $on    =    $opt{ 'ON'    }; # active?
   my $val   =    $opt{ 'VAL'   };
   my $ret   =    $opt{ 'RET'   } || $opt{ 'RETURN' } || 1; # map return value!
@@ -188,8 +200,9 @@ sub radio
 
   my $text;
 
+  my $form_id = $self->{ 'FORM_ID' };
   my $checked = $on ? 'checked' : undef;
-  $text .= "<input type='radio' $checked name='$name' value='$val'>";
+  $text .= "<input type='radio' $checked name='$name' value='$val' form='$form_id'>";
 
   $self->__set_ret_map( $name, $val => $ret ) if defined $ret;
   $self->{ 'RET_MAP' }{ $val } = $ret;
@@ -240,8 +253,10 @@ sub select
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'SELECT' } || 'select';
+  my $id    =    $opt{ 'ID'    };
+  my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'SELECT' } || 'select';
   my $rows  =    $opt{ 'SIZE'  } || $opt{ 'ROWS'  } || 1;
+  my $args  =    $opt{ 'ARGS' };
 
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
 
@@ -279,6 +294,7 @@ sub select
   hash_uc_ipl( $_ ) for @$sel_data;
 
   my $text;
+  my $form_id = $self->{ 'FORM_ID' };
 
   if( $opt{ 'RADIO' } )
     {
@@ -298,7 +314,7 @@ sub select
   else
     {
     my $multiple = 'multiple' if $opt{ 'MULTIPLE' };
-    $text .= "<select class='$class' name='$name' size='$rows' $multiple>";
+    $text .= "<select class='$class' id='$id' name='$name' size='$rows' $multiple form='$form_id' $args>";
 
     my $pad = '&nbsp;' x 3;
     for my $hr ( @$sel_data )
@@ -340,7 +356,7 @@ sub textarea
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'TEXTAREA' } || 'textarea';
+  my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'TEXTAREA' } || 'textarea';
   my $id    =    $opt{ 'ID'    };
   my $data  =    $opt{ 'VALUE' };
   my $rows  =    $opt{ 'ROWS'  } || 10;
@@ -366,8 +382,9 @@ sub textarea
   $data = str_html_escape( $data );
 
   my $text;
+  my $form_id = $self->{ 'FORM_ID' };
 
-  $text .= "<textarea class='$class' name='$name' rows='$rows' cols='$cols' $options>$data</textarea>";
+  $text .= "<textarea class='$class' id='$id' name='$name' rows='$rows' cols='$cols' $options form='$form_id'>$data</textarea>";
 
   $text .= "\n";
   return $text;
@@ -382,26 +399,27 @@ sub input
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'INPUT' } || 'line';
+  my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'INPUT' } || 'line';
   my $value =    $opt{ 'VALUE' };
-  my $id    = uc $opt{ 'ID' } || $name;
+  my $id    =    $opt{ 'ID'    };
   # FIXME: default data?
   my $size  =    $opt{ 'SIZE'    } || $opt{ 'LEN' } || $opt{ 'WIDTH' };
   my $maxl  =    $opt{ 'MAXLEN'  } || $opt{ 'MAX' };
 
-  my $len   =    $opt{ 'LEN' };
+  my $len   =    $opt{ 'LEN'  };
+  my $args  =    $opt{ 'ARGS' };
 
   $size = $maxl = $len if $len > 0;
 
   my $options;
 
-  $options .= "size='$size' "      if $size > 0;
-  $options .= "maxlength='$maxl' " if $maxl > 0;
   $options .= $opt{ 'DISABLED' } ? 'disabled ' : '';
-  #$options .= "onFocus=\"this.value=''\" " if $opt{ 'FOCUS_AUTO_CLEAR' };
-  $options .= "ID='$id' "   if $id ne '';
-  #$options .= "ID='$name' " if $opt{ 'NAME_ID' } or $id eq '';
-  $options .= "type='password' " if $opt{ 'PASS' } || $opt{ 'PASSWORD' };
+  $options .= "size='$size' "                if $size > 0;
+  $options .= "maxlength='$maxl' "           if $maxl > 0;
+  # $options .= "onFocus=\"this.value=''\" "   if $opt{ 'FOCUS_AUTO_CLEAR' };
+  $options .= "ID='$id' "                    if $id ne '';
+  # $options .= "ID='$name' "                  if $opt{ 'NAME_ID' } or $id eq '';
+  $options .= "type='password' "             if $opt{ 'PASS' } || $opt{ 'PASSWORD' };
 
 #  my $extra = $opt{ 'EXTRA' };
   #$options .= " $extra ";
@@ -411,7 +429,8 @@ sub input
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
   my $text;
 
-  $text .= "<input class='$class' name='$name' value='$value' $options>";
+  my $form_id = $self->{ 'FORM_ID' };
+  $text .= "<input class='$class' name='$name' value='$value' $options form='$form_id' $args>";
 
   $text .= "\n";
   return $text;
@@ -427,18 +446,21 @@ sub button
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || 'button';
+  my $id    =    $opt{ 'ID'    };
+  my $class =    $opt{ 'CLASS' } || 'button';
   my $value =    $opt{ 'VALUE' };
+  my $args  =    $opt{ 'ARGS'  };
 
   $value =~ s/'//g;
   $value = str_html_escape( $value );
 
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
   my $text;
-  
+
   $name =~ s/^button://i;
 
-  $text .= "<input class='$class' type='submit' name='button:$name' value='$value' onDblClick='return false;' >";
+  my $form_id = $self->{ 'FORM_ID' };
+  $text .= "<input class='$class' id='$id' type='submit' name='button:$name' value='$value' onDblClick='return false;' form='$form_id' $args>";
 
   $text .= "\n";
   return $text;
@@ -451,9 +473,10 @@ sub image_button
   my %opt = @_;
 
   my $name  = uc $opt{ 'NAME'  };
-  my $class = uc $opt{ 'CLASS' } || 'image_button';
-  my $src   =    $opt{ 'SRC'   } || $opt{ 'IMG' };
-  my $extra =    $opt{ 'EXTRA' };
+  my $id    =    $opt{ 'ID'    };
+  my $class =    $opt{ 'CLASS' } || 'image_button';
+  my $src   =    $opt{ 'SRC'   } || $opt{ 'IMG'  };
+  my $args  =    $opt{ 'ARGS'  };
 
   my $options;
 
@@ -468,7 +491,8 @@ sub image_button
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
   my $text;
 
-  $text .= "<input class='$class' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;' >";
+  my $form_id = $self->{ 'FORM_ID' };
+  $text .= "<input class='$class' id='$id' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;' $args form='$form_id'>";
 
   $text .= "\n";
   return $text;
@@ -480,18 +504,23 @@ sub image_button_default
 
   my %opt = @_;
 
-  my $reo = $self->{ 'REO_REACTOR' };
-  my $user_session = $reo->get_user_session();
-  my $user_agent = $user_session->{ ':HTTP_ENV_HR' }{ 'HTTP_USER_AGENT' };
+  my $user_agent = $self->{ 'REO_REACTOR' }->get_user_session_agent();
 
   my $default_class = 'hidden';
   $default_class = 'hidden2' if $user_agent =~ /MSIE|Safari/;
 
   $opt{ 'HEIGHT' } = 0;
   $opt{ 'WIDTH'  } = 0;
-  $opt{ 'CLASS'  } = $opt{ 'CLASS'  } || $default_class;
+  $opt{ 'CLASS'  } = $opt{ 'CLASS' } || $default_class;
 
   return $self->image_button( %opt );
+}
+
+sub get_id
+{
+  my $self = shift;
+
+  return $self->{ 'FORM_ID'   };
 }
 
 =pod

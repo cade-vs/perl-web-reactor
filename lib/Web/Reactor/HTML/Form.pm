@@ -256,6 +256,7 @@ sub select
   my $id    =    $opt{ 'ID'    };
   my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'SELECT' } || 'select';
   my $rows  =    $opt{ 'SIZE'  } || $opt{ 'ROWS'  } || 1;
+  my $args  =    $opt{ 'ARGS' };
 
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
 
@@ -313,7 +314,7 @@ sub select
   else
     {
     my $multiple = 'multiple' if $opt{ 'MULTIPLE' };
-    $text .= "<select class='$class' id='$id' name='$name' size='$rows' $multiple form='$form_id'>";
+    $text .= "<select class='$class' id='$id' name='$name' size='$rows' $multiple form='$form_id' $args>";
 
     my $pad = '&nbsp;' x 3;
     for my $hr ( @$sel_data )
@@ -405,7 +406,8 @@ sub input
   my $size  =    $opt{ 'SIZE'    } || $opt{ 'LEN' } || $opt{ 'WIDTH' };
   my $maxl  =    $opt{ 'MAXLEN'  } || $opt{ 'MAX' };
 
-  my $len   =    $opt{ 'LEN' };
+  my $len   =    $opt{ 'LEN'  };
+  my $args  =    $opt{ 'ARGS' };
 
   $size = $maxl = $len if $len > 0;
 
@@ -428,7 +430,7 @@ sub input
   my $text;
 
   my $form_id = $self->{ 'FORM_ID' };
-  $text .= "<input class='$class' name='$name' value='$value' $options form='$form_id'>";
+  $text .= "<input class='$class' name='$name' value='$value' $options form='$form_id' $args>";
 
   $text .= "\n";
   return $text;

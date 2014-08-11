@@ -460,7 +460,7 @@ sub button
   $name =~ s/^button://i;
 
   my $form_id = $self->{ 'FORM_ID' };
-  $text .= "<input class='$class' id='$id' type='submit' name='button:$name' value='$value' onDblClick='return false;' $args form='$form_id'>";
+  $text .= "<input class='$class' id='$id' type='submit' name='button:$name' value='$value' onDblClick='return false;' form='$form_id' $args>";
 
   $text .= "\n";
   return $text;

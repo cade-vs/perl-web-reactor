@@ -114,7 +114,7 @@ sub process
   $opt->{ 'LEVEL' }++;
 
   # FIXME: cache here? moje bi ne, zaradi modulite
-  $text =~ s/<([\$\&\#]|\$\$)([a-zA-Z_0-9]+)(\s*[^>]*)*>/$self->__process_tag( $1, $2, $3, $opt )/ge;
+  $text =~ s/<([\$\&\#]|\$\$)([a-zA-Z_0-9]+)(\s*[^>]*)?>/$self->__process_tag( $1, $2, $3, $opt )/ge;
   $text =~ s/reactor_((new|back|here)_)?href=([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"']*)/$self->__process_href( $2, $3, $5 )/gie;
 
   return $text;
@@ -160,7 +160,7 @@ sub __process_tag
     {
     # FIXME: make args to a function?
     my %args;
-    while( $args =~ /\s*([^a-zA-Z_0-9]+)(=('([^']*)'|"([^"]*)"|(\S*)))?/g ) # "' # fix string colorization
+    while( $args =~ /\s*([a-zA-Z_0-9]+)(=('([^']*)'|"([^"]*)"|(\S*)))?/g ) # "' # fix string colorization
       {
       my $k = uc $1;
       my $v = $4 || $5 || $6 || 1;

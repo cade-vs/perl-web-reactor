@@ -33,7 +33,7 @@ sub call
 
   my $ap = $self->__find_act_pkg( $name );
 
-#  print STDERR Dumper( $name, $ap, \%{ $ap } );
+#  print STDERR Dumper( $name, $ap, \%args );
 
   if( ! $ap )
     {
@@ -48,7 +48,7 @@ sub call
 
   my $text;
 
-  $text = $cr->( $self->{ 'REO_REACTOR' }, \%args );
+  $text = $cr->( $self->{ 'REO_REACTOR' }, %args );
 
   # print STDERR "reactor::actions::call result: $text\n";
 

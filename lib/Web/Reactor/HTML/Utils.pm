@@ -401,9 +401,9 @@ sub html_popup_layer
   my $func = 'return popup_layer_toggle( this, single )';
 
   $event = $type eq 'CONTEXT' ? 'oncontextmenu' : ( $show eq 'CLICK' ? 'onclick' : 'onmouseover' );
-  $func  = "return popup_layer_show_context_mouse( this, event )" if $type eq 'CONTEXT';
-  $func  = "return popup_layer_toggle2( this, $single )" if $type =~ 'AUTOHIDE2?';
-  $func  = "return popup_layer_show_mouse( this, $single )" if $show eq 'MOUSE';
+  $func  = "return popup_layer_show_context_mouse( this, event )"     if $type eq 'CONTEXT';
+  $func  = "return popup_layer_toggle_with_autohide( this, $single )" if $type =~ 'AUTOHIDE2?';
+  $func  = "return popup_layer_show_mouse( this, $single )"           if $show eq 'MOUSE';
 
   my $popup_layer_id_counter = html_next_id();
   my $popup_layer_id = "R_POPUP_LAYER_$popup_layer_id_counter";

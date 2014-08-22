@@ -140,6 +140,15 @@ sub run
     $self->log( "main process failed: $@" );
     }
   $self->save();
+
+  if( $self->is_debug() )
+    {
+    my $psid = $self->get_page_session_id( 0 ) || 'empty';
+    my $rsid = $self->get_page_session_id( 1 ) || 'empty';
+    $self->log_dumper( "FINAL PAGE SESSION [$psid]-----------------------------------", $self->get_page_session() );
+    $self->log_dumper( "FINAL REF  SESSION [$rsid]-----------------------------------", $self->get_page_session( 1 ) );
+    }
+
 }
 
 sub main_process
@@ -345,7 +354,7 @@ sub main_process
       {
       $self->log( "error: invalid page name [$page_name]" );
       }
-    }      
+    }
 
   # pre-9. print debug status...
   if( $self->is_debug() )
@@ -368,6 +377,7 @@ sub main_process
     {
     $self->render( PAGE => $page_name );
     }
+
 }
 
 sub __create_new_user_session

@@ -657,6 +657,8 @@ sub set_headers
   my $self  = shift;
   my %h = @_;
 
+  hash_lc_ipl( \%h );
+
   $self->{ 'OUTPUT' }{ 'HEADERS' } ||= {};
   $self->{ 'OUTPUT' }{ 'HEADERS' } = { %{ $self->{ 'OUTPUT' }{ 'HEADERS' } }, %h };
 }
@@ -966,13 +968,14 @@ sub render
     $portray_data = $self->portray( $portray_data, 'text/html' );
     }
 
-  my $page_data =    $portray_data->{ 'DATA' };
-  my $page_type = lc $portray_data->{ 'TYPE' };
+  my $page_data = $portray_data->{ 'DATA' };
+  my $page_type = $portray_data->{ 'TYPE' };
 
-  if( $page_type eq 'text/html' )
+  if( lc $page_type eq 'text/html' )
     {
     # FIXME: preprocess and translation only for content-type text/*
     $page_data = $self->prep_process( $page_data );
+    # FIXME: call second preprocessing only if first needs it! i.e. detect $$
     $page_data = $self->prep_process( $page_data );
 
     # FIXME: translation

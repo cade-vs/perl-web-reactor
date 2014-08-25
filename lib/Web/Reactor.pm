@@ -234,7 +234,7 @@ sub main_process
       {
       eval 
         { 
-        require 'Text::Iconv'; 
+        require perl_package_to_file( 'Text::Iconv' ); 
         $iconv = Text::Iconv->new( $incoming_charset, $app_charset );
         };
       if( $@ )  

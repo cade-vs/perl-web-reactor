@@ -220,6 +220,29 @@ sub main_process
   my $input_safe_hr = $self->{ 'INPUT_SAFE_HR' } = {};
 
   # FIXME: TODO: handle and URL params here. only for EX?
+  my $iconv;
+  my $app_charset = lc $self->{ 'ENV' }{ 'APP_CHARSET' };
+
+  if( $app_charset )
+    {
+    my $incoming_charset;
+    if( uc( CGI::http('HTTP_X_REQUESTED_WITH') ) eq 'XMLHTTPREQUEST' )
+      {
+      $incoming_charset = 'utf8';
+      }
+    if( $incoming_charset and $incoming_charset ne $app_charset )
+      {
+      eval 
+        { 
+        require 'Text::Iconv'; 
+        $iconv = Text::Iconv->new( $incoming_charset, $app_charset );
+        };
+      if( $@ )  
+        {
+        $self->log( "error: cannot convert charset from [$incoming_charset] to [$app_charset] error: $@" );
+        }
+      }
+    }  
 
   # import plain parameters from GET/POST request
   for my $n ( CGI::param() )
@@ -231,6 +254,12 @@ sub main_process
       }
     my $v = CGI::param( $n );
     my @v = CGI::param( $n );
+
+    if( $iconv )
+      {
+      $v = $iconv->convert( $v );
+      $_ = $iconv->convert( $_ ) for @v;
+      }
 
     $n = uc $n;
 

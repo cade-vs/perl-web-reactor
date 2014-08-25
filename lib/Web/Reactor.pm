@@ -680,8 +680,20 @@ sub __make_headers
   my $headers;
 
   $self->{ 'OUTPUT' }{ 'HEADERS' }{ 'content-type' } ||= 'text/html';
+  
+  # postprocess headers, custom logic, etc.
+  my %headers_out = %{ $self->{ 'OUTPUT' }{ 'HEADERS' } };
+  
+  if( $headers_out{ 'content-charset' } )
+    {
+    if( $headers_out{ 'content-type' } !~ /;\s*charset=/i )
+      {
+      $headers_out{ 'content-type' } .= '; charset=' . $headers_out{ 'content-charset' };
+      }
+    delete $headers_out{ 'content-charset' };
+    };
 
-  while( my ( $k, $v ) = each %{ $self->{ 'OUTPUT' }{ 'HEADERS' } } )
+  while( my ( $k, $v ) = each %headers_out )
     {
     $headers .= "$k: $v\n";
     }

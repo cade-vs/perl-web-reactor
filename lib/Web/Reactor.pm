@@ -981,7 +981,7 @@ sub render
   my $page_data = $portray_data->{ 'DATA' };
   my $page_type = $portray_data->{ 'TYPE' };
 
-  if( lc $page_type eq 'text/html' )
+  if( lc $page_type =~ /^text\/html/ )
     {
     # FIXME: preprocess and translation only for content-type text/*
     $page_data = $self->prep_process( $page_data );
@@ -1004,13 +1004,13 @@ sub render
 
   $self->log_debug( "debug: page response content: page, action, type, headers, data: " . Dumper( $page, $action, $page_type, $page_headers, $page_type =~ /^text\// ? $page_data : '*binary*' ) ) if $self->is_debug() > 2;
 
-  if( $self->is_debug() > 1 and $page_type eq 'text/html' )
+  if( $self->is_debug() > 1 and lc $page_type =~ /^text\/html/ )
     {
     my $psid = $self->get_page_session_id( 0 ) || 'empty';
     my $rsid = $self->get_page_session_id( 1 ) || 'empty';
     print "<hr><pre>[$rsid] << [$psid]</pre>";
     }
-  if( $self->is_debug() > 2 and $page_type eq 'text/html' )
+  if( $self->is_debug() > 2 and lc $page_type =~ /^text\/html/ )
     {
     local $Data::Dumper::Sortkeys = 1;
     local $Data::Dumper::Terse = 1;

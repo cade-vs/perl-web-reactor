@@ -570,6 +570,13 @@ sub get_page_frame
   return exists $page_shr->{ ':FRAME_NAME' } ? $page_shr->{ ':FRAME_NAME' } : undef;
 }
 
+sub get_lang
+{
+  my $self  = shift;
+
+  return $self->{ 'ENV' }{ 'LANG' };
+}
+
 sub args
 {
   my $self = shift;

@@ -39,11 +39,11 @@ sub new
 
   bless $self, $class;
 
-  $self->{ 'TAB_ID' } = "RE_TAB_CTRL_" . Web::Reactor::HTML::Utils::html_next_id(); # tab controller name
-  $self->{ 'TABS' } = []; # contain tab IDs
+  $self->{ 'TABS_LIST'         } = []; # contain tab IDs
+  $self->{ 'TAB_CONTROLLER_ID' } = join '_', ( 'RE_TAB', $reo->get_page_session_id(), ( $env{ 'NAME' } || $reo->html_new_id() ) );
+  $self->{ 'TAB_COUNTER'       } = 0;
 
-  # rcd_log( "debug: rcd_rec:$self created" );
-  $reo->html_content_accumulator_js( "js/review.js" );
+  $reo->html_content_accumulator_js( "js/reactor.js" );
 
   $self->{ 'OPT' } = { @_ };
 
@@ -60,19 +60,21 @@ sub add
   my $content = shift;
   my %opt     = @_;
 
-  my $on = $opt{ 'ON' }; # is visible?
   my $et = uc $opt{ 'TYPE' }; # html element type TD, TR, DIV
+  my $on =    $opt{ 'ON'   }; # is visible?
 
-  my $class = uc $opt{ 'CLASS' } || 'tab';
-  my $arg   = $opt{ 'ARG' };
+  my $class = $opt{ 'CLASS' } || 'reactor_tab';
+  my $args  = $opt{ 'ARGS'  };
 
   croak "TYPE can be only one of DIV|TR|TD" unless $et =~ /^(DIV|TR|TD)$/i;
 
-  my $tab_controller_id = $self->{ 'TAB_ID' };
-  my $handle_id = $opt{ 'HANDLE_ID' } || "RE_TAB_HANDLE_" . Web::Reactor::HTML::Utils::html_next_id();
-  my $tab_id    = $opt{ 'TAB_ID'    } || "RE_TAB_" . Web::Reactor::HTML::Utils::html_next_id();
+  my $tab_controller_id =    $self->{ 'TAB_CONTROLLER_ID' };
+  my $tab_counter       = ++ $self->{ 'TAB_COUNTER'       };
+  
+  my $handle_id = $opt{ 'HANDLE_ID' } || "${tab_controller_id}_HANDLE_$tab_counter";
+  my $tab_id    = $opt{ 'TAB_ID'    } || "${tab_controller_id}_CONTENT_$tab_counter";
 
-  push @{ $self->{ 'TABS' } }, $tab_id;
+  push @{ $self->{ 'TABS_LIST' } }, $tab_id;
 
   my $class_on  = $self->{ 'OPT' }{ 'CLASS_ON' };
   my $class_off = $self->{ 'OPT' }{ 'CLASS_OFF' };
@@ -82,10 +84,9 @@ sub add
 
   my $display = $on ? '' : "style='display: none;'";
   my $handle_class = $on ? $class_on : $class_off;
-  $self->{ 'ACTIVE_TAB_ID' } = $tab_id if $on;
 
-  $handle = qq{ CLASS='$handle_class' ID=$handle_id onclick='re_tab_activate( "$tab_controller_id", "$tab_id" )' };
-  $text   = qq{ <$et ID=$tab_id CLASS='$class' TAB_HANDLE_ID='$handle_id' $display $arg>$content</$et> };
+  $handle = qq{ class='$handle_class' ID=$handle_id onclick='reactor_tab_activate_id( "$tab_id" )' };
+  $text   = qq{ <$et id=$tab_id class='$class' data-controller-id='$tab_controller_id' data-handle-id='$handle_id' $display $args >$content</$et> };
 
   return ( $handle, $text );
 }
@@ -98,32 +99,19 @@ sub finish
 
   my $html;
 
-  my $tab_controller_id = $self->{ 'TAB_ID' };
-  my $tabs_list         = join ',', @{ $self->{ 'TABS' } };
-  my $active_tab_id     = $self->{ 'ACTIVE_TAB_ID' };
+  my $tab_controller_id = $self->{ 'TAB_CONTROLLER_ID' };
+  my $tabs_list         = join ',', @{ $self->{ 'TABS_LIST' } };
 
   my $class_on    = $self->{ 'OPT' }{ 'CLASS_ON' };
   my $class_off   = $self->{ 'OPT' }{ 'CLASS_OFF' };
-  my $act_feed_id = $self->{ 'OPT' }{ 'ACTIVE_TAB_FORM_FEEDBACK_ID' };
 
-  my $act_feed_input;
-  if( ! $act_feed_id )
-    {
-    $act_feed_id = "$tab_controller_id\_ACTIVE";
-    $act_feed_input = "<input TYPE=hidden ID=$act_feed_id VALUE=$active_tab_id>";
-    }
   # FIXME: <input hidden> active tab element keeper to be optionally outside element (by id)
   $html = qq{
-<DIV ID=$tab_controller_id STYLE='display: none;' TABS_LIST='$tabs_list' CLASS_ON='$class_on' CLASS_OFF='$class_off' ACTIVE_TAB_FORM_FEEDBACK_ID='$act_feed_id'>
-  $act_feed_input
+<DIV class='reactor_tab_controller' id=$tab_controller_id style='display: none;' data-tabs-list='$tabs_list' data-class-on='$class_on' data-class-off='$class_off'>
 
   <script type="text/javascript">
 
-    var atf = document.getElementById( "$act_feed_id" );
-
-    var active_tab_id = atf.value;
-    if( active_tab_id )
-      re_tab_activate( "$tab_controller_id", active_tab_id );
+    reactor_tab_activate_id( sessionStorage.getItem( 'TABSET_ACTIVE_$tab_controller_id' ) );
 
   </script>
 

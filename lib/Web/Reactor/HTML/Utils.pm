@@ -15,8 +15,6 @@ package Web::Reactor::HTML::Utils;
 use Exporter;
 our @ISA = qw( Exporter );
 our @EXPORT = qw(
-                html_next_id
-
                 html_escape
                 html_table
 
@@ -47,16 +45,6 @@ sub html_escape
 
 ##############################################################################
 
-my $HTML_ID = 0;
-
-sub html_next_id
-{
-  $HTML_ID++;
-  $HTML_ID = 1 if $HTML_ID > 1_000_000_000;
-  return $HTML_ID;
-}
-
-##############################################################################
 
 =pod
 
@@ -356,7 +344,7 @@ sub html_hover_layer
   my $class = $opt{ 'CLASS' } || 'hover-layer';
   my $delay = $opt{ 'DELAY' } || 150;
 
-  my $hover_layer_counter = html_next_id();
+  my $hover_layer_counter = $reo->html_new_id();
   my $hover_layer_id = "R_HOVER_LAYER_$hover_layer_counter";
 
   my $html;
@@ -405,7 +393,7 @@ sub html_popup_layer
   $func  = "return popup_layer_toggle_with_autohide( this, $single )" if $type =~ 'AUTOHIDE2?';
   $func  = "return popup_layer_show_mouse( this, $single )"           if $show eq 'MOUSE';
 
-  my $popup_layer_id_counter = html_next_id();
+  my $popup_layer_id_counter = $reo->html_new_id();
   my $popup_layer_id = "R_POPUP_LAYER_$popup_layer_id_counter";
 
   my $html;

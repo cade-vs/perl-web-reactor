@@ -193,19 +193,19 @@ sub radio
   my $name  = uc $opt{ 'NAME'  };
   my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'RADIO' } || 'radio';
   my $on    =    $opt{ 'ON'    }; # active?
-  my $val   =    $opt{ 'VAL'   };
   my $ret   =    $opt{ 'RET'   } || $opt{ 'RETURN' } || 1; # map return value!
 
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
 
   my $text;
 
+  my $val = $self->html_new_id();
+
   my $form_id = $self->{ 'FORM_ID' };
   my $checked = $on ? 'checked' : undef;
   $text .= "<input type='radio' $checked name='$name' value='$val' form='$form_id'>";
 
   $self->__set_ret_map( $name, $val => $ret ) if defined $ret;
-  $self->{ 'RET_MAP' }{ $val } = $ret;
 
   $text .= "\n";
   return $text;

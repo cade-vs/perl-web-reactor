@@ -73,7 +73,8 @@ sub begin
   my $form_id        =    $opt{ 'ID'     };
   my $method         = uc $opt{ 'METHOD' } || 'POST';
   my $action         =    $opt{ 'ACTION' } || '?';
-  my $default_button = $opt{ 'DEFAULT_BUTTON' };
+  my $default_button =    $opt{ 'DEFAULT_BUTTON' };
+  my $state_keeper   =    $opt{ 'STATE_KEEPER'   };
 
   $self->{ 'CLASS_MAP' } = $opt{ 'CLASS_MAP' } || {};
 
@@ -100,7 +101,7 @@ sub begin
   my $page_session = $reo->get_page_session();
   $page_session->{ ':FORM_DEF' }{ $form_name } = {};
 
-  my $state_keeper = $reo->args_here( FORM_NAME => $form_name ); # keep state and more args
+  $state_keeper ||= $reo->args_here( FORM_NAME => $form_name ); # keep state and more args
   $text .= "<form name='$form_name' id='$form_id' action='$action' method='$method' enctype='multipart/form-data'>";
   $text .= "</form>";
   $text .= "<input type=hidden name='_' value='$state_keeper' form='$form_id'>";
@@ -398,16 +399,16 @@ sub input
 
   my %opt = @_;
 
-  my $name  = uc $opt{ 'NAME'  };
-  my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'INPUT' } || 'line';
-  my $value =    $opt{ 'VALUE' };
-  my $id    =    $opt{ 'ID'    };
+  my $name  = uc $opt{ 'NAME'    };
+  my $class =    $opt{ 'CLASS'   } || $self->{ 'CLASS_MAP' }{ 'INPUT' } || 'line';
+  my $value =    $opt{ 'VALUE'   };
+  my $id    =    $opt{ 'ID'      };
   # FIXME: default data?
   my $size  =    $opt{ 'SIZE'    } || $opt{ 'LEN' } || $opt{ 'WIDTH' };
   my $maxl  =    $opt{ 'MAXLEN'  } || $opt{ 'MAX' };
 
-  my $len   =    $opt{ 'LEN'  };
-  my $args  =    $opt{ 'ARGS' };
+  my $len   =    $opt{ 'LEN'     };
+  my $args  =    $opt{ 'ARGS'    };
 
   $size = $maxl = $len if $len > 0;
 
@@ -420,6 +421,7 @@ sub input
   $options .= "ID='$id' "                    if $id ne '';
   # $options .= "ID='$name' "                  if $opt{ 'NAME_ID' } or $id eq '';
   $options .= "type='password' "             if $opt{ 'PASS' } || $opt{ 'PASSWORD' };
+  $options .= "type='hidden' " if $opt{ 'HIDDEN'  }; # FIXME: handle TYPE better
 
 #  my $extra = $opt{ 'EXTRA' };
   #$options .= " $extra ";

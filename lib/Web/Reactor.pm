@@ -1144,6 +1144,16 @@ sub forward_back
   return $self->forward_url( "?_=$fw" );
 }
 
+sub forward_back_back
+{
+  my $self = shift;
+
+  boom "expected even number of arguments" unless @_ % 2 == 0;
+
+  my $fw = $self->args_back_back( @_ );
+  return $self->forward_url( "?_=$fw" );
+}
+
 sub forward_new
 {
   my $self = shift;
@@ -1232,6 +1242,23 @@ sub param_safe
   my $self = shift;
   return $self->param( @_ );
 }
+
+sub param_clear_cache
+{
+  my $self = shift;
+
+  my $ps = $self->get_page_session();
+
+  while( @_ )
+    {
+    my $p = uc shift;
+    delete $ps->{ 'SAVE_SAFE_INPUT' }{ $p };
+    delete $ps->{ 'SAVE_USER_INPUT' }{ $p };
+    }
+  
+  return 1;
+}
+
 
 sub is_logged_in
 {

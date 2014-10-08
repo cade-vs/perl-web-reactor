@@ -18,7 +18,7 @@ use Data::Tools;
 use Data::Dumper;
 use Exception::Sink;
 
-our $VERSION = '0.05';
+our $VERSION = '2.05';
 
 ##############################################################################
 
@@ -55,7 +55,7 @@ sub new
   my %env = @_;
 
   # FIXME: verify %env content! Data::Validate::Struct
-  
+
   $class = ref( $class ) || $class;
   my $self = {
              'ENV' => \%env,
@@ -70,12 +70,22 @@ sub new
 #    $self->{ 'ENV' }{ 'HTML_DIRS' } = [ "$root/html" ];
 #    }
 
+  # FIXME: common directories setup code?
+  if( ! $env{ 'LIB_DIRS' } or @{ $env{ 'LIB_DIRS' } } < 1 )
+    {
+    my $root = $env{ 'APP_ROOT' };
+    $env{ 'LIB_DIRS' } = [ "$root/lib" ];
+    }
+
   my $lib_dirs = $env{ 'LIB_DIRS' } || [];
+  my $lib_dirs_ok = 0;
   for my $lib_dir ( @$lib_dirs )
     {
-    boom "invalid or not accessible LIB_DIR [$lib_dir]" unless -d $lib_dir;
+    next unless -d $lib_dir;
     push @INC, $lib_dir;
+    $lib_dirs_ok++;
     }
+  boom "invalid or not accessible LIB_DIR's [@$lib_dirs]" unless $lib_dirs_ok;
 
   # sanity, remove '.' from include list, TODO: optionally remove other entries by config (%env)
   for my $z ( 0 .. scalar( @INC ) - 1 )
@@ -86,7 +96,7 @@ sub new
     }
 
   my $reo_sess_class = $env{ 'REO_SESS_CLASS' } ||= 'Web::Reactor::Sessions::Filesystem';
-  my $reo_prep_class = $env{ 'REO_PREP_CLASS' } ||= 'Web::Reactor::Preprocessor::Expander';
+  my $reo_prep_class = $env{ 'REO_PREP_CLASS' } ||= 'Web::Reactor::Preprocessor::Native';
   my $reo_acts_class = $env{ 'REO_ACTS_CLASS' } ||= 'Web::Reactor::Actions::Native';
 
   my $reo_sess_class_file = perl_package_to_file( $reo_sess_class );
@@ -130,6 +140,15 @@ sub run
     $self->log( "main process failed: $@" );
     }
   $self->save();
+
+  if( $self->is_debug() )
+    {
+    my $psid = $self->get_page_session_id( 0 ) || 'empty';
+    my $rsid = $self->get_page_session_id( 1 ) || 'empty';
+    $self->log_dumper( "FINAL PAGE SESSION [$psid]-----------------------------------", $self->get_page_session() );
+    $self->log_dumper( "FINAL REF  SESSION [$rsid]-----------------------------------", $self->get_page_session( 1 ) );
+    }
+
 }
 
 sub main_process
@@ -201,6 +220,29 @@ sub main_process
   my $input_safe_hr = $self->{ 'INPUT_SAFE_HR' } = {};
 
   # FIXME: TODO: handle and URL params here. only for EX?
+  my $iconv;
+  my $app_charset = lc $self->{ 'ENV' }{ 'APP_CHARSET' };
+
+  if( $app_charset )
+    {
+    my $incoming_charset;
+    if( uc( CGI::http('HTTP_X_REQUESTED_WITH') ) eq 'XMLHTTPREQUEST' )
+      {
+      $incoming_charset = 'utf8';
+      }
+    if( $incoming_charset and $incoming_charset ne $app_charset )
+      {
+      eval 
+        { 
+        require 'Text/Iconv.pm'; 
+        $iconv = Text::Iconv->new( $incoming_charset, $app_charset );
+        };
+      if( $@ )  
+        {
+        $self->log( "error: cannot convert charset from [$incoming_charset] to [$app_charset] error: $@" );
+        }
+      }
+    }  
 
   # import plain parameters from GET/POST request
   for my $n ( CGI::param() )
@@ -213,8 +255,16 @@ sub main_process
     my $v = CGI::param( $n );
     my @v = CGI::param( $n );
 
+    if( $iconv )
+      {
+      $v = $iconv->convert( $v );
+      $_ = $iconv->convert( $_ ) for @v;
+      }
+
+    $n = uc $n;
+
     $self->log_debug( "debug: CGI input param [$n] value [$v] [@v]" );
-    
+
     if( $self->__input_cgi_skip_invalid_value( $n, $v ) )
       {
       $self->log( "error: invalid CGI/input value for parameter: [$n]" );
@@ -227,6 +277,12 @@ sub main_process
       # button with id BUTTON:REDIRECT:USERID
       $input_user_hr->{ 'BUTTON'    } = uc $1;
       $input_user_hr->{ 'BUTTON_ID' } =    $3;
+      }
+    elsif( $n eq '_BUTTON_NAME' )  
+      {
+      my ( undef, $b, $i ) = split /:/, $v, 3;
+      $input_user_hr->{ 'BUTTON'    } = uc $b;
+      $input_user_hr->{ 'BUTTON_ID' } =    $i;
       }
     else
       {
@@ -279,7 +335,7 @@ sub main_process
     }
 
   # 6. remap form input data, post to safe input
-  my $form_name = $input_safe_hr->{ 'FORM_NAME' }; # FIXME: replace with _FN
+  my $form_name = $input_safe_hr->{ 'FORM_NAME' }; # FIXME: replace with _FO
   if( $form_name and exists $page_shr->{ ':FORM_DEF' }{ $form_name } )
     {
     my $rm = $page_shr->{ ':FORM_DEF' }{ $form_name }{ 'RET_MAP' };
@@ -291,6 +347,19 @@ sub main_process
       }
     }
 
+  my $frame_name = $input_safe_hr->{ '_FR' };
+  if( $frame_name ne '' )
+    {
+    if( $frame_name =~ /^[a-zA-Z_0-9]+$/ )
+      {
+      $page_shr->{ ':FRAME_NAME' } = $frame_name;
+      }
+    else
+      {
+      $self->log( "error: invalid frame name [$frame_name]" );
+      }  
+    }   
+
   # 7. get action from input (USER/CGI) or page session
   my $action_name = lc( $input_safe_hr->{ '_AN' } || $input_user_hr->{ '_AN' } || $page_shr->{ ':ACTION_NAME' } );
   if( $action_name =~ /^[a-z_0-9]+$/ )
@@ -300,18 +369,33 @@ sub main_process
   else
     {
     # $self->log( "error: invalid action name [$action_name]" );
-    }  
+    }
 
   # 8. get page from input (USER/CGI) or page session
   my $page_name = lc( $input_safe_hr->{ '_PN' } || $input_user_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || 'index' );
-  if( $page_name =~ /^[a-z_0-9]+$/ )
+  if( $page_name ne '' )
     {
-    $page_shr->{ ':PAGE_NAME' } = $page_name;
+    if( $page_name =~ /^[a-z_0-9]+$/ )
+      {
+      $page_shr->{ ':PAGE_NAME' } = $page_name;
+      }
+    else
+      {
+      $self->log( "error: invalid page name [$page_name]" );
+      }
     }
-  else
+
+  # pre-9. print debug status...
+  if( $self->is_debug() )
     {
-    $self->log( "error: invalid page name [$page_name]" );
-    }  
+    my $psid = $self->get_page_session_id( 0 ) || 'empty';
+    my $rsid = $self->get_page_session_id( 1 ) || 'empty';
+    $self->log_dumper( "USER INPUT-------------------------------------", $self->get_user_input()   );
+    $self->log_dumper( "SAFE INPUT-------------------------------------", $self->get_safe_input()   );
+    $self->log_dumper( "PAGE SESSION [$psid]-----------------------------------", $self->get_page_session() );
+    $self->log_dumper( "REF  SESSION [$rsid]-----------------------------------", $self->get_page_session( 1 ) );
+    # $self->log_dumper( "USER SESSION-----------------------------------", $self->get_user_session() );
+    }
 
   # 9. render output action/page
   if( $action_name )
@@ -321,7 +405,8 @@ sub main_process
   else
     {
     $self->render( PAGE => $page_name );
-    }  
+    }
+
 }
 
 sub __create_new_user_session
@@ -400,7 +485,7 @@ sub get_http_env
   my $user_shr = $self->get_user_session();
 
   boom "missing HTTP_ENV inside user session" unless exists $user_shr->{ ':HTTP_ENV_HR' };
-  
+
   return $user_shr->{ ':HTTP_ENV_HR' };
 }
 
@@ -443,7 +528,7 @@ sub get_user_input
 sub get_input_button
 {
   my $self  = shift;
-  
+
   my $input_user_hr = $self->get_user_input();
   return $input_user_hr->{ 'BUTTON' };
 }
@@ -451,9 +536,19 @@ sub get_input_button
 sub get_input_button_id
 {
   my $self  = shift;
-  
+
   my $input_user_hr = $self->get_user_input();
   return $input_user_hr->{ 'BUTTON_ID' };
+}
+
+sub get_input_button_and_remove
+{
+  my $self  = shift;
+
+  my $input_user_hr = $self->get_user_input();
+  my $button = $input_user_hr->{ 'BUTTON' };
+  delete $input_user_hr->{ 'BUTTON' };
+  return $button;
 }
 
 sub get_input_form_name
@@ -466,11 +561,27 @@ sub get_input_form_name
   return $form_name;
 }
 
+sub get_page_frame
+{
+  my $self  = shift;
+
+  my $page_shr  = $self->get_page_session();
+  
+  return exists $page_shr->{ ':FRAME_NAME' } ? $page_shr->{ ':FRAME_NAME' } : undef;
+}
+
+sub get_lang
+{
+  my $self  = shift;
+
+  return $self->{ 'ENV' }{ 'LANG' };
+}
+
 sub args
 {
   my $self = shift;
   my %args = @_;
-  
+
   hash_uc_ipl( \%args );
 
   my $link_sid;
@@ -507,7 +618,19 @@ sub args_back
   my $self = shift;
   my %args = @_;
 
-  $args{ '_P' } = $self->get_ref_page_session_id();
+  $args{ '_P'  } = $self->get_ref_page_session_id();
+  $args{ '_PN' } = 'empty' unless $args{ '_P' };
+
+  return $self->args( %args );
+}
+
+sub args_back_back
+{
+  my $self = shift;
+  my %args = @_;
+
+  $args{ '_P' } = $self->get_ref_page_session_id( 1 );
+  $args{ '_PN' } = 'empty' unless $args{ '_P' };
 
   return $self->args( %args );
 }
@@ -518,6 +641,12 @@ sub args_new
   my %args = @_;
 
   $args{ '_R' } = $self->get_page_session_id();
+
+  my $page_shr = $self->get_page_session();
+  if( exists $page_shr->{ ':FRAME_NAME' } )
+    {
+    $args{ '_FR' } = $page_shr->{ ':FRAME_NAME' };
+    }
 
   return $self->args( %args );
 }
@@ -574,6 +703,8 @@ sub set_headers
   my $self  = shift;
   my %h = @_;
 
+  hash_lc_ipl( \%h );
+
   $self->{ 'OUTPUT' }{ 'HEADERS' } ||= {};
   $self->{ 'OUTPUT' }{ 'HEADERS' } = { %{ $self->{ 'OUTPUT' }{ 'HEADERS' } }, %h };
 }
@@ -585,8 +716,20 @@ sub __make_headers
   my $headers;
 
   $self->{ 'OUTPUT' }{ 'HEADERS' }{ 'content-type' } ||= 'text/html';
+  
+  # postprocess headers, custom logic, etc.
+  my %headers_out = %{ $self->{ 'OUTPUT' }{ 'HEADERS' } };
+  
+  if( $headers_out{ 'content-charset' } )
+    {
+    if( $headers_out{ 'content-type' } !~ /;\s*charset=/i )
+      {
+      $headers_out{ 'content-type' } .= '; charset=' . $headers_out{ 'content-charset' };
+      }
+    delete $headers_out{ 'content-charset' };
+    };
 
-  while( my ( $k, $v ) = each %{ $self->{ 'OUTPUT' }{ 'HEADERS' } } )
+  while( my ( $k, $v ) = each %headers_out )
     {
     $headers .= "$k: $v\n";
     }
@@ -599,7 +742,7 @@ sub __make_headers
 
   $headers .= "\n"; # just single newline separator
 
-  $self->log_dumper( 'HEADERS', $headers );
+  $self->log_dumper( 'HEADERS----------------------------------------', $headers );
 
   return $headers;
 }
@@ -708,7 +851,7 @@ sub set_debug
 {
   my $self  = shift;
   my $level = int(shift);
-  
+
   if( @_ > 0 )
     {
     $self->{ 'ENV' }{ 'DEBUG' } = $level > 0 ? $level : 0;
@@ -729,15 +872,16 @@ sub log
 {
   my $self = shift;
 
-  print STDERR @_;
+  print STDERR @_, "\n";
 }
 
 sub log_debug
 {
   my $self = shift;
-  
+
   return unless $self->is_debug();
-  my $msg = join( ' ', @_ );
+  chomp( @_ );
+  my $msg = join( "\n", @_ );
   $msg = "debug: $msg" unless $msg =~ /^debug:/i;
   $self->log( $msg );
 }
@@ -745,7 +889,7 @@ sub log_debug
 sub log_stack
 {
   my $self = shift;
-  
+
   $self->log_debug( @_, "\n", Exception::Sink::get_stack_trace() );
 }
 
@@ -796,7 +940,7 @@ sub html_content
   hash_lc_ipl( \%hc );
   $self->{ 'HTML_CONTENT' } ||= {};
   %{ $self->{ 'HTML_CONTENT' } } = ( %{ $self->{ 'HTML_CONTENT' } }, %hc );
-  
+
   return $self->{ 'HTML_CONTENT' };
 }
 
@@ -810,9 +954,30 @@ sub html_content_clear
 sub html_content_set
 {
   my $self = shift;
-  
+
   $self->html_content_clear();
   return $self->html_content( @_ );
+}
+
+sub html_content_accumulator
+{
+  my $self = shift;
+  my $name = shift;
+  my $text = shift;
+
+  $self->{ 'HTML_CONTENT' } ||= {};
+  $self->{ 'HTML_CONTENT' }{ $name }{ $text }++;
+
+  $self->html_content_set( $name, join '', keys %{ $self->{ 'HTML_CONTENT' }{ $name } } );
+}
+
+sub html_content_accumulator_js
+{
+  my $self = shift;
+  my $text = shift;
+
+  $text = "<script type='text/javascript' src='$text'></script>";
+  $self->html_content_accumulator( "ACCUMULATOR_JS", $text );
 }
 
 ##############################################################################
@@ -820,14 +985,15 @@ sub html_content_set
 sub render
 {
   my $self = shift;
-  my %opt = @_;
-  
+  my %opt  = @_;
+
   my $action = $opt{ 'ACTION' };
   my $page   = $opt{ 'PAGE'   };
 
   # FIXME: content vars handling set_content()/etc.
   my $ah = $self->args_here();
-  $self->{ 'HTML_CONTENT' }{ 'form_input_session_keeper' } = "<input type=hidden name=_ value=$ah>";
+  $self->html_content( 'FORM_INPUT_SESSION_KEEPER' => "<input type=hidden name=_ value=$ah>" );
+  $self->html_content( %opt );
 
 
   my $portray_data;
@@ -845,7 +1011,7 @@ sub render
     {
     boom "render() needs PAGE or ACTION";
     }
-    
+
   if( ref( $portray_data ) eq 'HASH' )
     {
     # nothing, ok
@@ -857,22 +1023,24 @@ sub render
   else
     {
     # default portray type is html
-    $portray_data = $self->portray( $portray_data, 'text/html' );  
+    $portray_data = $self->portray( $portray_data, 'text/html' );
     }
 
-  my $page_data =    $portray_data->{ 'DATA' };
-  my $page_type = lc $portray_data->{ 'TYPE' };
+  my $page_data = $portray_data->{ 'DATA' };
+  my $page_type = $portray_data->{ 'TYPE' };
 
-  if( $page_type eq 'text/html' )
+  if( lc $page_type =~ /^text\/html/ )
     {
     # FIXME: preprocess and translation only for content-type text/*
+    $page_data = $self->prep_process( $page_data );
+    # FIXME: call second preprocessing only if first needs it! i.e. detect $$
     $page_data = $self->prep_process( $page_data );
 
     # FIXME: translation
     $self->load_trans();
     my $tr = $self->{ 'TRANS' }{ $self->{ 'ENV' }{ 'LANG' } } || {};
-    $page_data =~ s/<~(([^<>]*))>/$tr->{ $1 } || $1/ge;
-    $page_data =~ s/\[~(([^<>]*))\]/$tr->{ $1 } || $1/ge;
+    $page_data =~ s/\<~([^\<\>]*)\>/$tr->{ $1 } || $1/ge;
+    $page_data =~ s/\[~([^\[\]]*)\]/$tr->{ $1 } || $1/ge;
     }
 
   $self->set_headers( 'content-type' => $page_type );
@@ -882,9 +1050,15 @@ sub render
   print $page_headers;
   print $page_data;
 
-  $self->log_debug( "debug: page response content: page, action, type, headers, data: " . Dumper( $page, $action, $page_type, $page_headers, $page_type =~ /^text\// ? $page_data : '*binary*' ) ) if $self->is_debug() > 1;
+  $self->log_debug( "debug: page response content: page, action, type, headers, data: " . Dumper( $page, $action, $page_type, $page_headers, $page_type =~ /^text\// ? $page_data : '*binary*' ) ) if $self->is_debug() > 2;
 
-  if( $self->is_debug() and $page_type eq 'text/html' )
+  if( $self->is_debug() > 1 and lc $page_type =~ /^text\/html/ )
+    {
+    my $psid = $self->get_page_session_id( 0 ) || 'empty';
+    my $rsid = $self->get_page_session_id( 1 ) || 'empty';
+    print "<hr><pre>[$rsid] << [$psid]</pre>";
+    }
+  if( $self->is_debug() > 2 and lc $page_type =~ /^text\/html/ )
     {
     local $Data::Dumper::Sortkeys = 1;
     local $Data::Dumper::Terse = 1;
@@ -894,8 +1068,8 @@ sub render
     print Dumper( 'SAFE INPUT:'.'_'x80, $self->{ 'INPUT_SAFE_HR' } );
     print Dumper( 'PAGE SESSION:'.'_'x80, $self->{ 'SESSIONS' }{ 'DATA' }{ 'PAGE' }{ $self->{ 'SESSIONS' }{ 'SID' }{ 'PAGE' } } );
     print Dumper( 'USER SESSION:'.'_'x80, $self->{ 'SESSIONS' }{ 'DATA' }{ 'USER' }{ $self->{ 'SESSIONS' }{ 'SID' }{ 'USER' } } );
-    print "<hr>";
-    print Dumper( $self );
+#    print "<hr>";
+#    print Dumper( $self );
     print "</pre><hr>";
     }
 
@@ -920,7 +1094,7 @@ sub portray
   $type = $SIMPLE_PORTRAY_TYPE_MAP{ $type } || $type;
 
   boom "portray needs mime type xxx/xxx as arg 2, got [$type]" unless $type =~ /^[a-z\-_0-9]+\/[a-z\-_0-9]+$/;
-  
+
   return { DATA => $data, TYPE => $type };
 }
 
@@ -933,7 +1107,7 @@ sub forward_url
 
   # FIXME: use render+portray
   $self->set_headers( location => $url );
-  
+
   my $page_headers = $self->__make_headers();
   print $page_headers;
 
@@ -945,7 +1119,7 @@ sub forward
   my $self = shift;
 
   boom "expected even number of arguments" unless @_ % 2 == 0;
-  
+
   my $fw = $self->args( @_ );
   return $self->forward_url( "?_=$fw" );
 }
@@ -955,7 +1129,7 @@ sub forward_here
   my $self = shift;
 
   boom "expected even number of arguments" unless @_ % 2 == 0;
-  
+
   my $fw = $self->args_here( @_ );
   return $self->forward_url( "?_=$fw" );
 }
@@ -965,8 +1139,18 @@ sub forward_back
   my $self = shift;
 
   boom "expected even number of arguments" unless @_ % 2 == 0;
-  
+
   my $fw = $self->args_back( @_ );
+  return $self->forward_url( "?_=$fw" );
+}
+
+sub forward_back_back
+{
+  my $self = shift;
+
+  boom "expected even number of arguments" unless @_ % 2 == 0;
+
+  my $fw = $self->args_back_back( @_ );
   return $self->forward_url( "?_=$fw" );
 }
 
@@ -975,7 +1159,7 @@ sub forward_new
   my $self = shift;
 
   boom "expected even number of arguments" unless @_ % 2 == 0;
-  
+
   my $fw = $self->args_new( @_ );
   return $self->forward_url( "?_=$fw" );
 }
@@ -1022,11 +1206,11 @@ sub __param
     $input_hr = $self->get_user_input();
     $save_key = 'SAVE_USER_INPUT';
     }
-    
+
   my $ps = $self->get_page_session();
-  
-  $ps->{ $save_key } ||= {};  
-  
+
+  $ps->{ $save_key } ||= {};
+
   my @res;
   while( @_ )
     {
@@ -1035,9 +1219,9 @@ sub __param
       {
       $ps->{ $save_key }{ $p } = $input_hr->{ $p };
       }
-    push @res, $ps->{ $save_key }{ $p };  
+    push @res, $ps->{ $save_key }{ $p };
     }
-  
+
   return wantarray ? @res : shift( @res );
 }
 
@@ -1059,10 +1243,27 @@ sub param_safe
   return $self->param( @_ );
 }
 
+sub param_clear_cache
+{
+  my $self = shift;
+
+  my $ps = $self->get_page_session();
+
+  while( @_ )
+    {
+    my $p = uc shift;
+    delete $ps->{ 'SAVE_SAFE_INPUT' }{ $p };
+    delete $ps->{ 'SAVE_USER_INPUT' }{ $p };
+    }
+  
+  return 1;
+}
+
+
 sub is_logged_in
 {
   my $self = shift;
-    
+
   my $user_shr = $self->get_user_session();
   return $user_shr->{ ':LOGGED_IN' } ? 1 : 0;
 }
@@ -1070,7 +1271,7 @@ sub is_logged_in
 sub login
 {
   my $self = shift;
-    
+
   my $user_shr = $self->get_user_session();
   $user_shr->{ ':LOGGED_IN' } = 1;
   $user_shr->{ ':LTIME'      } = time();
@@ -1081,7 +1282,7 @@ sub login
 sub logout
 {
   my $self = shift;
-    
+
   my $user_shr = $self->get_user_session();
   $user_shr->{ ':LOGGED_IN' } = 0;
   $user_shr->{ ':CLOSED'       } = 1;
@@ -1095,12 +1296,12 @@ sub logout
 sub need_login
 {
   my $self = shift;
-  
+
   return if $self->is_logged_in();
 
   my $fw = $self->args_new( _PN => 'login' );
   return $self->forward_url( "?_=$fw" );
-  
+
   # return $self->forward( _PN => 'login' );
 }
 
@@ -1147,12 +1348,22 @@ sub need_post_method
   my $self = shift;
 
   my $he = $self->get_http_env();
-  
-  print STDERR Dumper( $he ); 
+
+  print STDERR Dumper( $he );
   return if $he->{ 'REQUEST_METHOD' } eq 'POST';
 
   $self->logout();
   $self->render( PAGE => 'epostrequired' );
+}
+
+sub get_user_session_agent
+{
+  my $self = shift;
+
+  my $user_session = $self->get_user_session();
+  my $user_agent   = $user_session->{ ':HTTP_ENV_HR' }{ 'HTTP_USER_AGENT' };
+  
+  return $user_agent || 'n/a';
 }
 
 ##############################################################################
@@ -1163,8 +1374,8 @@ sub load_trans
 
   my $lang = lc $self->{ 'ENV' }{ 'LANG' };
 
-  return 0 if $lang !~ /^[a-z][a-z]$/;
-  
+  return 0 if $lang !~ /^[a-z][a-z]$/; # FIXME: move to init check! verofy hash etc. data::tools
+
   $self->{ 'TRANS' }{ 'LANG' } = $lang;
 
   return 1 if $self->{ 'TRANS' }{ $lang };
@@ -1223,6 +1434,18 @@ sub new_form
   my $form = new Web::Reactor::HTML::Form( @_, REO_REACTOR => $self );
 
   return $form;
+}
+
+##############################################################################
+
+sub html_new_id
+{
+  my $self = shift;
+
+  my $psid = $self->get_page_session_id();
+  $self->{ 'HTML_ID_COUNTER' }++;
+  # FIXME: hash $psid once more to hide...
+  return "REO_EID_$psid\_" . $self->{ 'HTML_ID_COUNTER' };
 }
 
 ##############################################################################
@@ -1303,7 +1526,7 @@ Action module example:
     # access page session. it will be auto-loaded on demand
     my $page_session_hr = $reo->get_page_session();
     my $fortune = $page_session_hr->{ 'FORTUNE' } ||= `/usr/games/fortune`;
-    
+
     # access input (form) data. $i and $e are hashrefs
     my $i = $reo->get_user_input(); # get plain user input (hashref)
     my $e = $reo->get_safe_input(); # get safe data (never reach user browser)
@@ -1348,26 +1571,26 @@ Web::Reactor is designed to allow extending or replacing some parts as:
 
 =head1 PAGE NAMES, HTML FILE TEMPLATES, PAGE INSTANCES
 
-WR has a notion of a "page" which represents visible output to the end user 
+WR has a notion of a "page" which represents visible output to the end user
 browser. It has (i.e. uses) the following attributes:
 
   * html file template (page name)
   * page session data
   * actions code (i.e. callbacks) used inside html text
-  
+
 All of those represent "page instance" and produce end user html visible page.
 
-"Page names" are limited to be alphanumeric and are mapped to file 
+"Page names" are limited to be alphanumeric and are mapped to file
 (or other storage) html content:
 
                    page name: example
   html file template will be: page_example.html
-  
+
 HTML content may include other files (also limited to be alphanumeric):
 
    include text: <#other_file>
   file included: other_file.html
-  
+
 Page names may be requested from the end user side, but include html files may
 be used only from the pages already requested.
 
@@ -1378,7 +1601,7 @@ can be called this way:
 
   <&test_action arg1=val1 arg2=val2 flag1 flag2...>
   <&test_action>
-  
+
 This will instruct Reactor action handler to look for this package name inside
 standard or user-added library directories:
 
@@ -1401,27 +1624,27 @@ write access to.
 Another way to call a module is directly from another module code with:
 
   $reo->action_call( 'test_action', @args );
-  
+
 The package file will look like this:
 
    package Web/Reactor/Actions/demo/test_action;
    use strict;
-   
+
    sub main
    {
      my $reo  = shift; # Web::Reactor object/instance
      my %args = @_; # all args passed to the action
-     
+
      my $html_args = $args{ 'HTML_ARGS' }; # all
      ...
      return $result_data; # usually html text
    }
-   
-$html_args is hashref with all args give inside the html code if this action 
+
+$html_args is hashref with all args give inside the html code if this action
 is called from a html text. If you look the example above:
 
   <&test_action arg1=val1 arg2=val2 flag1 flag2...>
-  
+
 The $html_args will look like this:
 
   $html_args = {
@@ -1435,7 +1658,7 @@ The $html_args will look like this:
 
 =head1 HTTP PARAMETERS NAMES
 
-Web::Reactor uses underscore and one or two letters for its system http/html 
+Web::Reactor uses underscore and one or two letters for its system http/html
 parameters. Some of the system params are:
 
   _PN  -- html page name (points to file template, restricted to alphanumeric)
@@ -1490,12 +1713,12 @@ needed, you just need to:
    # this is equivalent to
    my $ref_page_sid = $reo->get_ref_page_session_id();
    $reo->forward( _P => $ref_page_sid );
-   
+
 Each page instance knows the caller page session and can give control back to.
 However it may pass more data when returning back to the caller:
 
    $reo->forward_back( MORE_DATA => 'is here', OPTIONS_LIST => \@list );
-   
+
 When new page instance has to be called (created):
 
 
@@ -1520,7 +1743,7 @@ Some entries may be omitted and default values are:
   * HTML_DIRS     -- [ "$APP_ROOT/html" ]
   * SESS_VAR_DIR  -- [ "$APP_ROOT/var"  ]
   * DEBUG         -- 0
-   
+
 =head1 API FUNCTIONS
 
   # TODO: input
@@ -1542,14 +1765,14 @@ possible to be changed and/or extended. However drastic changes are not planned 
 If you are interested in the project or have some notes etc, contact me at:
 
   Vladi Belperchinov-Shabanski "Cade"
-  <cade@bis.bg> 
-  <cade@biscom.net> 
-  <cade@cpan.org> 
+  <cade@bis.bg>
+  <cade@biscom.net>
+  <cade@cpan.org>
   <cade@datamax.bg>
 
 further contact info, mailing list and github repository is listed below.
 
-=head1 FIXME: TODO: 
+=head1 FIXME: TODO:
 
   * config examples
   * pages example
@@ -1572,7 +1795,7 @@ directory inside distribution tarball or inside the github repository. This is
 fully functional (however stupid :)) application. It shows how data is processed,
 calling pages/views, inspecting page (calling views) stack, html forms automation,
 forwarding.
-  
+
 =head1 MAILING LIST
 
   web-reactor@googlegroups.com
@@ -1580,7 +1803,7 @@ forwarding.
 =head1 GITHUB REPOSITORY
 
   https://github.com/cade-vs/perl-web-reactor
-  
+
   git clone git://github.com/cade-vs/perl-web-reactor.git
 
 =head1 AUTHOR

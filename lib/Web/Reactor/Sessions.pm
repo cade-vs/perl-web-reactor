@@ -42,8 +42,8 @@ sub create
   my $type = uc shift;
   my $len  = shift || 128;
 
-  die "Web::Reactor::Sess::create: invalid type, expected ALPHANUMERIC, got [$type]" unless $type =~ /^[A-Z0-9]+$/;
-  die "Web::Reactor::Sess::create: invalid length, expected len > 0, got [$len]" unless $len > 0;
+  die "Web::Reactor::Sessions::create: invalid type, expected ALPHANUMERIC, got [$type]" unless $type =~ /^[A-Z0-9]+$/;
+  die "Web::Reactor::Sessions::create: invalid length, expected len > 0, got [$len]" unless $len > 0;
 
   my $env  = $self->_renv();
 
@@ -61,7 +61,7 @@ sub create
       {
       $id = undef;
       # FIXME: report error
-      die "Web::Reactor::Sess::create: cannot create new session: timeout, key[@key]";
+      die "Web::Reactor::Sessions::create: cannot create new session: timeout, key[@key]";
       return undef;
       }
     }
@@ -166,14 +166,14 @@ sub exists
 #
 # returns:
 #       1 if successful or 0 or undef if not possible or session id already exists
-sub _storage_create { die "Web::Reactor::Sess::*::_storage_create() is not implemented!"; }
+sub _storage_create { die "Web::Reactor::Sessions::*::_storage_create() is not implemented!"; }
 
 # loads session data from the storage
 # args:
 #       @key (i.e. @_) -- key components array, example: $key = join '.' @_;
 # returns:
 #       hashref of session data or undef if error
-sub _storage_load   { die "Web::Reactor::Sess::*::_storage_load() is not implemented!"; }
+sub _storage_load   { die "Web::Reactor::Sessions::*::_storage_load() is not implemented!"; }
 
 # saves session data to the storage
 # args:
@@ -181,14 +181,14 @@ sub _storage_load   { die "Web::Reactor::Sess::*::_storage_load() is not impleme
 #       @key (i.e. @_) -- key components array, example: $key = join '.' @_;
 # returns:
 #       1 if successful, undef if failed
-sub _storage_save   { die "Web::Reactor::Sess::*::_storage_save() is not implemented!"; }
+sub _storage_save   { die "Web::Reactor::Sessions::*::_storage_save() is not implemented!"; }
 
 # checks if session exists in the storage
 # args:
 #       @key (i.e. @_) -- key components array, example: $key = join '.' @_;
 # returns:
 #       1 if exists, undef if not
-sub _storage_exists { die "Web::Reactor::Sess::*::_storage_exists() is not implemented!"; }
+sub _storage_exists { die "Web::Reactor::Sessions::*::_storage_exists() is not implemented!"; }
 
 ##############################################################################
 ##
@@ -223,7 +223,7 @@ sub compose_key_from_id
   my $type = uc shift;
   my $id   = shift;
 
-  confess "Web::Reactor::Sess::compose_key_from_id: invalid type, expected ALPHANUMERIC" unless $type =~ /^[A-Z0-9]+$/;
+  confess "Web::Reactor::Sessions::compose_key_from_id: invalid type, expected ALPHANUMERIC" unless $type =~ /^[A-Z0-9]+$/;
  
   my @key;
  

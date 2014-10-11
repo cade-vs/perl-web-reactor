@@ -186,7 +186,7 @@ sub main_process
     {
     $self->log( "status: user session expired or closed [$user_sid]" );
     # not logged-in sessions dont expire
-    $user_shr->{ ':XTIME_STR' } = scalar localtime() if time() > $user_shr->{ ':XTIME' };
+    $user_shr->{ ':XTIME_STR'    } = scalar localtime() if time() > $user_shr->{ ':XTIME' };
     $user_shr->{ ':CLOSED'       } = 1;
     $user_shr->{ ':ETIME'        } = time();
     $user_shr->{ ':ETIME_STR'    } = scalar localtime();
@@ -212,6 +212,10 @@ sub main_process
     $self->render( PAGE => 'einvalid' );
     last;
     }
+
+  # FIXME: move to single place
+  my $user_session_expire = $self->{ 'ENV' }{ 'USER_SESSION_EXPIRE' } || 600; # 10 minutes
+  $self->set_user_session_expire_time_in( $user_session_expire );
 
   $self->save();
 
@@ -428,12 +432,12 @@ sub __create_new_user_session
   $self->set_cookie( $cookie_name, -value => $user_sid );
   $self->log( "debug: creating new user session [$user_sid]" );
 
-  my $user_session_expire = $self->{ 'ENV' }{ 'USER_SESSION_EXPIRE' } || 1382400; # 16 days :)
+  my $user_session_expire = $self->{ 'ENV' }{ 'USER_SESSION_EXPIRE' } || 600; # 10 minutes
 
   $user_shr->{ ':CTIME'      } = time();
   $user_shr->{ ':CTIME_STR'  } = scalar localtime();
-  $user_shr->{ ':XTIME'      } = time() + $user_session_expire;
-  $user_shr->{ ':XTIME_STR'  } = scalar localtime( $user_shr->{ ':XTIME' } );
+
+  $self->set_user_session_expire_time_in( $user_session_expire );
 
   $user_shr->{ ":HTTP_CHECK_HR" } = { map { $_ => $ENV{ $_ } } @HTTP_VARS_CHECK };
 
@@ -530,7 +534,8 @@ sub get_input_button
   my $self  = shift;
 
   my $input_user_hr = $self->get_user_input();
-  return $input_user_hr->{ 'BUTTON' };
+  my $input_safe_hr = $self->get_safe_input();
+  return $input_safe_hr->{ 'BUTTON' } || $input_user_hr->{ 'BUTTON' };
 }
 
 sub get_input_button_id
@@ -538,7 +543,8 @@ sub get_input_button_id
   my $self  = shift;
 
   my $input_user_hr = $self->get_user_input();
-  return $input_user_hr->{ 'BUTTON_ID' };
+  my $input_safe_hr = $self->get_safe_input();
+  return $input_safe_hr->{ 'BUTTON_ID' } || $input_user_hr->{ 'BUTTON_ID' };
 }
 
 sub get_input_button_and_remove
@@ -546,8 +552,10 @@ sub get_input_button_and_remove
   my $self  = shift;
 
   my $input_user_hr = $self->get_user_input();
-  my $button = $input_user_hr->{ 'BUTTON' };
+  my $input_safe_hr = $self->get_safe_input();
+  my $button = $input_safe_hr->{ 'BUTTON' } || $input_user_hr->{ 'BUTTON' };
   delete $input_user_hr->{ 'BUTTON' };
+  delete $input_safe_hr->{ 'BUTTON' };
   return $button;
 }
 

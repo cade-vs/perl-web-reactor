@@ -860,7 +860,7 @@ sub set_debug
   my $self  = shift;
   my $level = int(shift);
 
-  if( @_ > 0 )
+  if( $level > 0 )
     {
     $self->{ 'ENV' }{ 'DEBUG' } = $level > 0 ? $level : 0;
     }

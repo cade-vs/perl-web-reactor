@@ -166,6 +166,8 @@ sub html_form_engine_display
     my $value   = $er->{ 'VALUE'   };
     my $re_help = $er->{ 'RE_HELP' };
     my $pass    = $er->{'PASS'};
+    my $rows    = $er->{'ROWS'};
+    my $cols    = $er->{'COLS'};
 
     my $data    = $form_input_data->{ $name };
     my $error   = $form_input_errors->{ $name };
@@ -176,10 +178,15 @@ sub html_form_engine_display
 
     # print STDERR " form ffffffffffffffffffffffffffff [$name] [$value] [$re_help]\n";
 
-    if( $type =~ /^(STRING|STR|CHAR|TEXT|INPUT)$/ )
+    if( $type =~ /^(STRING|STR|CHAR|INPUT)$/ )
       {
       $text .= $form->input( NAME => $name, SIZE => $size, MAXLEN => $maxlen, VALUE=> $data, PASS => $pass );
       }
+    elsif( $type =~ /^(TEXT)$/ )
+      {
+      $text .= $form->textarea( NAME => $name, SIZE => $size, MAXLEN => $maxlen, VALUE=> $data,  ROWS => $rows, COLS => $cols);
+      }
+
     elsif( $type =~ /^(CB|CHECK|CHECKBOX)$/ )
       {
       $text .= $form->checkbox( NAME => $name, VALUE=> $data );
@@ -194,7 +201,8 @@ sub html_form_engine_display
       }
     elsif( $type =~ /^(FILE)$/ )
       {
-      $text .= "<input type='file' name='$name' size='16'>";
+      my $form_id = $form->get_id();
+      $text .= "<input type='file' name='$name' size='16' form=$form_id>";
       }
     else
       {

@@ -92,8 +92,14 @@ sub load_file
 
   if( ! $fn )
     {
-    # FIXME: not a error really, more like warning, should be able to disable :))
-    #$reo->log( "warning: cannot find file for page [$pn] dirs list is [@$dirs]" );
+    if( $pn =~ /^page_/ )
+      {
+      $reo->log( "error: cannot load file for page [$pn] from [@$dirs]" );
+      }
+    else
+      {  
+      $reo->log( "warning: cannot load file for page [$pn] from [@$dirs]" ) if $reo->is_debug();
+      }
     return undef;
     }
 

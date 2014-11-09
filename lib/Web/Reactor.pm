@@ -118,6 +118,9 @@ sub new
   $self->{ 'REO_PREP' }{ 'REO_REACTOR' } = $self;
   $self->{ 'REO_ACTS' }{ 'REO_REACTOR' } = $self;
 
+  # debug setup
+  $self->log_debug( "debug: setup: " . Dumper( $self->{ 'ENV' } ) );
+
   return $self;
 }
 
@@ -230,7 +233,7 @@ sub main_process
   if( $app_charset )
     {
     my $incoming_charset;
-    if( uc( CGI::http('HTTP_X_REQUESTED_WITH') ) eq 'XMLHTTPREQUEST' )
+    if( uc( CGI::http( 'HTTP_X_REQUESTED_WITH' ) ) eq 'XMLHTTPREQUEST' )
       {
       $incoming_charset = 'utf8';
       }
@@ -888,8 +891,9 @@ sub log_debug
   my $self = shift;
 
   return unless $self->is_debug();
-  chomp( @_ );
-  my $msg = join( "\n", @_ );
+  my @args = @_;
+  chomp( @args );
+  my $msg = join( "\n", @args );
   $msg = "debug: $msg" unless $msg =~ /^debug:/i;
   $self->log( $msg );
 }
@@ -1281,7 +1285,7 @@ sub login
   my $self = shift;
 
   my $user_shr = $self->get_user_session();
-  $user_shr->{ ':LOGGED_IN' } = 1;
+  $user_shr->{ ':LOGGED_IN'  } = 1;
   $user_shr->{ ':LTIME'      } = time();
   $user_shr->{ ':LTIME_STR'  } = scalar localtime();
   # FIXME: add more login info
@@ -1292,7 +1296,7 @@ sub logout
   my $self = shift;
 
   my $user_shr = $self->get_user_session();
-  $user_shr->{ ':LOGGED_IN' } = 0;
+  $user_shr->{ ':LOGGED_IN'    } = 0;
   $user_shr->{ ':CLOSED'       } = 1;
   $user_shr->{ ':ETIME'        } = time();
   $user_shr->{ ':ETIME_STR'    } = scalar localtime();
@@ -1357,7 +1361,6 @@ sub need_post_method
 
   my $he = $self->get_http_env();
 
-  print STDERR Dumper( $he );
   return if $he->{ 'REQUEST_METHOD' } eq 'POST';
 
   $self->logout();

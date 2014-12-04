@@ -67,7 +67,7 @@ sub load_file
 
   my $pn = lc shift; # page name
 
-  die "invalid page name, expected ALPHANUMERIC, got [$pn]" unless $pn =~ /^[a-z_0-9]+$/;
+  die "invalid page name, expected ALPHANUMERIC, got [$pn]" unless $pn =~ /^[a-z_\-0-9]+$/;
 
   my $reo = $self->{ 'REO_REACTOR' };
 
@@ -120,7 +120,7 @@ sub process
   $opt->{ 'LEVEL' }++;
 
   # FIXME: cache here? moje bi ne, zaradi modulite
-  $text =~ s/<([\$\&\#]|\$\$)([a-zA-Z_0-9]+)(\s*[^>]*)?>/$self->__process_tag( $1, $2, $3, $opt )/ge;
+  $text =~ s/<([\$\&\#]|\$\$)([a-zA-Z_\-0-9]+)(\s*[^>]*)?>/$self->__process_tag( $1, $2, $3, $opt )/ge;
   $text =~ s/reactor_((new|back|here)_)?href=([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"']*)/$self->__process_href( $2, $3, $5 )/gie;
 
   return $text;
@@ -140,7 +140,7 @@ sub __process_tag
   my $path = $opt->{ 'PATH' };
 
   die "preprocess loop detected, tag [$type$tag] path [$path]" if $opt->{ 'SEEN:' . $type . $tag }++;
-  die "empty or invalid tag" unless $tag =~ /^[a-zA-Z_0-9]+$/;
+  die "empty or invalid tag" unless $tag =~ /^[a-zA-Z_\-0-9]+$/;
 
   my $reo = $self->{ 'REO_REACTOR' };
 

@@ -1,7 +1,7 @@
 /****************************************************************************
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2014 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -227,5 +227,22 @@ function reactor_tab_activate( tab )
   return false;
   }
 
+/***************************************************************************/
+
+function reactor_form_checkbox_toggle( el )
+{
+  var ch_id = el.dataset.checkboxInputId;
+  var cb = document.getElementById( ch_id );
+  cb.value = el.checked ? 1 : 0
+
+  var onchange = cb.getAttribute( 'ONCHANGE' );
+  if( onchange )
+    {
+    if( is_msie_shit )
+      onchange();
+    else
+      eval( onchange );
+    }
+}
 
 /***EOF*********************************************************************/

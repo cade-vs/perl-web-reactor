@@ -162,6 +162,7 @@ sub checkbox
   my $name  = uc $opt{ 'NAME'  };
   my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'CHECKBOX' } || 'checkbox';
   my $value =    $opt{ 'VALUE' } ? 1 : 0;
+  my $args  =    $opt{ 'ARGS'  };
 
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
 
@@ -176,8 +177,9 @@ sub checkbox
   #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
   #$text .= "<input type='checkbox' name='$name' value='1' $options>";
   $text .= "\n";
-  $text .= "<input type='hidden' name='$name' id='$ch_id' value='$value' form='$form_id'>";
-  $text .= qq[ <input type='checkbox' $options onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
+  $text .= "<input type='hidden' name='$name' id='$ch_id' value='$value' form='$form_id' $args>";
+#  $text .= qq[ <input type='checkbox' $options checkbox_data_input_id="$ch_id" onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
+  $text .= qq[ <input type='checkbox' $options data-checkbox-input-id="$ch_id" onclick='reactor_form_checkbox_toggle(this)'> ];
   $text .= "\n";
 
   return $text;

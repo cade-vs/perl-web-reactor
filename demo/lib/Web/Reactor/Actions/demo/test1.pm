@@ -9,6 +9,7 @@ sub main
 
   my $text;
 
+  $reo->login();
 
   if( $reo->get_input_form_name() eq 'PERSON_FORM' and $reo->get_input_button() eq 'PERSON_CANCEL' )
     {
@@ -55,7 +56,7 @@ sub main
 
   $text .= $form->begin( NAME => 'TEST_FORM' );
   $text .= $form->input( NAME => 'in1' );
-  $text .= $form->cb( NAME => 'cb1' );
+  $text .= $form->checkbox( NAME => 'cb1' );
   $text .= $form->select( NAME => 'sel1', DATA => \@selarr, ROWS => 7, MULTIPLE => 1 );
   $text .= $form->select( NAME => 'sel2', DATA => \@selarr, ROWS => 1 );
   $text .= $form->button( NAME => 'b1', VALUE => 'testing button' );

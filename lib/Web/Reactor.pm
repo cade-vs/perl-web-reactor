@@ -118,6 +118,9 @@ sub new
   $self->{ 'REO_PREP' }{ 'REO_REACTOR' } = $self;
   $self->{ 'REO_ACTS' }{ 'REO_REACTOR' } = $self;
 
+  # debug setup
+  $self->log_debug( "debug: setup: " . Dumper( $self->{ 'ENV' } ) );
+
   return $self;
 }
 
@@ -186,7 +189,7 @@ sub main_process
     {
     $self->log( "status: user session expired or closed [$user_sid]" );
     # not logged-in sessions dont expire
-    $user_shr->{ ':XTIME_STR' } = scalar localtime() if time() > $user_shr->{ ':XTIME' };
+    $user_shr->{ ':XTIME_STR'    } = scalar localtime() if time() > $user_shr->{ ':XTIME' };
     $user_shr->{ ':CLOSED'       } = 1;
     $user_shr->{ ':ETIME'        } = time();
     $user_shr->{ ':ETIME_STR'    } = scalar localtime();
@@ -213,6 +216,10 @@ sub main_process
     last;
     }
 
+  # FIXME: move to single place
+  my $user_session_expire = $self->{ 'ENV' }{ 'USER_SESSION_EXPIRE' } || 600; # 10 minutes
+  $self->set_user_session_expire_time_in( $user_session_expire );
+
   $self->save();
 
   # 4. get input data, CGI::params, postdata
@@ -220,6 +227,29 @@ sub main_process
   my $input_safe_hr = $self->{ 'INPUT_SAFE_HR' } = {};
 
   # FIXME: TODO: handle and URL params here. only for EX?
+  my $iconv;
+  my $app_charset = lc $self->{ 'ENV' }{ 'APP_CHARSET' };
+
+  if( $app_charset )
+    {
+    my $incoming_charset;
+    if( uc( CGI::http( 'HTTP_X_REQUESTED_WITH' ) ) eq 'XMLHTTPREQUEST' )
+      {
+      $incoming_charset = 'utf8';
+      }
+    if( $incoming_charset and $incoming_charset ne $app_charset )
+      {
+      eval 
+        { 
+        require 'Text/Iconv.pm'; 
+        $iconv = Text::Iconv->new( $incoming_charset, $app_charset );
+        };
+      if( $@ )  
+        {
+        $self->log( "error: cannot convert charset from [$incoming_charset] to [$app_charset] error: $@" );
+        }
+      }
+    }  
 
   # import plain parameters from GET/POST request
   for my $n ( CGI::param() )
@@ -231,6 +261,12 @@ sub main_process
       }
     my $v = CGI::param( $n );
     my @v = CGI::param( $n );
+
+    if( $iconv )
+      {
+      $v = $iconv->convert( $v );
+      $_ = $iconv->convert( $_ ) for @v;
+      }
 
     $n = uc $n;
 
@@ -399,12 +435,12 @@ sub __create_new_user_session
   $self->set_cookie( $cookie_name, -value => $user_sid );
   $self->log( "debug: creating new user session [$user_sid]" );
 
-  my $user_session_expire = $self->{ 'ENV' }{ 'USER_SESSION_EXPIRE' } || 1382400; # 16 days :)
+  my $user_session_expire = $self->{ 'ENV' }{ 'USER_SESSION_EXPIRE' } || 600; # 10 minutes
 
   $user_shr->{ ':CTIME'      } = time();
   $user_shr->{ ':CTIME_STR'  } = scalar localtime();
-  $user_shr->{ ':XTIME'      } = time() + $user_session_expire;
-  $user_shr->{ ':XTIME_STR'  } = scalar localtime( $user_shr->{ ':XTIME' } );
+
+  $self->set_user_session_expire_time_in( $user_session_expire );
 
   $user_shr->{ ":HTTP_CHECK_HR" } = { map { $_ => $ENV{ $_ } } @HTTP_VARS_CHECK };
 
@@ -501,7 +537,8 @@ sub get_input_button
   my $self  = shift;
 
   my $input_user_hr = $self->get_user_input();
-  return $input_user_hr->{ 'BUTTON' };
+  my $input_safe_hr = $self->get_safe_input();
+  return $input_safe_hr->{ 'BUTTON' } || $input_user_hr->{ 'BUTTON' };
 }
 
 sub get_input_button_id
@@ -509,7 +546,8 @@ sub get_input_button_id
   my $self  = shift;
 
   my $input_user_hr = $self->get_user_input();
-  return $input_user_hr->{ 'BUTTON_ID' };
+  my $input_safe_hr = $self->get_safe_input();
+  return $input_safe_hr->{ 'BUTTON_ID' } || $input_user_hr->{ 'BUTTON_ID' };
 }
 
 sub get_input_button_and_remove
@@ -517,8 +555,10 @@ sub get_input_button_and_remove
   my $self  = shift;
 
   my $input_user_hr = $self->get_user_input();
-  my $button = $input_user_hr->{ 'BUTTON' };
+  my $input_safe_hr = $self->get_safe_input();
+  my $button = $input_safe_hr->{ 'BUTTON' } || $input_user_hr->{ 'BUTTON' };
   delete $input_user_hr->{ 'BUTTON' };
+  delete $input_safe_hr->{ 'BUTTON' };
   return $button;
 }
 
@@ -539,6 +579,13 @@ sub get_page_frame
   my $page_shr  = $self->get_page_session();
   
   return exists $page_shr->{ ':FRAME_NAME' } ? $page_shr->{ ':FRAME_NAME' } : undef;
+}
+
+sub get_lang
+{
+  my $self  = shift;
+
+  return $self->{ 'ENV' }{ 'LANG' };
 }
 
 sub args
@@ -667,6 +714,8 @@ sub set_headers
   my $self  = shift;
   my %h = @_;
 
+  hash_lc_ipl( \%h );
+
   $self->{ 'OUTPUT' }{ 'HEADERS' } ||= {};
   $self->{ 'OUTPUT' }{ 'HEADERS' } = { %{ $self->{ 'OUTPUT' }{ 'HEADERS' } }, %h };
 }
@@ -678,8 +727,20 @@ sub __make_headers
   my $headers;
 
   $self->{ 'OUTPUT' }{ 'HEADERS' }{ 'content-type' } ||= 'text/html';
+  
+  # postprocess headers, custom logic, etc.
+  my %headers_out = %{ $self->{ 'OUTPUT' }{ 'HEADERS' } };
+  
+  if( $headers_out{ 'content-charset' } )
+    {
+    if( $headers_out{ 'content-type' } !~ /;\s*charset=/i )
+      {
+      $headers_out{ 'content-type' } .= '; charset=' . $headers_out{ 'content-charset' };
+      }
+    delete $headers_out{ 'content-charset' };
+    };
 
-  while( my ( $k, $v ) = each %{ $self->{ 'OUTPUT' }{ 'HEADERS' } } )
+  while( my ( $k, $v ) = each %headers_out )
     {
     $headers .= "$k: $v\n";
     }
@@ -802,7 +863,7 @@ sub set_debug
   my $self  = shift;
   my $level = int(shift);
 
-  if( @_ > 0 )
+  if( $level > 0 )
     {
     $self->{ 'ENV' }{ 'DEBUG' } = $level > 0 ? $level : 0;
     }
@@ -830,8 +891,9 @@ sub log_debug
   my $self = shift;
 
   return unless $self->is_debug();
-  chomp( @_ );
-  my $msg = join( "\n", @_ );
+  my @args = @_;
+  chomp( @args );
+  my $msg = join( "\n", @args );
   $msg = "debug: $msg" unless $msg =~ /^debug:/i;
   $self->log( $msg );
 }
@@ -976,13 +1038,14 @@ sub render
     $portray_data = $self->portray( $portray_data, 'text/html' );
     }
 
-  my $page_data =    $portray_data->{ 'DATA' };
-  my $page_type = lc $portray_data->{ 'TYPE' };
+  my $page_data = $portray_data->{ 'DATA' };
+  my $page_type = $portray_data->{ 'TYPE' };
 
-  if( $page_type eq 'text/html' )
+  if( lc $page_type =~ /^text\/html/ )
     {
     # FIXME: preprocess and translation only for content-type text/*
     $page_data = $self->prep_process( $page_data );
+    # FIXME: call second preprocessing only if first needs it! i.e. detect $$
     $page_data = $self->prep_process( $page_data );
 
     # FIXME: translation
@@ -1001,13 +1064,13 @@ sub render
 
   $self->log_debug( "debug: page response content: page, action, type, headers, data: " . Dumper( $page, $action, $page_type, $page_headers, $page_type =~ /^text\// ? $page_data : '*binary*' ) ) if $self->is_debug() > 2;
 
-  if( $self->is_debug() > 1 and $page_type eq 'text/html' )
+  if( $self->is_debug() > 1 and lc $page_type =~ /^text\/html/ )
     {
     my $psid = $self->get_page_session_id( 0 ) || 'empty';
     my $rsid = $self->get_page_session_id( 1 ) || 'empty';
     print "<hr><pre>[$rsid] << [$psid]</pre>";
     }
-  if( $self->is_debug() > 2 and $page_type eq 'text/html' )
+  if( $self->is_debug() > 2 and lc $page_type =~ /^text\/html/ )
     {
     local $Data::Dumper::Sortkeys = 1;
     local $Data::Dumper::Terse = 1;
@@ -1090,6 +1153,16 @@ sub forward_back
   boom "expected even number of arguments" unless @_ % 2 == 0;
 
   my $fw = $self->args_back( @_ );
+  return $self->forward_url( "?_=$fw" );
+}
+
+sub forward_back_back
+{
+  my $self = shift;
+
+  boom "expected even number of arguments" unless @_ % 2 == 0;
+
+  my $fw = $self->args_back_back( @_ );
   return $self->forward_url( "?_=$fw" );
 }
 
@@ -1182,6 +1255,23 @@ sub param_safe
   return $self->param( @_ );
 }
 
+sub param_clear_cache
+{
+  my $self = shift;
+
+  my $ps = $self->get_page_session();
+
+  while( @_ )
+    {
+    my $p = uc shift;
+    delete $ps->{ 'SAVE_SAFE_INPUT' }{ $p };
+    delete $ps->{ 'SAVE_USER_INPUT' }{ $p };
+    }
+  
+  return 1;
+}
+
+
 sub is_logged_in
 {
   my $self = shift;
@@ -1195,7 +1285,7 @@ sub login
   my $self = shift;
 
   my $user_shr = $self->get_user_session();
-  $user_shr->{ ':LOGGED_IN' } = 1;
+  $user_shr->{ ':LOGGED_IN'  } = 1;
   $user_shr->{ ':LTIME'      } = time();
   $user_shr->{ ':LTIME_STR'  } = scalar localtime();
   # FIXME: add more login info
@@ -1206,7 +1296,7 @@ sub logout
   my $self = shift;
 
   my $user_shr = $self->get_user_session();
-  $user_shr->{ ':LOGGED_IN' } = 0;
+  $user_shr->{ ':LOGGED_IN'    } = 0;
   $user_shr->{ ':CLOSED'       } = 1;
   $user_shr->{ ':ETIME'        } = time();
   $user_shr->{ ':ETIME_STR'    } = scalar localtime();
@@ -1271,7 +1361,6 @@ sub need_post_method
 
   my $he = $self->get_http_env();
 
-  print STDERR Dumper( $he );
   return if $he->{ 'REQUEST_METHOD' } eq 'POST';
 
   $self->logout();

@@ -73,7 +73,8 @@ sub begin
   my $form_id        =    $opt{ 'ID'     };
   my $method         = uc $opt{ 'METHOD' } || 'POST';
   my $action         =    $opt{ 'ACTION' } || '?';
-  my $default_button = $opt{ 'DEFAULT_BUTTON' };
+  my $default_button =    $opt{ 'DEFAULT_BUTTON' };
+  my $state_keeper   =    $opt{ 'STATE_KEEPER'   };
 
   $self->{ 'CLASS_MAP' } = $opt{ 'CLASS_MAP' } || {};
 
@@ -100,7 +101,7 @@ sub begin
   my $page_session = $reo->get_page_session();
   $page_session->{ ':FORM_DEF' }{ $form_name } = {};
 
-  my $state_keeper = $reo->args_here( FORM_NAME => $form_name ); # keep state and more args
+  $state_keeper ||= $reo->args_here( FORM_NAME => $form_name ); # keep state and more args
   $text .= "<form name='$form_name' id='$form_id' action='$action' method='$method' enctype='multipart/form-data'>";
   $text .= "</form>";
   $text .= "<input type=hidden name='_' value='$state_keeper' form='$form_id'>";
@@ -161,6 +162,7 @@ sub checkbox
   my $name  = uc $opt{ 'NAME'  };
   my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'CHECKBOX' } || 'checkbox';
   my $value =    $opt{ 'VALUE' } ? 1 : 0;
+  my $args  =    $opt{ 'ARGS'  };
 
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
 
@@ -175,8 +177,9 @@ sub checkbox
   #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
   #$text .= "<input type='checkbox' name='$name' value='1' $options>";
   $text .= "\n";
-  $text .= "<input type='hidden' name='$name' id='$ch_id' value='$value' form='$form_id'>";
-  $text .= qq[ <input type='checkbox' $options onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
+  $text .= "<input type='hidden' name='$name' id='$ch_id' value='$value' form='$form_id' $args>";
+#  $text .= qq[ <input type='checkbox' $options checkbox_data_input_id="$ch_id" onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
+  $text .= qq[ <input type='checkbox' $options data-checkbox-input-id="$ch_id" onclick='reactor_form_checkbox_toggle(this)'> ];
   $text .= "\n";
 
   return $text;
@@ -193,19 +196,19 @@ sub radio
   my $name  = uc $opt{ 'NAME'  };
   my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'RADIO' } || 'radio';
   my $on    =    $opt{ 'ON'    }; # active?
-  my $val   =    $opt{ 'VAL'   };
   my $ret   =    $opt{ 'RET'   } || $opt{ 'RETURN' } || 1; # map return value!
 
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
 
   my $text;
 
+  my $val = $self->html_new_id();
+
   my $form_id = $self->{ 'FORM_ID' };
   my $checked = $on ? 'checked' : undef;
   $text .= "<input type='radio' $checked name='$name' value='$val' form='$form_id'>";
 
   $self->__set_ret_map( $name, $val => $ret ) if defined $ret;
-  $self->{ 'RET_MAP' }{ $val } = $ret;
 
   $text .= "\n";
   return $text;
@@ -398,16 +401,16 @@ sub input
 
   my %opt = @_;
 
-  my $name  = uc $opt{ 'NAME'  };
-  my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'INPUT' } || 'line';
-  my $value =    $opt{ 'VALUE' };
-  my $id    =    $opt{ 'ID'    };
+  my $name  = uc $opt{ 'NAME'    };
+  my $class =    $opt{ 'CLASS'   } || $self->{ 'CLASS_MAP' }{ 'INPUT' } || 'line';
+  my $value =    $opt{ 'VALUE'   };
+  my $id    =    $opt{ 'ID'      };
   # FIXME: default data?
   my $size  =    $opt{ 'SIZE'    } || $opt{ 'LEN' } || $opt{ 'WIDTH' };
   my $maxl  =    $opt{ 'MAXLEN'  } || $opt{ 'MAX' };
 
-  my $len   =    $opt{ 'LEN'  };
-  my $args  =    $opt{ 'ARGS' };
+  my $len   =    $opt{ 'LEN'     };
+  my $args  =    $opt{ 'ARGS'    };
 
   $size = $maxl = $len if $len > 0;
 
@@ -420,6 +423,7 @@ sub input
   $options .= "ID='$id' "                    if $id ne '';
   # $options .= "ID='$name' "                  if $opt{ 'NAME_ID' } or $id eq '';
   $options .= "type='password' "             if $opt{ 'PASS' } || $opt{ 'PASSWORD' };
+  $options .= "type='hidden' " if $opt{ 'HIDDEN'  }; # FIXME: handle TYPE better
 
 #  my $extra = $opt{ 'EXTRA' };
   #$options .= " $extra ";

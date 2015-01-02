@@ -61,7 +61,6 @@ sub new
              'ENV' => \%env,
              };
   bless $self, $class;
-  # rcd_log( "debug: rcd_rec:$self created" );
 
 #  my $root = $self->{ 'ENV' }{ 'ROOT' };
 #  # autosetup defaults

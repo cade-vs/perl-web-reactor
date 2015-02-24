@@ -994,9 +994,9 @@ sub html_content_accumulator_js
 sub html_content_accumulator_css
 {
   my $self = shift;
-  my $text = shift;
+  my $css = shift;
 
-  $text = qq{ <link href="$css" rel="stylesheet" type="text/css"> };
+  my $text = qq{ <link href="$css" rel="stylesheet" type="text/css"> };
   $self->html_content_accumulator( "ACCUMULATOR_HEAD", $text );
 }
 

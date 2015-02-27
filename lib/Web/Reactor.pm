@@ -186,7 +186,7 @@ sub main_process
       or
       ( $user_shr->{ ':CLOSED' } ) )
     {
-    $self->log( "status: user session expired or closed [$user_sid]" );
+    $self->log( "status: user session expired or closed, sid [$user_sid]" );
     # not logged-in sessions dont expire
     $user_shr->{ ':XTIME_STR'    } = scalar localtime() if time() > $user_shr->{ ':XTIME' };
     $user_shr->{ ':CLOSED'       } = 1;
@@ -203,7 +203,7 @@ sub main_process
     # check if session parameters are changed, stealing session?
     next if $user_shr->{ ":HTTP_CHECK_HR" }{ $k } eq $ENV{ $k };
 
-    $self->log( "status: user session parameters check failed [$user_sid]" );
+    $self->log( "status: user session parameter [$k] check failed, sid [$user_sid]" );
     # FIXME: move to function: close_session();
     $user_shr->{ ':CLOSED'       } = 1;
     $user_shr->{ ':ETIME'        } = time();
@@ -222,7 +222,7 @@ sub main_process
   $self->save();
 
   # 4. get input data, CGI::params, postdata
-  my $input_user_hr  = $self->{ 'INPUT_USER_HR'  } = {};
+  my $input_user_hr = $self->{ 'INPUT_USER_HR' } = {};
   my $input_safe_hr = $self->{ 'INPUT_SAFE_HR' } = {};
 
   # FIXME: TODO: handle and URL params here. only for EX?

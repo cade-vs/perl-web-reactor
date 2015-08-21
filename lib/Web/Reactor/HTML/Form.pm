@@ -156,10 +156,11 @@ sub checkbox
 
   #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
   #$text .= "<input type='checkbox' name='$name' value='1' $options>";
-  $text .= "<input type=hidden   name='$name' id='$ch_id' value='$value'>\n";
-  $text .= qq[ <input type='checkbox' $options onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
-
   $text .= "\n";
+  $text .= "<input type=hidden   name='$name' id='$ch_id' value='$value'>";
+  $text .= qq[ <input type='checkbox' $options onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
+  $text .= "\n";
+
   return $text;
 }
 
@@ -467,7 +468,7 @@ sub image_button
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
   my $text;
 
-  $text .= "<input class='$class' type='image' name='$name' src='$src' border=0 $options onDblClick='return false;' $extra>";
+  $text .= "<input class='$class' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;' $extra >";
 
   $text .= "\n";
   return $text;

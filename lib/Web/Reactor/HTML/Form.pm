@@ -90,7 +90,7 @@ sub begin
   $page_session->{ ':FORM_DEF' }{ $form_name } = {};
 
   my $state_keeper = $reo->args_here( FORM_NAME => $form_name ); # keep state and more args
-  $text .= "<form action='$action' method='$method' enctype='multipart/form-data'>";
+  $text .= "<form NAME='$form_name' ID='$form_id' action='$action' method='$method' enctype='multipart/form-data'>";
   $text .= "<input type=hidden name=_ value=$state_keeper>";
 
   return $text;
@@ -402,8 +402,8 @@ sub input
   #$options .= "ID='$name' " if $opt{ 'NAME_ID' } or $id eq '';
   $options .= "type='password' " if $opt{ 'PASS' } || $opt{ 'PASSWORD' };
 
-#  my $extra = $opt{ 'EXTRA' };
-  #$options .= " $extra ";
+  my $extra = $opt{ 'EXTRA' };
+  $options .= " $extra ";
 
   $value = str_html_escape( $value );
 
@@ -467,7 +467,7 @@ sub image_button
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
   my $text;
 
-  $text .= "<input class='$class' type='image' name='$name' src='$src' border=0 $options onDblClick='return false;' >";
+  $text .= "<input class='$class' type='image' name='$name' src='$src' border=0 $options onDblClick='return false;' $extra>";
 
   $text .= "\n";
   return $text;

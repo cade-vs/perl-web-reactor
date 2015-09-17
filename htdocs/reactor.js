@@ -1,7 +1,7 @@
 /****************************************************************************
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2014 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -105,70 +105,6 @@ function html_block_toggle_id( block_id )
 
 /***************************************************************************/
 
-/* FOR DELETE 
-function toggle_display( eid )
-{
-  var elem = document.getElementById( eid );
-  if( elem.style.position == "absolute" )
-    {
-    elem.style.position   = "relative";
-    elem.style.visibility = "visible";
-    }
-  else
-    {
-    elem.style.position   = "absolute";
-    elem.style.visibility = "hidden";
-    }
-}
-
-function toggle_display_block( eid )
-{
-  var elem = document.getElementById( eid );
-  if( elem.style.display == "none" )
-    {
-    elem.style.display = "block";
-    }
-  else
-    {
-    elem.style.display = "none";
-    }
-}
-
-function toggle_display_tr( eid )
-{
-  var elem = document.getElementById( eid );
-  if( elem.style.display == "none" )
-    {
-    if( is_msie )
-      elem.style.display = "block";
-    else
-      elem.style.display = "table-row";
-    }
-  else
-    {
-    elem.style.display = "none";
-    }
-}
-
-function hide_display_tr( eid )
-{
-  var elem = document.getElementById( eid );
-  if( elem.style.display == "none" )
-    {
-    if( is_msie )
-      elem.style.display = "block";
-    else
-      elem.style.display = "table-row";
-    }
-  else
-    {
-    elem.style.display = "none";
-    }
-}
-FOR DELETE */
-
-/***************************************************************************/
-
 function ftree_click( ftree_id, branch_id )
 {
   var root_table = document.getElementById( ftree_id );
@@ -176,8 +112,6 @@ function ftree_click( ftree_id, branch_id )
 
   branch_tr.open = ! branch_tr.open;
 
-  //alert(branch_tr.open + branch_tr.id );
-  
   var elems = root_table.getElementsByTagName( 'TR' )
   var bia = branch_id.split(".");
 
@@ -218,7 +152,7 @@ function current_date()
   var d = now.getDate();
   var m = now.getMonth() + 1;
   var y = now.getYear();
-  if( ! is_msie ) y += 1900;
+  if( y < 1000 ) y += 1900; // stupid msie shit
   if( d < 10 ) d = '0' + d;
   if( m < 10 ) m = '0' + m;
   return d + '.' + m + '.' + y;
@@ -249,5 +183,66 @@ function set_value( id_name, val )
   e.value = val;
   return false;
   }
+
+/***************************************************************************/
+
+// TABs support with browser localStorage persistence
+
+function reactor_tab_activate_id( tab_id )
+  {
+  if( ! tab_id ) return;
+
+  var tab = document.getElementById( tab_id );
+  
+  return reactor_tab_activate( tab );
+  }
+
+function reactor_tab_activate( tab )
+  {
+  var tab_ctrl = document.getElementById( tab.dataset.controllerId );
+
+  var tabs = tab_ctrl.dataset.tabsList.split( "," );
+  var con  = tab_ctrl.dataset.classOn;
+  var coff = tab_ctrl.dataset.classOff;
+  var pkey = tab_ctrl.id; // persistent-key
+  var z;
+
+  for( z = 0; z < tabs.length; z++ )
+    {
+    var t = document.getElementById( tabs[z] );
+    t.style.display = "none";
+    document.getElementById( t.dataset.handleId ).className = coff;
+    }
+
+  document.getElementById( tab.dataset.handleId ).className = con;
+  if( pkey )
+    {
+    sessionStorage.setItem( 'TABSET_ACTIVE_' + pkey, tab.id );
+    }
+  if( tab.tagName == 'TR' )
+    tab.style.display = "table-row";
+  else
+    tab.style.display = "block";
+
+  return false;
+  }
+
+/***************************************************************************/
+
+function reactor_form_checkbox_toggle( el )
+{
+  var ch_id = el.dataset.checkboxInputId;
+  var cb = document.getElementById( ch_id );
+  cb.value = el.checked ? 1 : 0
+
+  var onchange = cb.getAttribute( 'ONCHANGE' );
+  if( onchange )
+    {
+    if( is_msie_shit )
+      onchange();
+    else
+      eval( onchange );
+    }
+}
 
 /***EOF*********************************************************************/

@@ -39,11 +39,11 @@ sub new
       $env{ 'HTML_DIRS' } = [ "$root/html/$lang", "$root/html/default" ];
       }
     else
-      {  
+      {
       $env{ 'HTML_DIRS' } = [ "$root/html/default" ];
       }
     }
-  
+
   my $html_dirs = $env{ 'HTML_DIRS' } || [];
   my $html_dirs_ok = 0;
   for my $html_dir ( @$html_dirs )
@@ -97,7 +97,7 @@ sub load_file
       $reo->log( "error: cannot load file for page [$pn] from [@$dirs]" );
       }
     else
-      {  
+      {
       $reo->log( "warning: cannot load file for page [$pn] from [@$dirs]" ) if $reo->is_debug();
       }
     return undef;
@@ -121,7 +121,7 @@ sub process
 
   # FIXME: cache here? moje bi ne, zaradi modulite
   $text =~ s/<([\$\&\#]|\$\$)([a-zA-Z_\-0-9]+)(\s*[^>]*)?>/$self->__process_tag( $1, $2, $3, $opt )/ge;
-  $text =~ s/reactor_((new|back|here)_)?href=([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"']*)/$self->__process_href( $2, $3, $5 )/gie;
+  $text =~ s/reactor_((new|back|here)_)?href=(["'])?([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"']*)(\3)?/$self->__process_href( $2, $4, $6 )/gie;
 
   return $text;
 }
@@ -187,13 +187,13 @@ sub __process_tag
 sub __process_href
 {
   my $self   = shift;
-  
+
   my $type   = lc shift || 'here';
   my $script = shift;
   my $data   = shift;
-  
+
   my $data_hr = url2hash( $data );
-  
+
   my $reo = $self->{ 'REO_REACTOR' };
 
   my $href;
@@ -213,8 +213,8 @@ sub __process_href
     {
     boom "invalid first argument, expected one of (new|back|here)";
     }
-  
-  return "href=?_=$href";  
+
+  return "href=?_=$href";
 }
 
 ##############################################################################

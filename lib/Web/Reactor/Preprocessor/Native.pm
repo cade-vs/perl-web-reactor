@@ -121,7 +121,7 @@ sub process
 
   # FIXME: cache here? moje bi ne, zaradi modulite
   $text =~ s/<([\$\&\#]|\$\$)([a-zA-Z_\-0-9]+)(\s*[^>]*)?>/$self->__process_tag( $1, $2, $3, $opt )/ge;
-  $text =~ s/reactor_((new|back|here)_)?(href|src)=(["'])?([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"']*)(\3)?/$self->__process_href( $2, $3, $5, $7 )/gie;
+  $text =~ s/reactor_((new|back|here)_)?(href|src)=(["'])?([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"']*)(\4)?/$self->__process_href( $2, $3, $5, $7 )/gie;
 
   return $text;
 }

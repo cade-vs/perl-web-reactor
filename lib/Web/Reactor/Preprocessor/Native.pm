@@ -217,7 +217,7 @@ sub __process_href
     boom "invalid first argument, expected one of (new|back|here)";
     }
 
-  return "$attr=?_=$href";
+  return "$attr=$script?_=$href";
 }
 
 ##############################################################################

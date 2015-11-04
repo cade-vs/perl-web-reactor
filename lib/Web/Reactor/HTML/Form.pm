@@ -179,7 +179,7 @@ sub checkbox
   $text .= "\n";
   $text .= "<input type='hidden' name='$name' id='$ch_id' value='$value' form='$form_id' $args>";
 #  $text .= qq[ <input type='checkbox' $options checkbox_data_input_id="$ch_id" onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
-  $text .= qq[ <input type='checkbox' $options data-checkbox-input-id="$ch_id" onclick='reactor_form_checkbox_toggle(this)'> ];
+  $text .= qq[ <input type='checkbox' $options data-checkbox-input-id="$ch_id" onclick='reactor_form_checkbox_toggle(this)' class='$class'> ];
   $text .= "\n";
 
   return $text;

@@ -12,7 +12,7 @@ use strict;
 use Web::Reactor::Utils;
 use Web::Reactor::HTML::Form;
 use Storable qw( dclone freeze thaw ); # FIXME: move to Data::Tools (data_freeze/data_thaw)
-use CGI;
+use CGI 4.08;
 use CGI::Cookie;
 use Data::Tools;
 use Data::Dumper;
@@ -259,7 +259,7 @@ sub main_process
       next;
       }
     my $v = CGI::param( $n );
-    my @v = CGI::param( $n );
+    my @v = CGI::multi_param( $n );
 
     if( $iconv )
       {

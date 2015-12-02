@@ -61,7 +61,7 @@ function html_element_toggle_id( elem_id )
 function html_block_show( block )
 {
   var ds = "block"; // display style
-  
+
   if( block.tagName == "TR" && ! is_msie )
     ds = "table-row";
 
@@ -138,8 +138,8 @@ function ftree_click( ftree_id, branch_id )
           html_block_hide( el );
           el.open = false;
           }
-        }    
-      }  
+        }
+      }
     }
 
 }
@@ -193,7 +193,7 @@ function reactor_tab_activate_id( tab_id )
   if( ! tab_id ) return;
 
   var tab = document.getElementById( tab_id );
-  
+
   return reactor_tab_activate( tab );
   }
 
@@ -231,9 +231,9 @@ function reactor_tab_activate( tab )
 
 function reactor_form_checkbox_set( el, value )
 {
-   var ch_id = el.dataset.checkboxInputId;
-   var cb = document.getElementById( ch_id );
-   cb.value = value;
+   var ch_id  = el.dataset.checkboxInputId;
+   var cb     = document.getElementById( ch_id );
+   cb.value   = value;
    el.checked = value ? true : false;
 
    var onchange = cb.getAttribute( 'ONCHANGE' );

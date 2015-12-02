@@ -238,17 +238,17 @@ sub main_process
       }
     if( $incoming_charset and $incoming_charset ne $app_charset )
       {
-      eval 
-        { 
-        require 'Text/Iconv.pm'; 
+      eval
+        {
+        require 'Text/Iconv.pm';
         $iconv = Text::Iconv->new( $incoming_charset, $app_charset );
         };
-      if( $@ )  
+      if( $@ )
         {
         $self->log( "error: cannot convert charset from [$incoming_charset] to [$app_charset] error: $@" );
         }
       }
-    }  
+    }
 
   # import plain parameters from GET/POST request
   for my $n ( CGI::param() )
@@ -284,7 +284,7 @@ sub main_process
       $input_user_hr->{ 'BUTTON'    } = uc $1;
       $input_user_hr->{ 'BUTTON_ID' } =    $3;
       }
-    elsif( $n eq '_BUTTON_NAME' )  
+    elsif( $n eq '_BUTTON_NAME' )
       {
       my ( undef, $b, $i ) = split /:/, $v, 3;
       $input_user_hr->{ 'BUTTON'    } = uc $b;
@@ -363,8 +363,8 @@ sub main_process
     else
       {
       $self->log( "error: invalid frame name [$frame_name]" );
-      }  
-    }   
+      }
+    }
 
   # 7. get action from input (USER/CGI) or page session
   my $action_name = lc( $input_safe_hr->{ '_AN' } || $input_user_hr->{ '_AN' } || $page_shr->{ ':ACTION_NAME' } );
@@ -576,7 +576,7 @@ sub get_page_frame
   my $self  = shift;
 
   my $page_shr  = $self->get_page_session();
-  
+
   return exists $page_shr->{ ':FRAME_NAME' } ? $page_shr->{ ':FRAME_NAME' } : undef;
 }
 
@@ -726,10 +726,10 @@ sub __make_headers
   my $headers;
 
   $self->{ 'OUTPUT' }{ 'HEADERS' }{ 'content-type' } ||= 'text/html';
-  
+
   # postprocess headers, custom logic, etc.
   my %headers_out = %{ $self->{ 'OUTPUT' }{ 'HEADERS' } };
-  
+
   if( $headers_out{ 'content-charset' } )
     {
     if( $headers_out{ 'content-type' } !~ /;\s*charset=/i )
@@ -989,6 +989,15 @@ sub html_content_accumulator_js
 
   $text = "<script type='text/javascript' src='$text'></script>";
   $self->html_content_accumulator( "ACCUMULATOR_JS", $text );
+}
+
+sub html_content_accumulator_css
+{
+  my $self = shift;
+  my $css = shift;
+
+  my $text = qq{ <link href="$css" rel="stylesheet" type="text/css"> };
+  $self->html_content_accumulator( "ACCUMULATOR_HEAD", $text );
 }
 
 ##############################################################################
@@ -1266,7 +1275,7 @@ sub param_clear_cache
     delete $ps->{ 'SAVE_SAFE_INPUT' }{ $p };
     delete $ps->{ 'SAVE_USER_INPUT' }{ $p };
     }
-  
+
   return 1;
 }
 
@@ -1372,7 +1381,7 @@ sub get_user_session_agent
 
   my $user_session = $self->get_user_session();
   my $user_agent   = $user_session->{ ':HTTP_ENV_HR' }{ 'HTTP_USER_AGENT' };
-  
+
   return $user_agent || 'n/a';
 }
 

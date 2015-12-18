@@ -58,7 +58,7 @@ sub html_new_id
   my $psid = $reo->get_page_session_id();
   $self->{ 'HTML_ID_COUNTER' }++;
   # FIXME: hash $psid once more to hide...
-  return $form_name . "_EID_$psid\_" . $self->{ 'HTML_ID_COUNTER' };
+  return $form_name . "_EID_$psid\_" . $self->{ 'HTML_ID_COUNTER' } . '_' . int(rand()*10_000_000_000);
 }
 
 ##############################################################################
@@ -135,7 +135,7 @@ sub end
   return $text;
 }
 
-sub __set_ret_map
+sub __ret_map_set
 {
   my $self = shift;
   my $name = shift; # entry input name
@@ -208,7 +208,7 @@ sub radio
   my $checked = $on ? 'checked' : undef;
   $text .= "<input type='radio' $checked name='$name' value='$val' form='$form_id'>";
 
-  $self->__set_ret_map( $name, $val => $ret ) if defined $ret;
+  $self->__ret_map_set( $name, $val => $ret ) if defined $ret;
 
   $text .= "\n";
   return $text;
@@ -326,7 +326,7 @@ sub select
       my $key   = $hr->{ 'KEY'      };
       my $value = $hr->{ 'VALUE'    };
       my $id = $self->html_new_id();
-      $self->__set_ret_map( $name, $id => $key );
+      $self->__ret_map_set( $name, $id => $key );
 
       $sel = 'selected' if $sel_hr and $sel_hr->{ $key };
 #print STDERR "sssssssssssssssssssssssss RADIO [$name] [$value] [$key] $sel\n";
@@ -412,6 +412,9 @@ sub input
   my $len   =    $opt{ 'LEN'     };
   my $args  =    $opt{ 'ARGS'    };
 
+  my $hid   =    $opt{ 'HIDDEN'  };
+  my $ret   =    $opt{ 'RET'     } || $opt{ 'RETURN'  }; # if return value should be mapped, works only with HIDDEN
+
   $size = $maxl = $len if $len > 0;
 
   my $options;
@@ -423,7 +426,8 @@ sub input
   $options .= "ID='$id' "                    if $id ne '';
   # $options .= "ID='$name' "                  if $opt{ 'NAME_ID' } or $id eq '';
   $options .= "type='password' "             if $opt{ 'PASS' } || $opt{ 'PASSWORD' };
-  $options .= "type='hidden' " if $opt{ 'HIDDEN'  }; # FIXME: handle TYPE better
+  $options .= "type='hidden' " if $hid; # FIXME: handle TYPE better
+
 
 #  my $extra = $opt{ 'EXTRA' };
   #$options .= " $extra ";
@@ -431,6 +435,15 @@ sub input
   $value = str_html_escape( $value );
 
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
+
+  if( $hid and defined $ret )
+    {
+    # if input is hidden and return value mapping requested, VALUE is not used!
+    $value = $self->html_new_id();
+    $self->__ret_map_set( $name, $value => $ret );
+print STDERR "++++++++++++++++++++++++++++++++++HIDDEN RETURN INPUT [$name]:[$value]->[$ret]";
+    }
+
   my $text;
 
   my $form_id = $self->{ 'FORM_ID' };

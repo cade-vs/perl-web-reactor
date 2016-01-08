@@ -278,6 +278,8 @@ sub select
     }
   hash_uc_ipl( $_ ) for @$sel_data;
 
+  my $extra = $opt{ 'EXTRA' };
+
   my $text;
 
   if( $opt{ 'RADIO' } )
@@ -290,7 +292,7 @@ sub select
 
       $sel = 'selected' if $sel_hr and $sel_hr->{ $key };
 #print STDERR "sssssssssssssssssssssssss RADIO [$name] [$value] [$key] $sel\n";
-      $text .= $self->radio( NAME => $name, RET => $key, ON => $sel ) . " $value";
+      $text .= $self->radio( NAME => $name, RET => $key, ON => $sel, EXTRA => $extra ) . " $value";
       $text .= "<br>" if $opt{ 'RADIO' } != 2;
       }
     # FIXME: kakvo stava ako nqma dadeno selected pri submit na formata?
@@ -298,7 +300,7 @@ sub select
   else
     {
     my $multiple = 'multiple' if $opt{ 'MULTIPLE' };
-    $text .= "<select class='$class' name='$name' size='$rows' $multiple>";
+    $text .= "<select class='$class' name='$name' size='$rows' $multiple $extra>";
 
     my $pad = '&nbsp;' x 3;
     for my $hr ( @$sel_data )

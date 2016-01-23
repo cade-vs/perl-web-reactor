@@ -441,7 +441,6 @@ sub input
     # if input is hidden and return value mapping requested, VALUE is not used!
     $value = $self->html_new_id();
     $self->__ret_map_set( $name, $value => $ret );
-print STDERR "++++++++++++++++++++++++++++++++++HIDDEN RETURN INPUT [$name]:[$value]->[$ret]";
     }
 
   my $text;

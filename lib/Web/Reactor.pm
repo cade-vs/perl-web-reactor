@@ -348,6 +348,7 @@ sub main_process
 
     for my $k ( keys %$rm )
       {
+      next unless exists $input_user_hr->{ $k };
       $input_safe_hr->{ $k } = $rm->{ $k }{ $input_user_hr->{ $k } };
       delete $input_user_hr->{ $k };
       }

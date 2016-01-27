@@ -31,6 +31,8 @@ sub call
   my $name = lc shift;
   my %args = @_;
 
+  die "invalid action name, expected ALPHANUMERIC, got [$name]" unless $name =~ /^[a-z_\-0-9]+$/;
+
   my $ap = $self->__find_act_pkg( $name );
 
 #  print STDERR Dumper( $name, $ap, \%args );
@@ -74,6 +76,7 @@ sub __find_act_pkg
     $dirs = [ "$app_root/lib" ]; # FIXME: 'act' actions ?
     }
 
+  # actions sets list
   my @asl = @{ $self->{ 'ENV' }{ 'ACTIONS_SETS' } || [] };
   @asl = ( $app_name, "Base", "Core" ) unless @asl > 0;
 

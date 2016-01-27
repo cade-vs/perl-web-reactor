@@ -149,6 +149,7 @@ sub run
     my $rsid = $self->get_page_session_id( 1 ) || 'empty';
     $self->log_dumper( "FINAL PAGE SESSION [$psid]-----------------------------------", $self->get_page_session() );
     $self->log_dumper( "FINAL REF  SESSION [$rsid]-----------------------------------", $self->get_page_session( 1 ) );
+    #$self->log_dumper( "FINAL USER SESSION [$psid]-----------------------------------", $self->get_user_session() );
     }
 
 }
@@ -1331,6 +1332,10 @@ sub set_user_session_expire_time
   my $self  = shift;
   my $xtime = shift;
 
+#use Exception::Sink;
+#my $xtt = localtime( $xtime );
+#print STDERR "set_user_session_expire_time($xtime)[$xtt]\n" . Exception::Sink::get_stack_trace();
+
   my $user_shr = $self->get_user_session();
   $user_shr->{ ':XTIME'     } = $xtime; # FIXME: sanity?
   $user_shr->{ ':XTIME_STR' } = scalar localtime $user_shr->{ ':XTIME' };
@@ -1341,6 +1346,9 @@ sub set_user_session_expire_time_in
 {
   my $self    = shift;
   my $seconds = shift;
+
+#use Exception::Sink;
+#print STDERR "set_user_session_expire_time_in($seconds)\n" . Exception::Sink::get_stack_trace();
 
   # FIXME: support for more user friendly time periods 10m 60s
   return $self->set_user_session_expire_time( time() + $seconds );

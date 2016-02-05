@@ -233,8 +233,8 @@ function reactor_form_checkbox_set( el, value )
 {
    var ch_id  = el.dataset.checkboxInputId;
    var cb     = document.getElementById( ch_id );
-   cb.value   = value;
-   el.checked = value ? true : false;
+   cb.value   = value ? 1 : 0;
+   el.checked = value;
 
    var onchange = cb.getAttribute( 'ONCHANGE' );
    if( onchange )
@@ -248,7 +248,7 @@ function reactor_form_checkbox_set( el, value )
 
 function reactor_form_checkbox_toggle( el )
 {
-   reactor_form_checkbox_set( el, el.checked ? 0 : 1 );
+   reactor_form_checkbox_set( el, el.checked );
 }
 
 function reactor_form_checkbox_set_all( form_id, value )

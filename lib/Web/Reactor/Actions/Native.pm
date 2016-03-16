@@ -95,7 +95,7 @@ sub __find_act_pkg
       };
     if( ! $@ )  
       {
-      print STDERR "LOADED! action: $ap\n";
+      print STDERR "LOADED! action: $ap: $fn [@INC]\n";
       $act_cache->{ $name } = $ap;
       return $ap;
       }

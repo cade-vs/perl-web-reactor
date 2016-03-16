@@ -589,6 +589,13 @@ sub get_lang
   return $self->{ 'ENV' }{ 'LANG' };
 }
 
+sub get_app_root
+{
+  my $self  = shift;
+
+  return $self->{ 'ENV' }{ 'APP_ROOT' };
+}
+
 sub args
 {
   my $self = shift;

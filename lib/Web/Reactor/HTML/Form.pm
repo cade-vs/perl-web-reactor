@@ -470,6 +470,8 @@ sub image_button
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
   my $text;
 
+  $name =~ s/^button://i;
+
   $text .= "<input class='$class' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;' $extra >";
 
   $text .= "\n";

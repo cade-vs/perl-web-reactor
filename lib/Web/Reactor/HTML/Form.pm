@@ -365,6 +365,7 @@ sub textarea
   my $rows  =    $opt{ 'ROWS'  } || 10;
   my $cols  =    $opt{ 'COLS'  } ||  5;
   my $geo   =    $opt{ 'GEOMETRY' }  || $opt{ 'GEO' };
+  my $args  =    $opt{ 'ARGS'    };
 
   $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
 
@@ -387,7 +388,7 @@ sub textarea
   my $text;
   my $form_id = $self->{ 'FORM_ID' };
 
-  $text .= "<textarea class='$class' id='$id' name='$name' rows='$rows' cols='$cols' $options form='$form_id'>$data</textarea>";
+  $text .= "<textarea class='$class' id='$id' name='$name' rows='$rows' cols='$cols' $options form='$form_id' $args>$data</textarea>";
 
   $text .= "\n";
   return $text;

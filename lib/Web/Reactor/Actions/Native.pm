@@ -48,13 +48,13 @@ sub call
 
   my $cr = \&{ "${ap}::main" }; # call/function reference
 
-  my $text;
+  my $data;
 
-  $text = $cr->( $self->{ 'REO_REACTOR' }, %args );
+  $data = $cr->( $self->{ 'REO_REACTOR' }, %args );
 
-  # print STDERR "reactor::actions::call result: $text\n";
+  # print STDERR "reactor::actions::call result: $data\n";
 
-  return $text;
+  return $data;
 }
 
 sub __find_act_pkg

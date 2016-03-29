@@ -173,6 +173,7 @@ sub __process_tag
       my $v = $4 || $5 || $6 || 1;
       $args{ $k } = $v;
       }
+    # FIXME: action calls may return non-text data, however the preprocessor expects text data for now...
     $text = $reo->action_call( $tag, HTML_ARGS => \%args );
     }
   else

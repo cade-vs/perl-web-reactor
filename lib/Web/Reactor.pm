@@ -1011,6 +1011,29 @@ sub html_content_accumulator_css
 
 ##############################################################################
 
+sub render_data
+{
+  my $self = shift;
+
+  return $self->render( DATA   => $self->portray( @_ ) );
+}
+
+sub render_action
+{
+  my $self   = shift;
+  my $action = shift;
+
+  return $self->render( ACTION => $action, @_ );
+}
+
+sub render_page
+{
+  my $self = shift;
+  my $page = shift;
+
+  return $self->render( PAGE   => $page, @_ );
+}
+
 sub render
 {
   my $self = shift;
@@ -1018,16 +1041,20 @@ sub render
 
   my $action = $opt{ 'ACTION' };
   my $page   = $opt{ 'PAGE'   };
+  my $data   = $opt{ 'DATA'   };
 
   # FIXME: content vars handling set_content()/etc.
   my $ah = $self->args_here();
   $self->html_content( 'FORM_INPUT_SESSION_KEEPER' => "<input type=hidden name=_ value=$ah>" );
   $self->html_content( %opt );
 
-
   my $portray_data;
 
-  if( $action )
+  if( ref( $data ) eq 'HASH'  )
+    {
+    $portray_data = $data;
+    }
+  elsif( $action )
     {
     # FIXME: handle content type also!
     $portray_data = $self->action_call( $action );
@@ -1055,8 +1082,9 @@ sub render
     $portray_data = $self->portray( $portray_data, 'text/html' );
     }
 
-  my $page_data = $portray_data->{ 'DATA' };
-  my $page_type = $portray_data->{ 'TYPE' };
+  my $page_data = $portray_data->{ 'DATA'      };
+  my $page_type = $portray_data->{ 'TYPE'      };
+  my $file_name = $portray_data->{ 'FILE_NAME' };
 
   if( lc $page_type =~ /^text\/html/ )
     {
@@ -1072,7 +1100,9 @@ sub render
     $page_data =~ s/\[~([^\[\]]*)\]/$tr->{ $1 } || $1/ge;
     }
 
-  $self->set_headers( 'content-type' => $page_type );
+  # FIXME: charset
+  $self->set_headers( 'content-type'        => $page_type );
+  $self->set_headers( 'content-disposition' => "attachment; filename=$file_name" ) if $file_name;
 
   my $page_headers = $self->__make_headers();
 
@@ -1124,7 +1154,7 @@ sub portray
 
   boom "portray needs mime type xxx/xxx as arg 2, got [$type]" unless $type =~ /^[a-z\-_0-9]+\/[a-z\-_0-9]+$/;
 
-  return { DATA => $data, TYPE => $type };
+  return { DATA => $data, TYPE => $type, @_ };
 }
 
 ##############################################################################

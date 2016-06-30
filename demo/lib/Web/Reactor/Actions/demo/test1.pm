@@ -1,3 +1,12 @@
+##############################################################################
+##
+##  Web::Reactor application machinery
+##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
+##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
+##
+##  LICENSE: GPLv2
+##
+##############################################################################
 package Web::Reactor::Actions::demo::test1;
 use strict;
 use Data::Dumper;
@@ -13,7 +22,7 @@ sub main
 
   if( $reo->get_input_form_name() eq 'PERSON_FORM' and $reo->get_input_button() eq 'PERSON_CANCEL' )
     {
-    print STDERR "FOOOOOOOOOOOOOOOOOOOOOOOORM BACK HER---------------------\n";
+    print STDERR "FORM BACK HER---------------------\n";
     return $reo->forward_back( OPA => 'hehe' );
     }
 

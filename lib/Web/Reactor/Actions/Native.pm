@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -14,7 +14,7 @@ use Carp;
 use Web::Reactor::Actions;
 use Data::Dumper;
 
-our @ISA = qw( Web::Reactor::Actions );
+use parent 'Web::Reactor::Actions';
 
 # calls an action (function) by name
 # args:
@@ -50,7 +50,7 @@ sub call
 
   my $data;
 
-  $data = $cr->( $self->{ 'REO_REACTOR' }, %args );
+  $data = $cr->( $self->get_reo(), %args );
 
   # print STDERR "reactor::actions::call result: $data\n";
 

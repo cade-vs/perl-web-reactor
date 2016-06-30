@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -10,6 +10,8 @@
 package Web::Reactor::Sessions;
 use strict;
 use Carp;
+
+use parent 'Web::Reactor::Base'; 
 
 sub new
 {
@@ -242,7 +244,7 @@ sub compose_key_from_id
 sub get_user_sid
 {
   my $self = shift;
-  my $user_sid = $self->{ 'REO_REACTOR' }{ 'SESSIONS' }{ 'SID'  }{ 'USER' };
+  my $user_sid = $self->{ 'REO_REACTOR' }->{ 'SESSIONS' }{ 'SID'  }{ 'USER' };
 
   confess "missing USER SESSION" unless $user_sid;
 
@@ -250,11 +252,20 @@ sub get_user_sid
 }
 
 # return ENV hash reference from the reactor
+# FIXME: TODO: move to Web::Reactor::Base::get_env()
 sub _renv
 {
   my $self = shift;
- 
+  
+  $self->get_reo()->{ 'ENV' };
 }
+
+#sub DESTROY
+#{
+#  my $self = shift;
+#
+#  print "DESTROY: $self\n";
+#}
 
 ##############################################################################
 1;

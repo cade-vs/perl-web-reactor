@@ -1,20 +1,22 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
 ##
 ##############################################################################
-#
-# HTML Tabs
-#
+##
+## HTML Tabs
+##
 ##############################################################################
 package Web::Reactor::HTML::Tab;
 use strict;
 use Carp;
 use Web::Reactor::HTML::Utils;
+
+use parent 'Web::Reactor::Base'; 
 
 sub new
 {
@@ -27,15 +29,9 @@ sub new
              'ENV'        => \%env,
              };
 
-  my $reo = $env{ 'REO_REACTOR' };
-  if( ref( $reo ) =~ /^Web::Reactor(::|$)/ )
-    {
-    $self->{ 'REO_REACTOR' } = $reo;
-    }
-  else
-    {
-    confess "missing REO reactor object";
-    }
+  # FIXME: move as argument, not env option
+  $self->__set_reo( $env{ 'REO_REACTOR' } );
+  my $reo = $self->get_reo();
 
   bless $self, $class;
 
@@ -118,7 +114,7 @@ sub finish
 </DIV>
 };
 
-  my $reo = $self->{ 'REO_REACTOR' };
+  my $reo = $self->get_reo();
   $reo->html_content_accumulator( 'ACCUMULATOR_HTML', $html );
 }
 

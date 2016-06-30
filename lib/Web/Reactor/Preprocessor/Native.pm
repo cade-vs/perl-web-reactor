@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -14,7 +14,7 @@ use Carp;
 use Data::Tools;
 use Web::Reactor::Preprocessor;
 
-our @ISA = qw( Web::Reactor::Preprocessor );
+use parent 'Web::Reactor::Preprocessor'; 
 
 sub new
 {
@@ -69,7 +69,7 @@ sub load_file
 
   die "invalid page name, expected ALPHANUMERIC, got [$pn]" unless $pn =~ /^[a-z_\-0-9]+$/;
 
-  my $reo = $self->{ 'REO_REACTOR' };
+  my $reo = $self->get_reo();
 
   my $lang = $self->{ 'ENV' }{ 'LANG' };
 
@@ -143,7 +143,7 @@ sub __process_tag
   die "preprocess loop detected, tag [$type$tag] path [$path]" if $opt->{ 'SEEN:' . $type . $tag }++;
   die "empty or invalid tag" unless $tag =~ /^[a-zA-Z_\-0-9]+$/;
 
-  my $reo = $self->{ 'REO_REACTOR' };
+  my $reo = $self->get_reo();
 
   $tag = lc $tag;
 
@@ -197,7 +197,7 @@ sub __process_href
 
   my $data_hr = url2hash( $data );
 
-  my $reo = $self->{ 'REO_REACTOR' };
+  my $reo = $self->get_reo();
 
   $type = 'new' if $attr eq 'src';
 

@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -26,7 +26,7 @@ our @EXPORT = qw(
                 html_tabs_table
                 );
 use strict;
-use Carp; # FIXME: da se smeni sys exception::sink
+use Exception::Sink;
 use Data::Tools;
 use Web::Reactor::HTML::Tab;
 my %HTML_ESCAPES = (
@@ -332,7 +332,7 @@ sub html_hover_layer
 
   if( ref( $reo ) !~ /^Web::Reactor(::|$)/ )
     {
-    confess "missing REO reactor object";
+    boom "missing REO reactor object";
     }
 
   if( @_ == 1 )
@@ -367,7 +367,7 @@ sub html_popup_layer
 
   if( ref( $reo ) !~ /^Web::Reactor(::|$)/ )
     {
-    confess "missing REO reactor object";
+    boom "missing REO reactor object";
     }
 
   if( @_ == 1 )

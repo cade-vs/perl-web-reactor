@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -9,14 +9,15 @@
 ##############################################################################
 package Web::Reactor;
 use strict;
-use Web::Reactor::Utils;
-use Web::Reactor::HTML::Form;
 use Storable qw( dclone freeze thaw ); # FIXME: move to Data::Tools (data_freeze/data_thaw)
 use CGI 4.08;
 use CGI::Cookie;
 use Data::Tools;
-use Data::Dumper;
 use Exception::Sink;
+use Data::Dumper;
+
+use Web::Reactor::Utils;
+use Web::Reactor::HTML::Form;
 
 our $VERSION = '2.05';
 
@@ -112,16 +113,23 @@ sub new
   $self->{ 'REO_PREP' } = new $reo_prep_class %env;
   $self->{ 'REO_ACTS' } = new $reo_acts_class %env;
 
-  # save backlinks to reactor
-  $self->{ 'REO_SESS' }{ 'REO_REACTOR' } = $self;
-  $self->{ 'REO_PREP' }{ 'REO_REACTOR' } = $self;
-  $self->{ 'REO_ACTS' }{ 'REO_REACTOR' } = $self;
+  # set backlinks to reactor
+  $self->{ 'REO_SESS' }->__set_reo( $self );
+  $self->{ 'REO_PREP' }->__set_reo( $self );
+  $self->{ 'REO_ACTS' }->__set_reo( $self );
 
   # debug setup
   $self->log_debug( "debug: setup: " . Dumper( $self->{ 'ENV' } ) );
 
   return $self;
 }
+
+#sub DESTROY
+#{
+# my $self = shift;
+#
+# print "DESTROY: Reactor: $self\n";
+#}
 
 ##############################################################################
 
@@ -1514,6 +1522,7 @@ sub html_new_id
 }
 
 ##############################################################################
+
 
 =pod
 

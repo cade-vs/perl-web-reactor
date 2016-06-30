@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -17,7 +17,7 @@ use Storable qw( freeze thaw lock_store lock_retrieve );
 use Data::Dumper; 
 use Carp;
 
-our @ISA = qw( Web::Reactor::Sessions );
+use parent 'Web::Reactor::Sessions';
 
 ##############################################################################
 ##
@@ -75,7 +75,7 @@ sub _storage_load
     $in_data = lock_retrieve( $fn );
     die "error: cannot retrieve session data from [$fn]" unless $in_data;
     };
-  if ($@)
+  if( $@ )
     {
     carp "error: retrieving session failed $fn\n($@)"; # FIXME: must not be fatal
     return undef;

@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -18,6 +18,8 @@ use Exception::Sink;
 # FIXME: TODO: ...including abstract ones as GEO(metry)
 # FIXME: TODO: change VALUE to be html value (currently it is DATA), and DISPLAY to be visible text (currently it is VALUE)
 
+use parent 'Web::Reactor::Base'; 
+
 ##############################################################################
 
 sub new
@@ -30,15 +32,8 @@ sub new
              'ENV'        => \%env,
              };
 
-  my $reo = $env{ 'REO_REACTOR' };
-  if( ref( $reo ) =~ /^Web::Reactor(::|$)/ )
-    {
-    $self->{ 'REO_REACTOR' } = $reo;
-    }
-  else
-    {
-    confess "missing REO reactor object";
-    }
+  # FIXME: move as argument, not env option
+  $self->__set_reo( $env{ 'REO_REACTOR' } );
 
   bless $self, $class;
 
@@ -54,7 +49,7 @@ sub html_new_id
   my $form_name = $self->{ 'FORM_NAME' };
   $form_name or confess "empty form name, need begin() first";
 
-  my $reo = $self->{ 'REO_REACTOR' };
+  my $reo = $self->get_reo();
   my $psid = $reo->get_page_session_id();
   $self->{ 'HTML_ID_COUNTER' }++;
   # FIXME: hash $psid once more to hide...
@@ -81,7 +76,7 @@ sub begin
   $form_name =~ /^[A-Z_0-9:]+$/ or confess "invalid or empty NAME attribute";
   $method    =~ /^(POST|GET)$/  or confess "METHOD can either POST or GET";
 
-  my $reo = $self->{ 'REO_REACTOR' };
+  my $reo = $self->get_reo();
   my $psid = $reo->get_page_session_id();
 
   $form_id ||= $form_name;
@@ -96,7 +91,7 @@ sub begin
 
   # FIXME: TODO: debug info inside html text, begin formname end etc.
 
-  my $reo = $self->{ 'REO_REACTOR' };
+  my $reo = $self->get_reo();
 
   my $page_session = $reo->get_page_session();
   $page_session->{ ':FORM_DEF' }{ $form_name } = {};
@@ -125,7 +120,7 @@ sub end
 
 # FIXME: TODO: debug info inside html text, begin formname end etc.
 
-  my $reo = $self->{ 'REO_REACTOR' };
+  my $reo = $self->get_reo();
   my $page_session = $reo->get_page_session();
 
   my $form_name = $self->{ 'FORM_NAME' };
@@ -521,7 +516,7 @@ sub image_button_default
 
   my %opt = @_;
 
-  my $user_agent = $self->{ 'REO_REACTOR' }->get_user_session_agent();
+  my $user_agent = $self->get_reo()->get_user_session_agent();
 
   my $default_class = 'hidden';
   $default_class = 'hidden2' if $user_agent =~ /MSIE|Safari/;

@@ -32,10 +32,10 @@ sub new
              'ENV'        => \%env,
              };
 
+  bless $self, $class;
+
   # FIXME: move as argument, not env option
   $self->__set_reo( $env{ 'REO_REACTOR' } );
-
-  bless $self, $class;
 
   return $self;
 }

@@ -29,11 +29,11 @@ sub new
              'ENV'        => \%env,
              };
 
+  bless $self, $class;
+
   # FIXME: move as argument, not env option
   $self->__set_reo( $env{ 'REO_REACTOR' } );
   my $reo = $self->get_reo();
-
-  bless $self, $class;
 
   $self->{ 'TABS_LIST'         } = []; # contain tab IDs
   $self->{ 'TAB_CONTROLLER_ID' } = join '_', ( 'RE_TAB', $reo->get_page_session_id(), ( $env{ 'NAME' } || $reo->html_new_id() ) );

@@ -10,7 +10,6 @@
 package Web::Reactor::HTML::Form;
 use strict;
 use Exporter;
-use Carp;
 use Data::Tools;
 use Exception::Sink;
 
@@ -47,7 +46,7 @@ sub html_new_id
   my $self = shift;
 
   my $form_name = $self->{ 'FORM_NAME' };
-  $form_name or confess "empty form name, need begin() first";
+  $form_name or boom "empty form name, need begin() first";
 
   my $reo = $self->get_reo();
   my $psid = $reo->get_page_session_id();
@@ -73,8 +72,8 @@ sub begin
 
   $self->{ 'CLASS_MAP' } = $opt{ 'CLASS_MAP' } || {};
 
-  $form_name =~ /^[A-Z_0-9:]+$/ or confess "invalid or empty NAME attribute";
-  $method    =~ /^(POST|GET)$/  or confess "METHOD can either POST or GET";
+  $form_name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute";
+  $method    =~ /^(POST|GET)$/  or boom "METHOD can either POST or GET";
 
   my $reo = $self->get_reo();
   my $psid = $reo->get_page_session_id();
@@ -139,7 +138,7 @@ sub __ret_map_set
 
   if( @_ > 0 )
     {
-    confess "expected even number of arguments" unless @_ % 2 == 0;
+    boom "expected even number of arguments" unless @_ % 2 == 0;
     %{ $self->{ 'RET_MAP' }{ $name } } = ( %{ $self->{ 'RET_MAP' }{ $name } }, @_ );
     }
 
@@ -159,7 +158,7 @@ sub checkbox
   my $value =    $opt{ 'VALUE' } ? 1 : 0;
   my $args  =    $opt{ 'ARGS'  };
 
-  $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
+  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
 
   my $options;
   $options .= $value ? " checked " : undef;
@@ -193,7 +192,7 @@ sub radio
   my $on    =    $opt{ 'ON'    }; # active?
   my $ret   =    $opt{ 'RET'   } || $opt{ 'RETURN' } || 1; # map return value!
 
-  $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
+  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
 
   my $text;
 
@@ -256,7 +255,7 @@ sub select
   my $rows  =    $opt{ 'SIZE'  } || $opt{ 'ROWS'  } || 1;
   my $args  =    $opt{ 'ARGS' };
 
-  $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
+  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
 
   my $data   = $opt{ 'DATA'     }; # array reference or hash reference, inside hashesh are the same
   my $sel_hr = $opt{ 'SELECTED' }; # hashref with selected keys (values are true's)
@@ -362,7 +361,7 @@ sub textarea
   my $geo   =    $opt{ 'GEOMETRY' }  || $opt{ 'GEO' };
   my $args  =    $opt{ 'ARGS'    };
 
-  $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
+  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
 
   ( $cols, $rows ) = ( $1, $2 ) if $geo =~ /(\d+)[\*\/\\](\d+)/i;
 
@@ -430,7 +429,7 @@ sub input
 
   $value = str_html_escape( $value );
 
-  $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
+  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
 
   if( $hid and defined $ret )
     {
@@ -466,7 +465,7 @@ sub button
   $value =~ s/'//g;
   $value = str_html_escape( $value );
 
-  $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
+  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
   my $text;
 
   $name =~ s/^button://i;
@@ -500,7 +499,7 @@ sub image_button
     $options .= "$o='$e' " if $e ne '';
     }
 
-  $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
+  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
   my $text;
 
   my $form_id = $self->{ 'FORM_ID' };

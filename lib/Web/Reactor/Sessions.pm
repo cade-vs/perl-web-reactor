@@ -9,7 +9,7 @@
 ##############################################################################
 package Web::Reactor::Sessions;
 use strict;
-use Carp;
+use Exception::Sink;
 
 use parent 'Web::Reactor::Base'; 
 
@@ -225,7 +225,7 @@ sub compose_key_from_id
   my $type = uc shift;
   my $id   = shift;
 
-  confess "Web::Reactor::Sessions::compose_key_from_id: invalid type, expected ALPHANUMERIC" unless $type =~ /^[A-Z0-9]+$/;
+  boom "Web::Reactor::Sessions::compose_key_from_id: invalid type, expected ALPHANUMERIC" unless $type =~ /^[A-Z0-9]+$/;
  
   my @key;
  
@@ -246,7 +246,7 @@ sub get_user_sid
   my $self = shift;
   my $user_sid = $self->{ 'REO_REACTOR' }->{ 'SESSIONS' }{ 'SID'  }{ 'USER' };
 
-  confess "missing USER SESSION" unless $user_sid;
+  boom "missing USER SESSION" unless $user_sid;
 
   return $user_sid;
 }

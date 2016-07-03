@@ -13,7 +13,7 @@
 ##############################################################################
 package Web::Reactor::HTML::Tab;
 use strict;
-use Carp;
+use Exception::Sink;
 use Web::Reactor::HTML::Utils;
 
 use parent 'Web::Reactor::Base'; 
@@ -62,7 +62,7 @@ sub add
   my $class = $opt{ 'CLASS' } || 'reactor_tab';
   my $args  = $opt{ 'ARGS'  };
 
-  croak "TYPE can be only one of DIV|TR|TD" unless $et =~ /^(DIV|TR|TD)$/i;
+  boom "TYPE can be only one of DIV|TR|TD" unless $et =~ /^(DIV|TR|TD)$/i;
 
   my $tab_controller_id =    $self->{ 'TAB_CONTROLLER_ID' };
   my $tab_counter       = ++ $self->{ 'TAB_COUNTER'       };

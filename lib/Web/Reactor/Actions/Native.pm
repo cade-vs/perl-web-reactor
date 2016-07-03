@@ -10,7 +10,6 @@
 package Web::Reactor::Actions::Native;
 use strict;
 use Exception::Sink;
-use Carp;
 use Web::Reactor::Actions;
 use Data::Dumper;
 
@@ -39,7 +38,7 @@ sub call
 
   if( ! $ap )
     {
-    confess "action package for action name [$name] not found";
+    boom "action package for action name [$name] not found";
     return undef;
     }
 

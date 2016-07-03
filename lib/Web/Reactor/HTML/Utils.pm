@@ -149,7 +149,7 @@ sub html_table
       }
     else
       {
-      # FIXME: carp croak boom :)
+      boom "invalid row type, expected HASH or ARRAY reference";
       next;
       }
 

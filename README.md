@@ -35,12 +35,13 @@ routine tasks when implementing web applications, interactive sites, etc.
 Main task is to handle all the repetative work and adding more comfortable
 functionality like:
 
-  * recognising and setting web browser cookies (for sessions or other data)
-  * handling user and page sessions (storage, cookie management, etc.)
-  * hiding html link data and forms data to rise page-to-page transfer safety.
-  * preprocessing of text/html, including hiding data, calling actions etc.
-  * on-demand loading of 'actions', perl code modules to handle dynamic pages.
-  
+    * setting and recognising web browser cookies (for sessions or other data)
+    * handling user and page sessions (storage, cookie management, etc.)
+    * hiding html link data and forms data to rise page-to-page transfer safety.
+    * preprocessing of text/html, including hiding data, calling actions etc.
+    * on-demand loading of 'actions', perl code modules to handle dynamic pages.
+    
+
 Web::Reactor can be extended, though it was not supposed to. There are 4 main
 parts of it which can be extended. See section EXTENDING below for details.  
 
@@ -90,7 +91,6 @@ Action module example:
     # access page session. it will be auto-loaded on demand
     my $page_session_hr = $reo->get_page_session();
     my $fortune = $page_session_hr->{ 'FORTUNE' } ||= `/usr/games/fortune`;
-    
 
     # access input (form) data. $i and $e are hashrefs
     my $i = $reo->get_user_input(); # get plain user input (hashref)
@@ -118,8 +118,8 @@ Action module example:
 
 # PAGE NAMES, HTML FILE TEMPLATES, PAGE INSTANCES
 
-WR has a notion of a "page" which represents visible output to the end user 
-browser. It has (i.e. uses) the following attributes:
+Web::Reactor has a notion of a "page" which represents visible output to the 
+end user browser. It has (i.e. uses) the following attributes:
 
     * html file template (page name)
     * page session data
@@ -127,19 +127,17 @@ browser. It has (i.e. uses) the following attributes:
 
 All of those represent "page instance" and produce end user html visible page.
 
-"Page names" are srtictly limited to be alphanumeric and are mapped to file 
+"Page names" are strictly limited to be alphanumeric and are mapped to file
 (or other storage) html content:
 
                      page name: example
     html file template will be: page_example.html
-    
 
 HTML content may include other files (also limited to be alphanumeric):
 
-          include text: <#other_file>
-         file included: other_file.html
-  directories searched: 'HTML_DIRS' from Web::Reactor parameters.
-    
+            include text: <#other_file>
+           file included: other_file.html
+    directories searched: 'HTML_DIRS' from Web::Reactor parameters.
 
 Page names may be requested from the end user side, but include html files may
 be used only from the pages already requested.
@@ -151,7 +149,6 @@ can be called this way:
 
     <&test_action arg1=val1 arg2=val2 flag1 flag2...>
     <&test_action>
-    
 
 This will instruct Reactor action handler to look for this package name inside
 standard or user-added library directories:
@@ -174,32 +171,27 @@ write access to.
 
 Another way to call a module is directly from another module code with:
 
-    $reo->act_call( 'test_action', @args );
-    
+    $reo->action_call( 'test_action', @args );
 
 The package file will look like this:
 
     package Web/Reactor/Actions/demo/test_action;
     use strict;
-    
 
     sub main
     {
       my $reo  = shift; # Web::Reactor object/instance
       my %args = @_; # all args passed to the action
-      
 
       my $html_args = $args{ 'HTML_ARGS' }; # all
       ...
       return $result_data; # usually html text
     }
-    
 
-$html\_args is hashref with all args give inside the html code if this action 
+$html\_args is hashref with all args give inside the html code if this action
 is called from a html text. If you look the example above:
 
     <&test_action arg1=val1 arg2=val2 flag1 flag2...>
-    
 
 The $html\_args will look like this:
 
@@ -216,7 +208,7 @@ The $html\_args will look like this:
 
 # HTTP PARAMETERS NAMES
 
-Web::Reactor uses underscore and one or two letters for its system http/html 
+Web::Reactor uses underscore and one or two letters for its system http/html
 parameters. Some of the system params are:
 
     _PN  -- html page name (points to file template, restricted to alphanumeric)
@@ -224,7 +216,7 @@ parameters. Some of the system params are:
     _P   -- page session
     _R   -- referer (caller) page session
 
-Usually those names SHOULD NOT be directly used or visible inside actions code.
+Usually those names should not be directly used or visible inside actions code.
 More details about how those params are used can be found below.
 
 # USER SESSIONS
@@ -277,7 +269,6 @@ Each page instance knows the caller page session and can give control back to.
 However it may pass more data when returning back to the caller:
 
     $reo->forward_back( MORE_DATA => 'is here', OPTIONS_LIST => \@list );
-    
 
 When new page instance has to be called (created):
 
@@ -304,7 +295,6 @@ Some entries may be omitted and default values are:
     * HTML_DIRS     -- [ "$APP_ROOT/html" ]
     * SESS_VAR_DIR  -- [ "$APP_ROOT/var"  ]
     * DEBUG         -- 0
-     
 
 # API FUNCTIONS
 
@@ -325,19 +315,25 @@ Web::Reactor is designed to allow extending or replacing the 4 main parts:
 
     * Session storage (data store on filesystem, database, remote or vmem)
       
+
       base module:    Web::Reactor::Sessions
       current in use: Web::Reactor::Sessions::Filesystem
     
+
     * HTML creation/expansion/preprocessing
       
+
       base module:    Web::Reactor::Preprocessor
       current in use: Web::Reactor::Preprocessor::Native
     
+
     * Actions/modules execution (can be skipped if custom HTML prep used)
       
+
       base module:    Web::Reactor::Actions
       current in use: Web::Reactor::Actions::Native
     
+
     * Main Web::Reactor modules, which controlls all the functionality.
 
       base module:    Web::Reactor
@@ -372,7 +368,7 @@ If you are interested in the project or have some notes etc, contact me at:
 
 further contact info, mailing list and github repository is listed below.
 
-# FIXME: TODO: 
+# FIXME: TODO:
 
     * config examples
     * pages example
@@ -391,6 +387,7 @@ Reactor uses mostly perl core modules but it needs few others:
     * Exception::Sink 
     * Data::Tools
     
+
 All modules are available with the perl package or from CPAN.
 
 Additionally, several are available and from github:
@@ -400,7 +397,7 @@ Additionally, several are available and from github:
 
     * Data::Tools
     https://github.com/cade-vs/perl-data-tools
-    
+
 # DEMO APPLICATION
 
 Documentation will be improved. Meanwhile you can check 'demo'
@@ -408,7 +405,6 @@ directory inside distribution tarball or inside the github repository. This is
 fully functional (however stupid :)) application. It shows how data is processed,
 calling pages/views, inspecting page (calling views) stack, html forms automation,
 forwarding.
-  
 
 # MAILING LIST
 
@@ -428,6 +424,7 @@ forwarding.
 
     http://cade.datamax.bg
     
+
     https://github.com/cade-vs
 
-# EOF    
+## EOF

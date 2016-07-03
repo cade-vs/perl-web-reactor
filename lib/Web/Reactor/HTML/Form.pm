@@ -104,7 +104,6 @@ sub begin
     {
     $text .= "<input style='display: none;' type='image' name='BUTTON:$default_button' src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQI12NgYGBgAAAABQABXvMqOgAAAABJRU5ErkJggg==' border=0 height=0 width=0 onDblClick='return false;' form='$form_id'>"
     }
-
   return $text;
 }
 
@@ -290,6 +289,8 @@ sub select
     }
   hash_uc_ipl( $_ ) for @$sel_data;
 
+  my $extra = $opt{ 'EXTRA' };
+
   my $text;
   my $form_id = $self->{ 'FORM_ID' };
 
@@ -303,7 +304,7 @@ sub select
 
       $sel = 'selected' if $sel_hr and $sel_hr->{ $key };
 #print STDERR "sssssssssssssssssssssssss RADIO [$name] [$value] [$key] $sel\n";
-      $text .= $self->radio( NAME => $name, RET => $key, ON => $sel ) . " $value";
+      $text .= $self->radio( NAME => $name, RET => $key, ON => $sel, EXTRA => $extra ) . " $value";
       $text .= "<br>" if $opt{ 'RADIO' } != 2;
       }
     # FIXME: kakvo stava ako nqma dadeno selected pri submit na formata?
@@ -311,7 +312,7 @@ sub select
   else
     {
     my $multiple = 'multiple' if $opt{ 'MULTIPLE' };
-    $text .= "<select class='$class' id='$id' name='$name' size='$rows' $multiple form='$form_id' $args>";
+    $text .= "<select class='$class' id='$id' name='$name' size='$rows' $multiple form='$form_id' $args $extra>";
 
     my $pad = '&nbsp;' x 3;
     for my $hr ( @$sel_data )
@@ -424,8 +425,8 @@ sub input
   $options .= "type='hidden' " if $hid; # FIXME: handle TYPE better
 
 
-#  my $extra = $opt{ 'EXTRA' };
-  #$options .= " $extra ";
+  my $extra = $opt{ 'EXTRA' };
+  $options .= " $extra ";
 
   $value = str_html_escape( $value );
 
@@ -488,6 +489,7 @@ sub image_button
   my $class =    $opt{ 'CLASS' } || 'image_button';
   my $src   =    $opt{ 'SRC'   } || $opt{ 'IMG'  };
   my $args  =    $opt{ 'ARGS'  };
+  my $extra =    $opt{ 'EXTRA' };
 
   my $options;
 
@@ -503,7 +505,8 @@ sub image_button
   my $text;
 
   my $form_id = $self->{ 'FORM_ID' };
-  $text .= "<input class='$class' id='$id' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;' $args form='$form_id'>";
+  $name =~ s/^button://i;
+  $text .= "<input class='$class' id='$id' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;' $args form='$form_id' $extra>";
 
   $text .= "\n";
   return $text;

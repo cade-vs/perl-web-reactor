@@ -115,12 +115,13 @@ sub process
 
   my $text = shift;
   my $opt  = shift || {};
+  my $ctx  = shift || {};
 
-  $opt = { %$opt };
-  $opt->{ 'LEVEL' }++;
+  $ctx = { %$ctx };
+  $ctx->{ 'LEVEL' }++;
 
   # FIXME: cache here? moje bi ne, zaradi modulite
-  $text =~ s/<([\$\&\#]|\$\$)([a-zA-Z_\-0-9]+)(\s*[^>]*)?>/$self->__process_tag( $1, $2, $3, $opt )/ge;
+  $text =~ s/<([\$\&\#]|\$\$)([a-zA-Z_\-0-9]+)(\s*[^>]*)?>/$self->__process_tag( $1, $2, $3, $opt, $ctx )/ge;
   $text =~ s/reactor_((new|back|here)_)?(href|src)=(["'])?([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"']*)(\4)?/$self->__process_href( $2, $3, $5, $7 )/gie;
 
   return $text;
@@ -134,12 +135,13 @@ sub __process_tag
   my $tag  = shift;
   my $args = shift; # the rest of the tag
   my $opt  = shift;
+  my $ctx  = shift;
 
-  $opt = { %$opt };
-  $opt->{ 'PATH' } .= ", $type$tag";
-  my $path = $opt->{ 'PATH' };
+  $ctx = { %$opt };
+  $ctx->{ 'PATH' } .= ", $type$tag";
+  my $path = $ctx->{ 'PATH' };
 
-  die "preprocess loop detected, tag [$type$tag] path [$path]" if $opt->{ 'SEEN:' . $type . $tag }++;
+  die "preprocess loop detected, tag [$type$tag] path [$path]" if $ctx->{ 'SEEN:' . $type . $tag }++;
   die "empty or invalid tag" unless $tag =~ /^[a-zA-Z_\-0-9]+$/;
 
   my $reo = $self->get_reo();
@@ -150,6 +152,7 @@ sub __process_tag
 
   if( $type eq '$$' )
     {
+    $opt->{ 'SECOND_PASS_REQUIRED' }++;
     return "<\$$tag>"; # shortcut to deferred eval
     }
   elsif( $type eq '$' )
@@ -180,7 +183,7 @@ sub __process_tag
     re_log( "debug: invalid tag: [$type$tag]" );
     }
 
-  $text = $self->process( $text, $opt );
+  $text = $self->process( $text, $opt, $ctx );
 
   return $text;
 }

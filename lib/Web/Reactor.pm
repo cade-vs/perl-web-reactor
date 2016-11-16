@@ -688,6 +688,19 @@ sub args_here
   return $self->args( %args );
 }
 
+sub args_type
+{
+  my $self = shift;
+  
+  my $type = lc shift;
+  
+  return $self->args_new( @_ )  if $type eq 'new';
+  return $self->args_here( @_ ) if $type eq 'here';
+  return $self->args_back( @_ ) if $type eq 'back';
+  return $self->args( @_ )      if $type eq 'none';
+  $self->boom( "unknown or not supported TYPE [$type]" );
+}
+
 ##############################################################################
 
 sub get_cookie
@@ -1096,10 +1109,13 @@ sub render
 
   if( lc $page_type =~ /^text\/html/ )
     {
-    # FIXME: preprocess and translation only for content-type text/*
-    $page_data = $self->prep_process( $page_data );
-    # FIXME: call second preprocessing only if first needs it! i.e. detect $$
-    $page_data = $self->prep_process( $page_data );
+    my $prep_opt1 = {};
+    $page_data = $self->prep_process( $page_data, $prep_opt1 );
+
+print STDERR Dumper( 'OPT1 PREP --- ' x 11, $prep_opt1);
+
+    my $prep_opt2 = {};
+    $page_data = $self->prep_process( $page_data, $prep_opt2 ) if $prep_opt1->{ 'SECOND_PASS_REQUIRED' };
 
     # FIXME: translation
     $self->load_trans();

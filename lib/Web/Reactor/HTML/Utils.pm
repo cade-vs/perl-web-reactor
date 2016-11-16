@@ -23,6 +23,8 @@ our @EXPORT = qw(
                 html_hover_layer
                 html_popup_layer
 
+                html_alink
+
                 html_tabs_table
                 );
 use strict;
@@ -342,7 +344,7 @@ sub html_hover_layer
 
   my $value = $opt{ 'VALUE' };
   my $class = $opt{ 'CLASS' } || 'hover-layer';
-  my $delay = $opt{ 'DELAY' } || 150;
+  my $delay = $opt{ 'DELAY' } || 250;
 
   my $hover_layer_counter = $reo->html_new_id();
   my $hover_layer_id = "R_HOVER_LAYER_$hover_layer_counter";
@@ -350,7 +352,7 @@ sub html_hover_layer
   my $html;
   my $handle;
 
-  $handle = qq{ onmouseover='hint_layer_show_delay(this,"$hover_layer_id", $delay )' };
+  $handle = qq{ onmouseover='hint_layer_show_delay( this,"$hover_layer_id", $delay, event )' };
   $html   = qq{ <div class=$class id="$hover_layer_id">$value</div> };
 
   $reo->html_content_accumulator( 'ACCUMULATOR_HTML', $html );
@@ -432,6 +434,27 @@ sub html_popup_layer
     $reo->html_content_accumulator( 'ACCUMULATOR_HTML', $html );
     return $handle;
     }
+}
+
+##############################################################################
+
+sub html_alink
+{
+  my $reo   =    shift;
+  my $type  = lc shift;
+  my $value =    shift;
+  my $opts  =    shift;
+  my @args  = @_;
+
+  my $href = $reo->args_type( $type, @args );
+
+  my $hint = $opts->{ 'HINT' };
+  my $hl_handle = html_hover_layer( $reo, VALUE => $hint, DELAY => 250 ) if $hint;
+  
+  my $class = $opts->{ 'CLASS' };
+  my $a_class = "class='$class'";
+
+  return "<a $a_class href=?_=$href $hl_handle>$value</a>";
 }
 
 ##############################################################################

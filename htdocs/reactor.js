@@ -239,7 +239,7 @@ function reactor_form_checkbox_set( el, value )
    var onchange = cb.getAttribute( 'ONCHANGE' );
    if( onchange )
      {
-     if( is_msie_shit )
+     if( is_msie )
        onchange();
      else
        eval( onchange );
@@ -264,5 +264,76 @@ function reactor_form_checkbox_set_all( form_id, value )
       reactor_form_checkbox_set( arr[z], value );
     }
 }
+
+/*** hint layers ***********************************************************/
+
+var hint_layer;
+var hint_layer_timeout_id;
+
+function hint_layer_show( el, hl_name )
+  {
+  hint_layer_show_delay( el, hl_name, 0 );
+  }
+
+function hint_layer_show_delay( el, hl_name, delay, event )
+  {
+  clearTimeout( hint_layer_timeout_id );
+  hint_layer = document.getElementById( hl_name );
+  hint_layer_timeout_id = setTimeout( "hint_layer_activate()", delay );
+  hint_layer_reposition( event );
+  el.onmousemove = is_msie ? hint_layer_reposition_ie : hint_layer_reposition;
+  el.onmouseout  = hint_layer_hide;
+  }
+
+function hint_layer_activate()
+  {
+  clearTimeout( hint_layer_timeout_id );
+  hint_layer.style.display  = "block";
+  hint_layer.style.position = "absolute";
+  }
+
+function hint_layer_hide()
+  {
+  hint_layer.style.display = "none";
+  hint_layer_enable = 0;
+  clearTimeout( hint_layer_timeout_id );
+  }
+
+function hint_layer_reposition_xy( ex, ey )
+  {
+  var pw = window.innerWidth;
+  var ph = window.innerHeight;
+  var dw = hint_layer.offsetWidth;
+  var dh = hint_layer.offsetHeight;
+
+  var px = ex;
+  var py = ey;
+  
+  var doc  = document.documentElement;
+  var body = document.body;
+
+  var scrollLeft = (doc && doc.scrollLeft || body && body.scrollLeft || 0);
+  var scrollTop  = (doc && doc.scrollTop  || body && body.scrollTop  || 0);
+  
+  px += scrollLeft;
+  py += scrollTop;
+
+  var left = px + ( ( px + 16 + dw ) > pw ? -( 16 + dw ) : 16 );
+  var top  = py + ( ( py + 16 + dh ) > ph ? -( 16 + dh ) : 16 );
+  hint_layer.style.left = left + 'px';
+  hint_layer.style.top  = top  + 'px';
+
+  return false;
+  }
+
+function hint_layer_reposition( event )
+  {
+  hint_layer_reposition_xy( event.clientX, event.clientY );
+  }
+
+function hint_layer_reposition_ie()
+  {
+  return hint_layer_reposition( event );
+  }
 
 /***EOF*********************************************************************/

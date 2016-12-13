@@ -155,6 +155,8 @@ sub run
     {
     my $psid = $self->get_page_session_id( 0 ) || 'empty';
     my $rsid = $self->get_page_session_id( 1 ) || 'empty';
+    $self->log_dumper( "USER INPUT -----------------------------------", $self->get_user_input() );
+    $self->log_dumper( "SAFE INPUT -----------------------------------", $self->get_safe_input() );
     $self->log_dumper( "FINAL PAGE SESSION [$psid]-----------------------------------", $self->get_page_session() );
     $self->log_dumper( "FINAL REF  SESSION [$rsid]-----------------------------------", $self->get_page_session( 1 ) );
     #$self->log_dumper( "FINAL USER SESSION [$psid]-----------------------------------", $self->get_user_session() );
@@ -1112,7 +1114,7 @@ sub render
     my $prep_opt1 = {};
     $page_data = $self->prep_process( $page_data, $prep_opt1 );
 
-print STDERR Dumper( 'OPT1 PREP --- ' x 11, $prep_opt1);
+#print STDERR Dumper( 'OPT1 PREP --- ' x 11, $prep_opt1);
 
     my $prep_opt2 = {};
     $page_data = $self->prep_process( $page_data, $prep_opt2 ) if $prep_opt1->{ 'SECOND_PASS_REQUIRED' };
@@ -1204,6 +1206,16 @@ sub forward
   boom "expected even number of arguments" unless @_ % 2 == 0;
 
   my $fw = $self->args( @_ );
+  return $self->forward_url( "?_=$fw" );
+}
+
+sub forward_type
+{
+  my $self = shift;
+
+  boom "expected odd number of arguments" if @_ % 2 == 0;
+
+  my $fw = $self->args_type( @_ );
   return $self->forward_url( "?_=$fw" );
 }
 

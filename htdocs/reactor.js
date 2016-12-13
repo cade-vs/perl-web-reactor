@@ -146,7 +146,7 @@ function ftree_click( ftree_id, branch_id )
 
 /***************************************************************************/
 
-function current_date()
+function current_date( fmt )
   {
   var now = new Date();
   var d = now.getDate();
@@ -155,7 +155,14 @@ function current_date()
   if( y < 1000 ) y += 1900; // stupid msie shit
   if( d < 10 ) d = '0' + d;
   if( m < 10 ) m = '0' + m;
-  return d + '.' + m + '.' + y;
+  
+  fmt = fmt.substr( 0, 3 );
+  if( fmt == "MDY" )
+    return m + '.' + d + '.' + y;
+  if( fmt == "YMD" )
+    return y + '.' + m + '.' + d;
+  //default: if( fmt == "DMY" ) 
+    return d + '.' + m + '.' + y;
   }
 
 function current_time()
@@ -170,10 +177,10 @@ function current_time()
   return  h + ':' + m + ':' + s;
   }
 
-function current_utime()
+function current_utime( fmt )
   {
   var now = new Date();
-  return current_date() + ' ' + current_time();
+  return current_date( fmt ) + ' ' + current_time();
   }
 
 /* used for input html elements with onClick=js:etc... */
@@ -183,6 +190,25 @@ function set_value( id_name, val )
   e.value = val;
   return false;
   }
+
+/***************************************************************************/
+
+function element_absolute_position( el )
+{
+  var pa = el;
+
+  var x = pa.offsetLeft;
+  var y = pa.offsetTop;
+
+  while( pa = pa.offsetParent )
+    {
+    x += pa.offsetLeft;
+    y += pa.offsetTop;
+    }
+
+  var abs_pos = { x: x, y: y, w: el.offsetWidth, h: el.offsetHeight };
+  return abs_pos;
+}
 
 /***************************************************************************/
 
@@ -265,46 +291,48 @@ function reactor_form_checkbox_set_all( form_id, value )
     }
 }
 
-/*** hint layers ***********************************************************/
+/*** hover layers *******************************************************/
 
-var hint_layer;
-var hint_layer_timeout_id;
+var reactor_hover_layer;
+var reactor_hover_layer_timeout_id;
 
-function hint_layer_show( el, hl_name )
+function reactor_hover_show( el, hl_name )
   {
-  hint_layer_show_delay( el, hl_name, 0 );
+  reactor_hover_show_delay( el, hl_name, 0 );
   }
 
-function hint_layer_show_delay( el, hl_name, delay, event )
+function reactor_hover_show_delay( el, hl_name, delay, event )
   {
-  clearTimeout( hint_layer_timeout_id );
-  hint_layer = document.getElementById( hl_name );
-  hint_layer_timeout_id = setTimeout( "hint_layer_activate()", delay );
-  hint_layer_reposition( event );
-  el.onmousemove = is_msie ? hint_layer_reposition_ie : hint_layer_reposition;
-  el.onmouseout  = hint_layer_hide;
+  if( reactor_hover_layer_timeout_id ) 
+    clearTimeout( reactor_hover_layer_timeout_id );
+
+  reactor_hover_layer = document.getElementById( hl_name );
+  reactor_hover_layer_timeout_id = setTimeout( "reactor_hover_activate()", delay );
+  reactor_hover_reposition( event );
+  el.onmousemove = is_msie ? reactor_hover_reposition_ie : reactor_hover_reposition;
+  el.onmouseout  = reactor_hover_hide;
   }
 
-function hint_layer_activate()
+function reactor_hover_activate()
   {
-  clearTimeout( hint_layer_timeout_id );
-  hint_layer.style.display  = "block";
-  hint_layer.style.position = "absolute";
+  clearTimeout( reactor_hover_layer_timeout_id );
+  reactor_hover_layer.style.display  = "block";
+  reactor_hover_layer.style.position = "absolute";
   }
 
-function hint_layer_hide()
+function reactor_hover_hide()
   {
-  hint_layer.style.display = "none";
-  hint_layer_enable = 0;
-  clearTimeout( hint_layer_timeout_id );
+  reactor_hover_layer.style.display = "none";
+  reactor_hover_layer_enable = 0;
+  clearTimeout( reactor_hover_layer_timeout_id );
   }
 
-function hint_layer_reposition_xy( ex, ey )
+function reactor_hover_reposition_xy( ex, ey )
   {
   var pw = window.innerWidth;
   var ph = window.innerHeight;
-  var dw = hint_layer.offsetWidth;
-  var dh = hint_layer.offsetHeight;
+  var dw = reactor_hover_layer.offsetWidth;
+  var dh = reactor_hover_layer.offsetHeight;
 
   var px = ex;
   var py = ey;
@@ -320,20 +348,173 @@ function hint_layer_reposition_xy( ex, ey )
 
   var left = px + ( ( px + 16 + dw ) > pw ? -( 16 + dw ) : 16 );
   var top  = py + ( ( py + 16 + dh ) > ph ? -( 16 + dh ) : 16 );
-  hint_layer.style.left = left + 'px';
-  hint_layer.style.top  = top  + 'px';
+
+  reactor_hover_layer.style.left = left + 'px';
+  reactor_hover_layer.style.top  = top  + 'px';
 
   return false;
   }
 
-function hint_layer_reposition( event )
+function reactor_hover_reposition( event )
   {
-  hint_layer_reposition_xy( event.clientX, event.clientY );
+  reactor_hover_reposition_xy( event.clientX, event.clientY );
   }
 
-function hint_layer_reposition_ie()
+function reactor_hover_reposition_ie()
   {
-  return hint_layer_reposition( event );
+  return reactor_hover_reposition( event );
   }
+
+/*** popup layers **********************************************************/
+
+function reactor_get_popup_layer( el )
+{
+  return document.getElementById( el.dataset.popupLayerId );
+}
+
+function reactor_popup_mouse_toggle( el, opt )
+{
+  var popup_layer = reactor_get_popup_layer( el );
+  if( popup_layer.style.display == 'block' )
+    reactor_popup_hide( el );
+  else
+    reactor_popup_show( el );
+
+  return false;
+};
+
+/*-------------------------------------------------------------------*/
+
+function reactor_popup_mouse_over( el, opt )
+{
+  if( ! opt ) opt = {};
+  
+  var timeout = opt.timeout > 0 ? opt.timeout : 200;
+  
+  var popup_layer = reactor_get_popup_layer( el );
+  if( popup_layer.style.display == 'block' )
+    {
+    console.log( "there is open popup, remove all running timeouts" );
+    reactor_popup_clear_tos( el );
+    return false;
+    }  
+  else
+    {
+    console.log( "there is no open popup, set timeout for open" );
+    el.open_to = setTimeout( function() { reactor_popup_show( el ) }, timeout );
+    el.onmouseout = function()
+                    {
+                    console.log( "mouse out from main element, cancel open timeout, set close timeout" );
+                    clearTimeout( el.open_to );
+                    el.close_to = setTimeout( function() { reactor_popup_hide( el ) }, timeout );
+                    el.onmouseout = null;
+                    
+                    popup_layer.onmouseover = function() { 
+                                                         console.log( "mouse inside popup, cancel all timeouts" );
+                                                         reactor_popup_clear_tos( el );
+                                                         };
+
+                    popup_layer.onmouseout  = function() { 
+                                                         console.log( "mouse leave popup, set close timeout" );
+                                                         reactor_popup_clear_tos( el );
+                                                         el.close_to = setTimeout( function() { reactor_popup_hide( el ) }, timeout );
+                                                         };
+                    };
+    }  
+
+  return false;
+};
+
+function reactor_popup_clear_tos( el )
+{
+  if( el.open_to )
+    clearTimeout( el.open_to );
+  if( el.close_to )
+    clearTimeout( el.close_to );
+}
+
+/*-------------------------------------------------------------------*/
+
+function reactor_popup_show( el )
+{
+  var class_on = el.dataset.popupClassOn;
+  if( class_on )
+    el.className = class_on;
+
+  var popup_layer = reactor_get_popup_layer( el );
+  popup_layer.style.display  = "block";
+  popup_layer.style.position = "absolute";
+
+  var abs_pos = element_absolute_position( el );
+
+  var pw = window.innerWidth;
+  var ph = window.innerHeight;
+  var dw = popup_layer.offsetWidth;
+  var dh = popup_layer.offsetHeight;
+
+  var ex = abs_pos.x;
+  var ey = abs_pos.y;
+  var ew = abs_pos.w;
+  var eh = abs_pos.h;
+
+  var doc  = document.documentElement;
+  var body = document.body;
+
+  var scrollLeft = (doc && doc.scrollLeft || body && body.scrollLeft || 0);
+  var scrollTop  = (doc && doc.scrollTop  || body && body.scrollTop  || 0);
+
+  ex += scrollLeft;
+//  ey += scrollTop; // for some (stupid) reason, ey is page-absolute
+
+  pw += scrollLeft;
+  ph += scrollTop;
+
+  var left = (ex + 16 + dw) > pw ? pw - dw - 16 : ex;
+  var top  = (ey + 16 + dh) > ph ? ph - dh - 16 : ey;
+
+  top += eh;
+
+  popup_layer.style.left = left + 'px';
+  popup_layer.style.top  = top  + 'px';
+
+  return false;
+}
+
+function reactor_popup_hide( el )
+{
+  var class_off = el.dataset.popupClassOff;
+  if( class_off )
+    el.className = class_off;
+
+  var popup_layer = reactor_get_popup_layer( el );
+  popup_layer.style.display = "none";
+  
+  reactor_popup_clear_tos( el );
+}
+
+function reactor_popup_autohide( event )
+{
+  if( is_msie )
+    {
+    this.style.display = "none";
+    return;
+    }
+
+  var inside = false;
+
+  var rel = event.relatedTarget;
+  while( ! inside && rel )
+    {
+    if( rel == this )
+      inside = true;
+    else
+      rel = rel.parentNode;
+    }
+
+  window.status = inside;
+
+  if( ! inside )
+    this.style.display = "none";
+}
 
 /***EOF*********************************************************************/

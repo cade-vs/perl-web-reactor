@@ -352,7 +352,7 @@ sub html_hover_layer
   my $html;
   my $handle;
 
-  $handle = qq{ onmouseover='hint_layer_show_delay( this,"$hover_layer_id", $delay, event )' };
+  $handle = qq{ onmouseover='reactor_hover_show_delay( this,"$hover_layer_id", $delay, event )' };
   $html   = qq{ <div class=$class id="$hover_layer_id">$value</div> };
 
   $reo->html_content_accumulator( 'ACCUMULATOR_HTML', $html );
@@ -377,53 +377,31 @@ sub html_popup_layer
     %opt = ( VALUE => shift() );
     }
 
-  my $value  = $opt{ 'VALUE' };
-  my $class  = $opt{ 'CLASS' } || 'popup-layer';
-  my $delay  = $opt{ 'DELAY' } || 150;
-  my $show   = $opt{ 'SHOW' } || 'CLICK';
-  my $title  = $opt{ 'TITLE' };
-  my $single = $opt{ 'SINGLE' } ? 1 : 0;
-  my $title_class = $opt{ 'TITLE_CLASS' } || $class . '-title';
+  my $value  = $opt{ 'VALUE'  };
+  my $class  = $opt{ 'CLASS'  } || 'popup-layer';
+  my $delay  = $opt{ 'DELAY'  } || 150;
+  my $type   = $opt{ 'TYPE'   } || 'CLICK';
 
-  my $type  = uc $opt{ 'TYPE' };
-
-  my $event;
-  my $func = 'return popup_layer_toggle( this, single )';
-
-  $event = $type eq 'CONTEXT' ? 'oncontextmenu' : ( $show eq 'CLICK' ? 'onclick' : 'onmouseover' );
-  $func  = "return popup_layer_show_context_mouse( this, event )"     if $type eq 'CONTEXT';
-  $func  = "return popup_layer_toggle_with_autohide( this, $single )" if $type =~ 'AUTOHIDE2?';
-  $func  = "return popup_layer_show_mouse( this, $single )"           if $show eq 'MOUSE';
+  my $trigger;
+  if( $type eq 'HOVER' )
+    {
+    $trigger = qq( onMouseOver="return reactor_popup_mouse_over( this )" );
+    }
+  elsif( $type eq 'CONTEXT' )  
+    {
+    $trigger = qq( onContextMenu="return reactor_popup_mouse_over( this )" );
+    }
+  else
+    {
+    # CLICK
+    $trigger = qq( onClick="return reactor_popup_mouse_over( this )" );
+    }  
 
   my $popup_layer_id_counter = $reo->html_new_id();
   my $popup_layer_id = "R_POPUP_LAYER_$popup_layer_id_counter";
 
-  my $html;
-  my $handle;
-
-  $handle  = qq{ popup_layer_id="$popup_layer_id" $event="$func" };
-###  $handle .= qq{ onmouseout="$func" } if $event eq 'onmouseover';
-  $html   .= qq{
-                <div class=$class id="$popup_layer_id">
-                <table cellspacing=0 cellpadding=5>
-              };
-  if( $title )
-    {
-    my $closebox = $type eq 'AUTOHIDE' ? '&nbsp;' : qq{ <img popup_layer_id="$popup_layer_id" onclick="popup_layer_hide( this )" src=img/close.png> };
-    $html .= qq{
-                 <tr>
-                     <td class=$title_class><b>$title</b></td>
-                     <td align=right class=$title_class>$closebox</td>
-                 </tr>
-               };
-    }
-  $html .= qq{
-                 <tr>
-                     <td colspan=2>$value</td>
-                 </tr>
-               </table>
-               </div>
-             };
+  my $handle  = qq( $trigger data-popup-layer-id="$popup_layer_id" );
+  my $html    = qq( <div class=$class id="$popup_layer_id">$value</div> );
 
   if ( $opt{ 'NO_ACCUMULATOR' } )
     {

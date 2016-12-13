@@ -391,9 +391,8 @@ sub html_popup_layer
     {
     $trigger = qq( onContextMenu="return reactor_popup_mouse_over( this )" );
     }
-  else
+  else # ( $type eq 'CLICK' )  
     {
-    # CLICK
     $trigger = qq( onClick="return reactor_popup_mouse_over( this )" );
     }  
 

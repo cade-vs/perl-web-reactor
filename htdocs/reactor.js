@@ -1,7 +1,7 @@
 /****************************************************************************
 ##
 ##  Web::Reactor application machinery
-##  2013-2015 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -113,14 +113,14 @@ function ftree_click( ftree_id, branch_id )
   branch_tr.open = ! branch_tr.open;
 
   var elems = root_table.getElementsByTagName( 'TR' )
-  var bia = branch_id.split(".");
+  var bia = branch_id.split( "." );
 
   for( var i = 0; i < elems.length; i++ )
     {
     var el = elems[i];
     var el_id = elems[i].id;
 
-    var eia = el_id.split(".");
+    var eia = el_id.split( "." );
 
     if( el_id.substr( 0, branch_id.length ) == branch_id )
       {
@@ -141,7 +141,6 @@ function ftree_click( ftree_id, branch_id )
         }
       }
     }
-
 }
 
 /***************************************************************************/
@@ -323,7 +322,6 @@ function reactor_hover_activate()
 function reactor_hover_hide()
   {
   reactor_hover_layer.style.display = "none";
-  reactor_hover_layer_enable = 0;
   clearTimeout( reactor_hover_layer_timeout_id );
   }
 
@@ -394,31 +392,37 @@ function reactor_popup_mouse_over( el, opt )
   var popup_layer = reactor_get_popup_layer( el );
   if( popup_layer.style.display == 'block' )
     {
-    console.log( "there is open popup, remove all running timeouts" );
+    //console.log( "there is open popup, remove all running timeouts" );
     reactor_popup_clear_tos( el );
     return false;
     }  
   else
     {
-    console.log( "there is no open popup, set timeout for open" );
+    //console.log( "there is no open popup, set timeout for open" );
     el.open_to = setTimeout( function() { reactor_popup_show( el ) }, timeout );
     el.onmouseout = function()
                     {
-                    console.log( "mouse out from main element, cancel open timeout, set close timeout" );
+                    //console.log( "mouse out from main element, cancel open timeout, set close timeout" );
                     clearTimeout( el.open_to );
-                    el.close_to = setTimeout( function() { reactor_popup_hide( el ) }, timeout );
                     el.onmouseout = null;
+                    el.close_to   = setTimeout( function() 
+                                                { 
+                                                //console.log( "close timeout up, hide popup" );
+                                                reactor_popup_hide( el ) 
+                                                }, timeout );
                     
-                    popup_layer.onmouseover = function() { 
-                                                         console.log( "mouse inside popup, cancel all timeouts" );
-                                                         reactor_popup_clear_tos( el );
-                                                         };
+                    popup_layer.onmouseover = function() 
+                                              { 
+                                              //console.log( "mouse inside popup, cancel all timeouts" );
+                                              reactor_popup_clear_tos( el );
+                                              };
 
-                    popup_layer.onmouseout  = function() { 
-                                                         console.log( "mouse leave popup, set close timeout" );
-                                                         reactor_popup_clear_tos( el );
-                                                         el.close_to = setTimeout( function() { reactor_popup_hide( el ) }, timeout );
-                                                         };
+                    popup_layer.onmouseout  = function() 
+                                              { 
+                                              //console.log( "mouse leave popup, set close timeout" );
+                                              reactor_popup_clear_tos( el );
+                                              el.close_to = setTimeout( function() { reactor_popup_hide( el ) }, timeout );
+                                              };
                     };
     }  
 
@@ -490,31 +494,6 @@ function reactor_popup_hide( el )
   popup_layer.style.display = "none";
   
   reactor_popup_clear_tos( el );
-}
-
-function reactor_popup_autohide( event )
-{
-  if( is_msie )
-    {
-    this.style.display = "none";
-    return;
-    }
-
-  var inside = false;
-
-  var rel = event.relatedTarget;
-  while( ! inside && rel )
-    {
-    if( rel == this )
-      inside = true;
-    else
-      rel = rel.parentNode;
-    }
-
-  window.status = inside;
-
-  if( ! inside )
-    this.style.display = "none";
 }
 
 /***EOF*********************************************************************/

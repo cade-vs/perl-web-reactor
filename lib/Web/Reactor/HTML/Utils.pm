@@ -31,9 +31,16 @@ use strict;
 use Exception::Sink;
 use Data::Tools;
 use Web::Reactor::HTML::Tab;
+use Web::Reactor::HTML::Layout;
 my %HTML_ESCAPES = (
+                   '&' => '&amp;',
                    '>' => '&gt;',
                    '<' => '&lt;',
+                   ' ' => '&#32;',
+                   '"' => '&#34;',
+                   "'" => '&#39;',
+                   '/' => '&#47;',
+                   '=' => '&#61;',
                    );
 
 ##############################################################################
@@ -41,7 +48,7 @@ my %HTML_ESCAPES = (
 sub html_escape
 {
   my $s = shift;
-  $s =~ s/([<>])/$HTML_ESCAPES{ $1 }/ge;
+  $s =~ s|([&<> "'/=])|$HTML_ESCAPES{ $1 }|ge;
   return $s;
 }
 
@@ -220,12 +227,12 @@ DEMO:
           'yoyo',
           'didi',
           {
-          TITLE => 'TITLE:opa',
+          LABEL => 'opa',
           DATA  => [
                      'tralala',
                      'heyo',
                      {
-                     TITLE => 'TITLE:sesssil',
+                     LABEL => 'sesssil',
                      DATA  => [
                               'tralala',
                               'heyo',
@@ -261,10 +268,10 @@ sub html_ftree
 
   my $html;
 
-  $html .= "<table id=$ftree_table_id $t_args>";
   $html .= "\n";
+  $html .= "<table id=$ftree_table_id $t_args>";
 
-  $html .= __html_ftree_branch( $data, $ftree_table_id, $ftree_table_id . '.' );
+  $html .= __html_ftree_branch( $data, $ftree_table_id, $ftree_table_id . '.', 0, \%opt );
 
   $html .= "</table>";
   $html .= "\n";
@@ -278,15 +285,19 @@ sub __html_ftree_branch
   my $ftree_table_id = shift;
   my $branch_id      = shift;
   my $level          = shift;
+  my $opt            = shift;
 
   my $html;
+
+  $html .= "\n";
 
   for my $row ( @$data )
     {
     my $label;
     my $data;
 
-    my $r_args; # row args
+    my $r_args; # row  args
+    my $c_args; # cell args
 
     if( ref( $row ) eq 'HASH' )
       {
@@ -301,6 +312,9 @@ sub __html_ftree_branch
       $label = $row;
       }
 
+    $r_args ||= $opt->{ 'ARGS_TR' };
+    $c_args ||= $opt->{ 'ARGS_TD' };
+ 
     $ftree_item_id++;
 
     my $row_id = $branch_id . $ftree_item_id . '.';
@@ -308,17 +322,20 @@ sub __html_ftree_branch
     # $label = "($row_id) $label"; # DEBUG
 
     my $hidden = $level > 0 ? "style='display: none'" : undef;
+    my $pad = '&nbsp;' x $level;
+    my $cell = html_layout_hbox( [ $pad, $label ] );
 
     if( ref( $data ) eq 'ARRAY' )
       {
       my $open_code = qq{ onclick='ftree_click( "$ftree_table_id", "$row_id" )' };
-      $html .= "<tr id=$row_id $open_code $hidden $r_args><td>$label</td></tr>";
-      $html .= __html_ftree_branch( $data, $ftree_table_id, $row_id, $level + 1 );
+      $html .= "<tr id=$row_id $open_code $r_args $hidden><td $c_args>$cell</td></tr>";
+      $html .= __html_ftree_branch( $data, $ftree_table_id, $row_id, $level + 1, $opt );
       }
     else
       {
-      $html .= "<tr id=$row_id $hidden $r_args><td>$label</td></tr>";
+      $html .= "<tr id=$row_id $hidden $r_args><td $c_args>$cell</td></tr>";
       }
+
     $html .= "\n";
     }
 

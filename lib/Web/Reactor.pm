@@ -238,19 +238,20 @@ sub main_process
 
   # FIXME: TODO: handle and URL params here. only for EX?
   my $iconv;
-  my $app_charset = lc $self->{ 'ENV' }{ 'APP_CHARSET' };
+  my $app_charset = uc $self->{ 'ENV' }{ 'APP_CHARSET' } || 'UTF-8';
 
   if( $app_charset )
     {
     my $incoming_charset;
     if( uc( CGI::http( 'HTTP_X_REQUESTED_WITH' ) ) eq 'XMLHTTPREQUEST' )
       {
-      $incoming_charset = 'utf8';
+      $incoming_charset = 'UTF-8';
       }
     if( $incoming_charset and $incoming_charset ne $app_charset )
       {
       eval
         {
+        # FIXME: use Encode; instead
         require 'Text/Iconv.pm';
         $iconv = Text::Iconv->new( $incoming_charset, $app_charset );
         };
@@ -443,7 +444,8 @@ sub __create_new_user_session
   $self->{ 'SESSIONS' }{ 'SID'  }{ 'USER' } = $user_sid;
   $self->{ 'SESSIONS' }{ 'DATA' }{ 'USER' }{ $user_sid } = $user_shr;
 
-  $self->set_cookie( $cookie_name, -value => $user_sid );
+  my $secure_cookie = $self->{ 'ENV' }{ 'DISABLE_SECURE_COOKIES' } ? 0 : 1;
+  $self->set_cookie( $cookie_name, -value => $user_sid, -httponly => 1, -secure => $secure_cookie );
   $self->log( "debug: creating new user session [$user_sid]" );
 
   my $user_session_expire = $self->{ 'ENV' }{ 'USER_SESSION_EXPIRE' } || 600; # 10 minutes
@@ -1129,6 +1131,12 @@ sub render
   # FIXME: charset
   $self->set_headers( 'content-type'        => $page_type );
   $self->set_headers( 'content-disposition' => "attachment; filename=$file_name" ) if $file_name;
+  
+  my $http_csp = $self->{ 'ENV' }{ 'HTTP_CSP' }; # || " default-src 'self' ";
+  $self->set_headers( 'Content-Security-Policy' => $http_csp );
+
+  my $app_charset = uc $self->{ 'ENV' }{ 'APP_CHARSET' } || 'UTF-8';
+  $self->set_headers( 'content-charset' => $app_charset );
 
   my $page_headers = $self->__make_headers();
 

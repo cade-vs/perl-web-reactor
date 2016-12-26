@@ -13,6 +13,8 @@ use Exporter;
 use Data::Tools;
 use Exception::Sink;
 
+use Web::Reactor::HTML::Utils;
+
 # FIXME: TODO: use common func to add html elements common tags: ID,DISABLED,etc.
 # FIXME: TODO: ...including abstract ones as GEO(metry)
 # FIXME: TODO: change VALUE to be html value (currently it is DATA), and DISPLAY to be visible text (currently it is VALUE)
@@ -411,6 +413,8 @@ sub input
   my $hid   =    $opt{ 'HIDDEN'  };
   my $ret   =    $opt{ 'RET'     } || $opt{ 'RETURN'  }; # if return value should be mapped, works only with HIDDEN
 
+  my $clear =    $opt{ 'CLEAR'   };
+
   $size = $maxl = $len if $len > 0;
 
   my $options;
@@ -439,10 +443,27 @@ sub input
     $self->__ret_map_set( $name, $value => $ret );
     }
 
+  my $clear_tag;
+  if( $clear )
+    {
+    my $reo = $self->get_reo();
+    my $clear_hint_handler = html_hover_layer( $reo, VALUE => 'Clear field' );
+    
+    if( $clear =~ /^[a-z_\-0-9\/]+\.(png|jpg|jpeg|gif)$/ )
+      {
+      $clear_tag = qq[ <img class='icon' src='$clear' border='0' onClick='return set_value("$id", "")' $clear_hint_handler > ];
+      }
+    else
+      {
+      my $s = $clear eq 1 ? '&otimes;' : $clear;
+      $clear_tag = qq[ <span class='icon' border='0' onClick='return set_value("$id", "")' $clear_hint_handler >$s</span> ];
+      }  
+    }
+
   my $text;
 
   my $form_id = $self->{ 'FORM_ID' };
-  $text .= "<input class='$class' name='$name' value='$value' $options form='$form_id' $args>";
+  $text .= "<input class='$class' name='$name' value='$value' $options form='$form_id' $args>$clear_tag";
 
   $text .= "\n";
   return $text;

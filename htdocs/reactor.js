@@ -399,11 +399,15 @@ function reactor_popup_mouse_over( el, opt )
   else
     {
     //console.log( "there is no open popup, set timeout for open" );
-    el.open_to = setTimeout( function() { reactor_popup_show( el ) }, timeout );
+    if( opt.click_open )
+      reactor_popup_show( el );
+    else
+      el.open_to = setTimeout( function() { reactor_popup_show( el ) }, timeout );
     el.onmouseout = function()
                     {
                     //console.log( "mouse out from main element, cancel open timeout, set close timeout" );
-                    clearTimeout( el.open_to );
+                    if( el.open_to )
+                      clearTimeout( el.open_to );
                     el.onmouseout = null;
                     el.close_to   = setTimeout( function() 
                                                 { 

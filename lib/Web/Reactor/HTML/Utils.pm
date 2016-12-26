@@ -52,165 +52,6 @@ sub html_escape
   return $s;
 }
 
-##############################################################################
-
-
-=pod
-
-takes two-dimensional perl array and formats it in html table
-
-DEMO:
-
-  my @data;
-
-  push @data, [
-              '123',
-              { ARGS => 'align=right', DATA => 'asd' },
-              'qwe'
-              ];
-  push @data, {
-                CLASS => 'grid',
-                DATA => [
-                        '123',
-                        { ARGS  => 'align=center', DATA => 'asd' },
-                        { CLASS => 'fmt-img',      DATA => 'qwe' },
-                        ],
-              };
-  push @data, {
-              # columns class list (CCL), used only for current row
-              # use PCCL for permanent (for the rest of the rows)
-              CCL  => [ 'view-name-h', 'view-value-h' ],
-              DATA => [ 'name',        'value'        ],
-              };
-  push @data, {
-              PCCL  => [ 'view-name-h', 'view-value-h' ],
-              # set only PCCL and skip this row
-              SKIP  => YES,
-              };
-
-  $text .= html_table( \@data, ARGS => 'width=100%' );
-
-=cut
-
-
-sub html_table
-{
-  my $rows = shift;
-  my %opt  = @_;
-
-  hash_uc_ipl( \%opt );
-
-  # t_* table attr
-  # r_* row   attr
-  # c_* cell  attr
-
-  my $t_args;
-  $t_args ||= $opt{ 'ARGS' };
-  $t_args ||= 'class=' . $opt{ 'CLASS' } if $opt{ 'CLASS' };
-
-  my $tr1 = $opt{ 'TR1' } || $opt{ 'TR-1' } || 'tr-1';
-  my $tr2 = $opt{ 'TR2' } || $opt{ 'TR-2' } || 'tr-2';
-  my $trh = $opt{ 'TRH' };
-  my $tdh = $opt{ 'TDH' };
-
-  my $ccl  = $opt{ 'CCL'  } || undef;
-  my $pccl = $opt{ 'PCCL' } || undef;
-
-  my $t_cmt = $opt{ 'COMMENT' };
-
-  my $text;
-  $text .= "\n\n\n";
-  $text .= "<!--- BEGIN TABLE: $t_cmt --->\n" if $t_cmt;
-  $text .= "<table $t_args>\n<tbody>\n";
-
-  my $r_class = $tr1;
-
-  my $row_num = 0;
-  for my $row ( @$rows )
-    {
-    my $cols;
-    $r_class = $r_class eq $tr1 ? $tr2 : $tr1;
-    my $r_args;
-
-    $r_class = $trh if $trh and $row_num == 0;
-
-    if ( ! ref( $row ) ) # SCALAR
-      {
-      # fallback
-      $row = [ $row ];
-      }
-
-    if ( ref( $row ) eq 'ARRAY' )
-      {
-      $cols  = $row;
-      $r_args = "class='$r_class'";
-      }
-    elsif ( ref( $row ) eq 'HASH' )
-      {
-      $row      = hash_uc( $row );
-      $cols     = $row->{ 'DATA' };
-      $r_args ||= $row->{ 'ARGS' };
-      $r_args ||= 'class=' . ( $row->{ 'CLASS' } || $r_class );
-      $ccl      = $row->{ 'CCL'  } if $row->{ 'CCL'  };
-      $pccl     = $row->{ 'PCCL' } if $row->{ 'PCCL' };
-
-      next if $row->{ 'SKIP' };
-      }
-    else
-      {
-      boom "invalid row type, expected HASH or ARRAY reference";
-      next;
-      }
-
-    $text  .= "  <tr $r_args>\n";
-
-    $ccl = $pccl if $pccl and ! $ccl; # use permanent cols class list if permanent specified and not local one
-
-    my $col_num = 0;
-    for my $cell ( @$cols )
-      {
-      my $c_class;
-      my $c_args;
-      my $val;
-
-      $c_class = $tdh if $tdh and $row_num == 0;
-      $c_class = $ccl->[ $col_num ] if $ccl and $ccl->[ $col_num ];
-
-      if ( ! ref( $cell ) ) # SCALAR
-        {
-        $val = $cell;
-        }
-      elsif( ref( $cell ) eq 'HASH' )
-        {
-        $cell    = hash_uc( $cell );
-        $val     = $cell->{ 'DATA' };
-        $c_args  = $cell->{ 'ARGS' };
-        $c_args .= " class='" . $cell->{ 'CLASS' } . "'" if $cell->{ 'CLASS' };
-        $c_args .= " width='" . $cell->{ 'WIDTH' } . "'" if $cell->{ 'WIDTH' };
-        }
-      else
-        {
-        # FIXME: carp croak boom :)
-        next;
-        }
-
-      $c_args ||= "class='" . $c_class . "'";
-      $text .= "    <td $c_args>$val</td>\n";
-      $col_num++;
-      }
-
-    $ccl = undef;
-
-    $text  .= "  </tr>\n";
-    $row_num++;
-    }
-
-  $text .= "</tbody>\n</table>\n";
-  $text .= "<!--- END TABLE: $t_cmt --->\n" if $t_cmt;
-  $text .= "\n\n\n";
-
-  return $text;
-}
 
 ##############################################################################
 
@@ -322,8 +163,8 @@ sub __html_ftree_branch
     # $label = "($row_id) $label"; # DEBUG
 
     my $hidden = $level > 0 ? "style='display: none'" : undef;
-    my $pad = '&nbsp;' x $level;
-    my $cell = html_layout_hbox( [ $pad, $label ] );
+    my $pad = $level * 2 + 1;
+    my $cell = html_layout_2lr( '&nbsp;', $label, "$pad=<" );
 
     if( ref( $data ) eq 'ARRAY' )
       {
@@ -399,6 +240,8 @@ sub html_popup_layer
   my $delay  = $opt{ 'DELAY'  } || 150;
   my $type   = $opt{ 'TYPE'   } || 'CLICK';
 
+  $delay = 0 unless $delay > 0;
+
   my $trigger;
   if( $type eq 'HOVER' )
     {
@@ -410,7 +253,7 @@ sub html_popup_layer
     }
   else # ( $type eq 'CLICK' )  
     {
-    $trigger = qq( onClick="return reactor_popup_mouse_over( this )" );
+    $trigger = qq( onClick="return reactor_popup_mouse_over( this, { click_open: 1 } )" );
     }  
 
   my $popup_layer_id_counter = $reo->html_new_id();

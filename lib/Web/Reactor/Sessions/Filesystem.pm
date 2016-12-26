@@ -158,7 +158,7 @@ sub _key_to_fn
     $vd = "$app_root/var";
     }
   dir_path_check( $vd ) unless -d $vd;
-  boom "missing SESS_VAR_DIR or APP_ROOT/var" unless -d $vd;
+  boom "missing SESS_VAR_DIR or APP_ROOT/var [$vd]" unless -d $vd;
 
   while( @key > 0 )
     {

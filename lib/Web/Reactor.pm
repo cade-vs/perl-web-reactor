@@ -475,6 +475,15 @@ sub get_user_session
   return $user_shr;
 }
 
+sub get_user_session_id
+{
+  my $self = shift;
+
+  my $user_sid = $self->{ 'SESSIONS' }{ 'SID'  }{ 'USER' };
+
+  return $user_sid;
+}
+
 sub get_page_session
 {
   my $self  = shift;

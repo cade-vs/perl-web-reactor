@@ -268,6 +268,8 @@ examples:
 >20=>       -- left is right aligned, 20% width, right is right aligned, 80% 
 =1%         -- same as <99=1> or <99%=1%>
 
+using '==' instead of '=' enables no-word-wrap style
+
 =cut
 
 sub html_layout_2lr
@@ -280,12 +282,14 @@ sub html_layout_2lr
   my $ra; # right align
   my $lw; # left  width
   my $rw; # right width
-  if( $fm =~ /^([<>]?)((\d+)%?)?=((\d+)%?)?([<>]?)$/ )
+  my $nw; # no-wrap
+  if( $fm =~ /^([<>]?)((\d+)%?)?=(=)?((\d+)%?)?([<>]?)$/ )
     {
     $la = $1;
     $lw = $3;
-    $rw = $5;
-    $ra = $6;
+    $nw = $4;
+    $rw = $6;
+    $ra = $7;
     }
   else
     {
@@ -302,8 +306,9 @@ sub html_layout_2lr
   $lw = "width=$lw%";
   $rw = "width=$rw%";
 
+  $nw = "style='white-space: nowrap'" if $nw;
 
-  return "<table width=100% cellspacing=0 cellpadding=0 border=0><tr><td $la $lw>$ld</td><td $ra $rw>$rd</td></tr></table>";
+  return "<table width=100% cellspacing=0 cellpadding=0 border=0 $nw><tr><td $la $lw>$ld</td><td $ra $rw>$rd</td></tr></table>";
 }
 
 ### EOF ######################################################################

@@ -122,7 +122,7 @@ sub process
 
   # FIXME: cache here? moje bi ne, zaradi modulite
   $text =~ s/<([\$\&\#]|\$\$)([a-zA-Z_\-0-9]+)(\s*[^>]*)?>/$self->__process_tag( $1, $2, $3, $opt, $ctx )/ge;
-  $text =~ s/reactor_((new|back|here)_)?(href|src)=(["'])?([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"']*)(\4)?/$self->__process_href( $2, $3, $5, $7 )/gie;
+  $text =~ s/reactor_((new|back|here|none)_)?(href|src)=(["'])?([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"']*)(\4)?/$self->__process_href( $2, $3, $5, $7 )/gie;
 
   return $text;
 }
@@ -201,25 +201,9 @@ sub __process_href
 
   my $reo = $self->get_reo();
 
-  $type = 'new' if $attr eq 'src';
+  $type = 'new' if $attr eq 'src'; # images
 
-  my $href;
-  if( $type eq 'new' )
-    {
-    $href = $reo->args_new( %$data_hr );
-    }
-  elsif( $type eq 'back' )
-    {
-    $href = $reo->args_back( %$data_hr );
-    }
-  elsif( $type eq 'here' )
-    {
-    $href = $reo->args_here( %$data_hr );
-    }
-  else
-    {
-    boom "invalid first argument, expected one of (new|back|here)";
-    }
+  my $href = $reo->args_type( $type, %$data_hr );
 
   return "$attr=$script?_=$href";
 }

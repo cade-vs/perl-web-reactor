@@ -1,7 +1,7 @@
 /****************************************************************************
 ##
 ##  Web::Reactor application machinery
-##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2017 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -288,6 +288,40 @@ function reactor_form_checkbox_set_all( form_id, value )
     else  
       reactor_form_checkbox_set( arr[z], value );
     }
+}
+
+/*** multi-state checkboxes ************************************************/
+
+function reactor_form_checkbox_toggle_multi( el )
+{
+   reactor_form_checkbox_set_multi( el, el.value );
+}
+
+function reactor_form_checkbox_set_multi( el, value )
+{
+   var ch_id  = el.dataset.checkboxInputId;
+   var cb     = document.getElementById( ch_id );
+   
+   var stages = el.dataset.stages;
+   var value = cb.value;
+   value++;
+   if( value >= stages ) value = 0;
+   cb.value   = value;
+   
+   var new_label = el.dataset[ "valueLabel-" + value ];
+   var new_class = el.dataset[ "valueClass-" + value ];
+
+   el.className = new_class;
+   el.innerHTML = new_label;
+
+   var onchange = cb.getAttribute( 'ONCHANGE' );
+   if( onchange )
+     {
+     if( is_msie )
+       onchange();
+     else
+       eval( onchange );
+     }
 }
 
 /*** hover layers *******************************************************/

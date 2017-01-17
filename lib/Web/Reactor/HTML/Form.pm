@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2017 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -147,6 +147,7 @@ sub __ret_map_set
 }
 
 ##############################################################################
+# classic html input checkbox
 
 sub checkbox
 {
@@ -178,6 +179,67 @@ sub checkbox
   $text .= "\n";
 
   return $text;
+}
+
+##############################################################################
+# multi-stages css-styled checkbox
+
+sub checkbox_multi
+{
+  my $self = shift;
+
+  my %opt = @_;
+
+  my $name   = uc $opt{ 'NAME'   };
+  my $class  =    $opt{ 'CLASS'  } || $self->{ 'CLASS_MAP' }{ 'CHECKBOX' } || 'checkbox';
+  my $value  =    $opt{ 'VALUE'  } ? 1 : 0;
+  my $args   =    $opt{ 'ARGS'   };
+  my $stages =    $opt{ 'STAGES' } || 2;
+  my $labels =    $opt{ 'LABELS' } || [ 'x', '&radic;' ];
+
+  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
+
+  $value = abs( int( $value ) );
+  $value = 0 if $value >= $stages;
+  $class = "$class";
+
+  my $options;
+
+  for my $s ( 0 .. $stages - 1 )
+    {
+    my $v = $labels->[ $s ];
+    $options .= "data-value-label-$s='$v' ";
+    $options .= "data-value-class-$s='$class-$s' ";
+    }
+
+  my $label = $labels->[ $value ];
+
+  my $text;
+
+  my $ch_id = $self->html_new_id(); # checkbox data holder
+
+  my $form_id = $self->{ 'FORM_ID' };
+  #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
+  #$text .= "<input type='checkbox' name='$name' value='1' $options>";
+  $text .= "\n";
+  $text .= "<input type='hidden' name='$name' id='$ch_id' value='$value' form='$form_id' $args>";
+####  $text .= qq[ <input type='checkbox' $options checkbox_data_input_id="$ch_id" onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
+#  $text .= qq[ <input type='checkbox' $options data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle(this)' class='$class'> ];
+#  $text .= qq[ <input type='checkbox' $options data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle(this)' class='$class'> ];
+  $text .= qq[ <div class='$class-$value' data-stages='$stages' data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle_multi(this)' $options>$label</div> ];
+  $text .= "\n";
+
+  return $text;
+}
+
+##############################################################################
+
+sub checkbox_3state
+{
+  my $self = shift;
+
+  my %args = @_; # to fix uneven args
+  return $self->checkbox_multi( %args, STAGES => 3, LABELS => [ '?', '&radic;', 'x' ] );
 }
 
 ##############################################################################

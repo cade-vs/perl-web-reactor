@@ -19,7 +19,7 @@ use Web::Reactor::HTML::Utils;
 # FIXME: TODO: ...including abstract ones as GEO(metry)
 # FIXME: TODO: change VALUE to be html value (currently it is DATA), and DISPLAY to be visible text (currently it is VALUE)
 
-use parent 'Web::Reactor::Base'; 
+use parent 'Web::Reactor::Base';
 
 ##############################################################################
 
@@ -201,15 +201,18 @@ sub checkbox_multi
 
   $value = abs( int( $value ) );
   $value = 0 if $value >= $stages;
-  $class = "$class";
 
   my $options;
+  my $current_class;
 
   for my $s ( 0 .. $stages - 1 )
     {
+    my $c = ref( $class ) eq 'ARRAY' ? $class->[ $s ] : "$class-$s cursor-pointer";
     my $v = $labels->[ $s ];
     $options .= "data-value-label-$s='$v' ";
-    $options .= "data-value-class-$s='$class-$s' ";
+    $options .= "data-value-class-$s='$c' ";
+    $current_class = $c if $s == 0;
+    $current_class = $c if $s == $value;
     }
 
   my $label = $labels->[ $value ];
@@ -226,7 +229,7 @@ sub checkbox_multi
 ####  $text .= qq[ <input type='checkbox' $options checkbox_data_input_id="$ch_id" onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
 #  $text .= qq[ <input type='checkbox' $options data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle(this)' class='$class'> ];
 #  $text .= qq[ <input type='checkbox' $options data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle(this)' class='$class'> ];
-  $text .= qq[ <div class='$class-$value' data-stages='$stages' data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle_multi(this)' $options>$label</div> ];
+  $text .= qq[ <div class='$current_class' data-stages='$stages' data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle_multi(this)' $options>$label</div> ];
   $text .= "\n";
 
   return $text;
@@ -330,7 +333,7 @@ sub select
     my %res;
     while( my ( $k, $v ) = each %$data )
       {
-      my %e = ( KEY => $k );
+      my %e = ( 'KEY' => $k );
       if( ref($v) eq 'HASH' )
         {
         %e = ( %e, %$v );
@@ -510,7 +513,7 @@ sub input
     {
     my $reo = $self->get_reo();
     my $clear_hint_handler = html_hover_layer( $reo, VALUE => 'Clear field' );
-    
+
     if( $clear =~ /^[a-z_\-0-9\/]+\.(png|jpg|jpeg|gif)$/ )
       {
       $clear_tag = qq[ <img class='icon' src='$clear' border='0' onClick='return set_value("$id", "")' $clear_hint_handler > ];
@@ -519,7 +522,7 @@ sub input
       {
       my $s = $clear eq 1 ? '&otimes;' : $clear;
       $clear_tag = qq[ <span class='icon' border='0' onClick='return set_value("$id", "")' $clear_hint_handler >$s</span> ];
-      }  
+      }
     }
 
   my $text;

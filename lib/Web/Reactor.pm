@@ -704,9 +704,9 @@ sub args_here
 sub args_type
 {
   my $self = shift;
-  
+
   my $type = lc shift;
-  
+
   return $self->args_new( @_ )  if $type eq 'new';
   return $self->args_here( @_ ) if $type eq 'here';
   return $self->args_back( @_ ) if $type eq 'back';
@@ -1073,6 +1073,8 @@ sub render
   my $self = shift;
   my %opt  = @_;
 
+  boom "too many nesting levels in rendering, probable bug in actions or pages" if (caller(512))[0] ne ''; # FIXME: config option for max level
+
   my $action = $opt{ 'ACTION' };
   my $page   = $opt{ 'PAGE'   };
   my $data   = $opt{ 'DATA'   };
@@ -1140,7 +1142,7 @@ sub render
   # FIXME: charset
   $self->set_headers( 'content-type'        => $page_type );
   $self->set_headers( 'content-disposition' => "attachment; filename=$file_name" ) if $file_name;
-  
+
   my $http_csp = $self->{ 'ENV' }{ 'HTTP_CSP' }; # || " default-src 'self' ";
   $self->set_headers( 'Content-Security-Policy' => $http_csp );
 
@@ -1613,9 +1615,9 @@ functionality like:
   * hiding html link data and forms data to rise page-to-page transfer safety.
   * preprocessing of text/html, including hiding data, calling actions etc.
   * on-demand loading of 'actions', perl code modules to handle dynamic pages.
-  
+
 Web::Reactor can be extended, though it was not supposed to. There are 4 main
-parts of it which can be extended. See section EXTENDING below for details.  
+parts of it which can be extended. See section EXTENDING below for details.
 
 =head1 EXAMPLES
 
@@ -1690,7 +1692,7 @@ Action module example:
 
 =head1 PAGE NAMES, HTML FILE TEMPLATES, PAGE INSTANCES
 
-Web::Reactor has a notion of a "page" which represents visible output to the 
+Web::Reactor has a notion of a "page" which represents visible output to the
 end user browser. It has (i.e. uses) the following attributes:
 
   * html file template (page name)
@@ -1883,20 +1885,20 @@ Some entries may be omitted and default values are:
 Web::Reactor is designed to allow extending or replacing the 4 main parts:
 
     * Session storage (data store on filesystem, database, remote or vmem)
-      
+
       base module:    Web::Reactor::Sessions
       current in use: Web::Reactor::Sessions::Filesystem
-    
+
     * HTML creation/expansion/preprocessing
-      
+
       base module:    Web::Reactor::Preprocessor
       current in use: Web::Reactor::Preprocessor::Native
-    
+
     * Actions/modules execution (can be skipped if custom HTML prep used)
-      
+
       base module:    Web::Reactor::Actions
       current in use: Web::Reactor::Actions::Native
-    
+
     * Main Web::Reactor modules, which controlls all the functionality.
 
       base module:    Web::Reactor
@@ -1919,14 +1921,14 @@ to add specific functionality which will be readily available everywhere.
 
 =head1 PROJECT STATUS
 
-At the moment Web::Reactor is in beta. API is mostly frozen but it is possible 
+At the moment Web::Reactor is in beta. API is mostly frozen but it is possible
 to be changed and/or extended. However drastic changes are not planned :)
 
 If you are interested in the project or have some notes etc, contact me at:
 
   Vladi Belperchinov-Shabanski "Cade"
-  <cade@bis.bg> 
-  <cade@cpan.org> 
+  <cade@bis.bg>
+  <cade@cpan.org>
   <shabanski@gmail.com>
 
 further contact info, mailing list and github repository is listed below.
@@ -1947,15 +1949,15 @@ Reactor uses mostly perl core modules but it needs few others:
     * Scalar::Util
     * Hash::Util
     * Data::Dumper (for debugging)
-    * Exception::Sink 
+    * Exception::Sink
     * Data::Tools
-    
+
 All modules are available with the perl package or from CPAN.
 
 Additionally, several are available and from github:
 
-    * Exception::Sink 
-    https://github.com/cade-vs/perl-exception-sink    
+    * Exception::Sink
+    https://github.com/cade-vs/perl-exception-sink
 
     * Data::Tools
     https://github.com/cade-vs/perl-data-tools
@@ -1985,7 +1987,7 @@ forwarding.
   <cade@bis.bg> <cade@cpan.org> <shabanski@gmail.com>
 
   http://cade.datamax.bg
-  
+
   https://github.com/cade-vs
 
 =head2 EOF

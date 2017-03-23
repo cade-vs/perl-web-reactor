@@ -391,7 +391,7 @@ sub main_process
     }
 
   # 8. get page from input (USER/CGI) or page session
-  my $page_name = lc( $input_safe_hr->{ '_PN' } || $input_user_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || 'index' );
+  my $page_name = lc( $input_safe_hr->{ '_PN' } || $input_user_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || 'main' );
   if( $page_name ne '' )
     {
     if( $page_name =~ /^[a-z_0-9]+$/ )
@@ -1089,15 +1089,18 @@ sub render
   if( ref( $data ) eq 'HASH'  )
     {
     $portray_data = $data;
+    $page = $action = undef;
     }
   elsif( $action )
     {
     # FIXME: handle content type also!
     $portray_data = $self->action_call( $action );
+    $page = undef;
     }
   elsif( $page )
     {
-    $portray_data = $self->prep_load_file( "page_$page" );
+    $portray_data = $self->prep_load_page( $page );
+    $action = undef;
     }
   else
     {
@@ -1118,6 +1121,8 @@ sub render
     $portray_data = $self->portray( $portray_data, 'text/html' );
     }
 
+#print STDERR Dumper( 'PORTRAY --- ' x 11, $page, $portray_data );
+
   my $page_data = $portray_data->{ 'DATA'      };
   my $page_type = $portray_data->{ 'TYPE'      };
   my $file_name = $portray_data->{ 'FILE_NAME' };
@@ -1125,12 +1130,14 @@ sub render
   if( lc $page_type =~ /^text\/html/ )
     {
     my $prep_opt1 = {};
-    $page_data = $self->prep_process( $page_data, $prep_opt1 );
+    $page_data = $self->prep_process( $page, $page_data, $prep_opt1 );
 
 #print STDERR Dumper( 'OPT1 PREP --- ' x 11, $prep_opt1);
 
     my $prep_opt2 = {};
-    $page_data = $self->prep_process( $page_data, $prep_opt2 ) if $prep_opt1->{ 'SECOND_PASS_REQUIRED' };
+    $page_data = $self->prep_process( $page, $page_data, $prep_opt2 ) if $prep_opt1->{ 'SECOND_PASS_REQUIRED' };
+
+#print STDERR Dumper( 'PAGE DATA --- ' x 11, $page, $page_data );
 
     # FIXME: translation
     $self->load_trans();
@@ -1542,8 +1549,9 @@ sub sess_save      { my $self = shift; $self->{ 'REO_SESS' }->save(    @_ ) };
 sub sess_exists    { my $self = shift; $self->{ 'REO_SESS' }->exists(  @_ ) };
 
 #sub prep_render    { my $self = shift; $self->{ 'REO_PREP' }->render(    @_ ) };
-sub prep_process   { my $self = shift; $self->{ 'REO_PREP' }->process(   @_ ) };
+sub prep_load_page { my $self = shift; $self->{ 'REO_PREP' }->load_page( @_ ) };
 sub prep_load_file { my $self = shift; $self->{ 'REO_PREP' }->load_file( @_ ) };
+sub prep_process   { my $self = shift; $self->{ 'REO_PREP' }->process(   @_ ) };
 
 sub action_call    { my $self = shift; $self->{ 'REO_ACTS' }->call(  @_ ) };
 

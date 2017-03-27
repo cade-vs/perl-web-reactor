@@ -147,7 +147,7 @@ sub run
     }
   elsif( surface( '*' ) )
     {
-    $self->log( "main process failed: $@" );
+    $self->log( "error: main process failed: $@" );
     }
   $self->save();
 

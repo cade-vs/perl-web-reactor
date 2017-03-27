@@ -114,7 +114,7 @@ sub load_file
       }
 
     @$dirs = grep { -d } reverse @$dirs;
-    print STDERR Dumper( $orgs, $pn, \@pn, $dirs );
+    #print STDERR Dumper( $orgs, $pn, \@pn, $dirs );
 
     $self->{ 'DIRS_CACHE' }{ $lang }{ $pn } = $dirs;
     }
@@ -163,13 +163,13 @@ sub process
   $ctx = { %$ctx };
   $ctx->{ 'LEVEL' }++;
 
-print STDERR Dumper( 'PROCESS PRE --- ' x 7, $pn, $text );
+#print STDERR Dumper( 'PROCESS PRE --- ' x 7, $pn, $text );
 
   # FIXME: cache here? moje bi ne, zaradi modulite
   $text =~ s/<([\$\&\#]|\$\$)([a-zA-Z_\-0-9]+)(\s*[^>]*)?>/$self->__process_tag( $pn, $1, $2, $3, $opt, $ctx )/ge;
   $text =~ s/reactor_((new|back|here|none)_)?(href|src)=(["'])?([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"']*)(\4)?/$self->__process_href( $2, $3, $5, $7 )/gie;
 
-print STDERR Dumper( 'PROCESS POST --- ' x 7, $pn, $text );
+#print STDERR Dumper( 'PROCESS POST --- ' x 7, $pn, $text );
 
   return $text;
 }
@@ -185,7 +185,7 @@ sub __process_tag
   my $opt  =    shift;
   my $ctx  =    shift;
 
-print STDERR Dumper( 'PROCESS ARGS --- ' x 7, ( $pn, $type, $tag, $args, $opt, $ctx ) );
+#print STDERR Dumper( 'PROCESS ARGS --- ' x 7, ( $pn, $type, $tag, $args, $opt, $ctx ) );
 
   $ctx = { %$opt };
   $ctx->{ 'PATH' } .= ", $type$tag";
@@ -214,7 +214,6 @@ print STDERR Dumper( 'PROCESS ARGS --- ' x 7, ( $pn, $type, $tag, $args, $opt, $
   elsif( $type eq '#' )
     {
     $text = $self->load_file( $pn, $tag );
-print STDERR "***************** loading load_file( $pn, $tag ) = [$text]\n";
     }
   elsif( $type eq '&' )
     {
@@ -234,7 +233,7 @@ print STDERR "***************** loading load_file( $pn, $tag ) = [$text]\n";
     re_log( "debug: invalid tag: [$type$tag]" );
     }
 
-print STDERR Dumper( 'PROCESS TEXT --- ' x 7, ( $pn, $text, $opt, $ctx ) );
+# print STDERR Dumper( 'PROCESS TEXT --- ' x 7, ( $pn, $text, $opt, $ctx ) );
   $text = $self->process( $pn, $text, $opt, $ctx );
 
   return $text;

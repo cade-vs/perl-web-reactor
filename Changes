@@ -1,5 +1,9 @@
 Revision history for Perl extension Web::Reactor
 
+2.06  2017.04.10
+
+    1. return to 'main' page if no referer found
+
 0.05  2013.08.13
 
     1. more docs

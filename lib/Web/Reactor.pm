@@ -19,7 +19,7 @@ use Data::Dumper;
 use Web::Reactor::Utils;
 use Web::Reactor::HTML::Form;
 
-our $VERSION = '2.05';
+our $VERSION = '2.06';
 
 ##############################################################################
 
@@ -659,7 +659,7 @@ sub args_back
   my %args = @_;
 
   $args{ '_P'  } = $self->get_ref_page_session_id();
-  $args{ '_PN' } = 'empty' unless $args{ '_P' };
+  $args{ '_PN' } = 'main' unless $args{ '_P' }; # return to 'main' if no referer given
 
   return $self->args( %args );
 }
@@ -670,7 +670,7 @@ sub args_back_back
   my %args = @_;
 
   $args{ '_P' } = $self->get_ref_page_session_id( 1 );
-  $args{ '_PN' } = 'empty' unless $args{ '_P' };
+  $args{ '_PN' } = 'main' unless $args{ '_P' }; # return to 'main' if no referer given
 
   return $self->args( %args );
 }

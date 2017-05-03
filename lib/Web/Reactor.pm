@@ -270,16 +270,25 @@ sub main_process
       $self->log( "error: invalid CGI/input parameter name: [$n]" );
       next;
       }
+    my $u = CGI::upload( $n );
     my $v = CGI::param( $n );
-    my @v = CGI::multi_param( $n );
+    my @v = CGI::multi_param( $n ); # TODO: handling of multi-values
+    
+    $n = uc $n;
+
+    if( ref( $u ) )
+      {
+      $input_user_hr->{ "$n:FH" } = $u;
+      # this is file upload, get more info
+      $input_user_hr->{ "$n:UPLOAD_INFO" } = CGI::uploadInfo( $u );
+      $v = "$v";
+      }
 
     if( $iconv )
       {
       $v = $iconv->convert( $v );
       $_ = $iconv->convert( $_ ) for @v;
       }
-
-    $n = uc $n;
 
     $self->log_debug( "debug: CGI input param [$n] value [$v] [@v]" );
 
@@ -306,11 +315,6 @@ sub main_process
       {
       $n = uc $n;
       $input_user_hr->{ $n } = $v;
-      if( ref( $v ) eq 'Fh' )
-        {
-        # this is file upload, get more info
-        $input_user_hr->{ "$n:UPLOAD_INFO" } = CGI::uploadInfo( $v );
-        }
       }
     }
 

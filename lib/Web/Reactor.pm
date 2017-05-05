@@ -1128,6 +1128,7 @@ sub render
 #print STDERR Dumper( 'PORTRAY --- ' x 11, $page, $portray_data );
 
   my $page_data = $portray_data->{ 'DATA'      };
+  my $page_fh   = $portray_data->{ 'FH'        }; # filehandle has priority
   my $page_type = $portray_data->{ 'TYPE'      };
   my $file_name = $portray_data->{ 'FILE_NAME' };
 
@@ -1163,7 +1164,21 @@ sub render
   my $page_headers = $self->__make_headers();
 
   print $page_headers;
-  print $page_data;
+  if( $page_fh )
+    {
+    my $buf_size = 1024*1024;
+    my $print_data;
+    while(4)
+      {
+      my $read_size = read( $page_fh, $print_data, $buf_size );
+      print $print_data;
+      last if $read_size < $buf_size;
+      }
+    }
+  else
+    {  
+    print $page_data;
+    }
 
   $self->log_debug( "debug: page response content: page, action, type, headers, data: " . Dumper( $page, $action, $page_type, $page_headers, $page_type =~ /^text\// ? $page_data : '*binary*' ) ) if $self->is_debug() > 2;
 

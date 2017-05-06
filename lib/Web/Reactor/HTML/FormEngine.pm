@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -10,7 +10,7 @@
 package Web::Reactor::HTML::FormEngine;
 use strict;
 use Exporter;
-use Carp;
+use Exception::Sink;
 use Data::Dumper;
 
 our @ISA = qw( Exporter );
@@ -47,8 +47,8 @@ sub html_form_engine_import_input
 
   my $form_name = $opt{ 'NAME' } || 'FORM'; # TODO: hash upcase
 
-  confess "missing/wrong first argument, expected Web::Reactor object" unless ref( $reo ) eq 'Web::Reactor';
-  confess "missing FORM_NAME" unless $form_name;
+  boom "missing/wrong first argument, expected Web::Reactor object" unless ref( $reo ) eq 'Web::Reactor';
+  boom "missing FORM_NAME" unless $form_name;
 
   my %data;
   my $errors; # errors count
@@ -135,9 +135,9 @@ sub html_form_engine_display
   my $form_input_data = $opt{ 'INPUT_DATA' } || {}; # TODO: warning: missing/invalid input data
   my $form_input_errors = $opt{ 'INPUT_ERRORS' } || {}; # TODO: warning: missing/invalid input errors
 
-  confess "invalid form definition argument 2, expected ARRAY REF" unless ref( $form_def ) eq 'ARRAY';
-  confess "missing/wrong first argument, expected Web::Reactor object" unless ref( $reo ) eq 'Web::Reactor';
-  confess "missing FORM_NAME" unless $form_name;
+  boom "invalid form definition argument 2, expected ARRAY REF" unless ref( $form_def ) eq 'ARRAY';
+  boom "missing/wrong first argument, expected Web::Reactor object" unless ref( $reo ) eq 'Web::Reactor';
+  boom "missing FORM_NAME" unless $form_name;
 
   my $text;
   my $errors;
@@ -206,7 +206,7 @@ sub html_form_engine_display
       }
     else
       {
-      confess "invalid form entry type [$type]\n"; # TODO: dump and function arguments
+      boom "invalid form entry type [$type]\n"; # TODO: dump and function arguments
       }
     $text .= "<span style='color: #f00'>$re_help</span>" if $error;
     $text .= "</td>";

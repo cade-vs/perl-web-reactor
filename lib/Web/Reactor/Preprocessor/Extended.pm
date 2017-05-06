@@ -7,9 +7,10 @@
 ##  LICENSE: GPLv2
 ##
 ##############################################################################
-package Web::Reactor::Preprocessor::Native;
+package Web::Reactor::Preprocessor::Extended;
 use strict;
 use Exception::Sink;
+use Data::Dumper;
 use Data::Tools;
 use Web::Reactor::Preprocessor;
 
@@ -24,6 +25,7 @@ sub new
   my $self = {
              'ENV'        => \%env,
              'FILE_CACHE' => {},
+             'DIR_CACHE'  => {},
              };
   bless $self, $class;
   # rcd_log( "debug: rcd_rec:$self created" );
@@ -64,56 +66,85 @@ sub load_page
 {
   my $self = shift;
 
-  my $pn = lc shift; # page name
+  my $pn = lc shift || 'main'; # page name
 
-  return $self->load_file( "page_$pn" );
+  return $self->load_file( $pn, 'index' );
 }
 
 sub load_file
 {
   my $self = shift;
 
-  my $pn = lc shift; # page name
+  my $pn = lc shift || 'main'; # page name
+  my $fn = lc shift; # file name
 
-  die "invalid page name, expected ALPHANUMERIC, got [$pn]" unless $pn =~ /^[a-z_\-0-9]+$/;
-
-  my $reo = $self->get_reo();
+  boom "invalid page name, expected ALPHANUMERIC, got [$pn]" unless $pn =~ /^[a-z_\-0-9\/]+$/;
+  boom "invalid file name, expected ALPHANUMERIC, got [$fn]" unless $fn =~ /^[a-z_\-0-9]+$/;
 
   my $lang = $self->{ 'ENV' }{ 'LANG' };
 
-  if( exists $self->{ 'FILE_CACHE' }{ $lang }{ $pn } )
+  if( exists $self->{ 'FILE_CACHE' }{ $lang }{ $pn }{ $fn } )
     {
     # FIXME: log: debug: file cache hit
-    return $self->{ 'FILE_CACHE' }{ $lang }{ $pn };
+    return $self->{ 'FILE_CACHE' }{ $lang }{ $pn }{ $fn };
     }
 
-  my $pn = "$pn.html";
-  my $dirs = $self->{ 'ENV' }{ 'HTML_DIRS' };
+  my $dirs = [];
 
-  my $fn;
+  if( exists $self->{ 'DIRS_CACHE' }{ $lang }{ $pn } )
+    {
+    # FIXME: log: debug: file cache hit
+    $dirs = $self->{ 'DIRS_CACHE' }{ $lang }{ $pn };
+    }
+  else
+    {
+    my $orgs = $self->{ 'ENV' }{ 'HTML_DIRS' };
+
+    my @pn = grep { $_ } split /\/+/, $pn;
+
+    for( reverse @$orgs )
+      {
+      my $org = $_;
+      push @$dirs, $org;
+      for my $pni ( @pn )
+        {
+        $org .= "/$pni";
+        push @$dirs, $org;
+        }
+      }
+
+    @$dirs = grep { -d } reverse @$dirs;
+    #print STDERR Dumper( $orgs, $pn, \@pn, $dirs );
+
+    $self->{ 'DIRS_CACHE' }{ $lang }{ $pn } = $dirs;
+    }
+
+  my $reo = $self->get_reo();
+
+  my $fname;
   for my $dir ( @$dirs )
     {
-    next unless -e "$dir/$pn";
-    $fn = "$dir/$pn";
+    next unless -e "$dir/$fn.html";
+    $fname = "$dir/$fn.html";
     last;
     }
 
-  if( ! $fn )
+  if( ! $fname )
     {
-    if( $pn =~ /^page_/ )
+    if( $fn eq 'index' )
       {
-      $reo->log( "error: cannot load file for page [$pn] from [@$dirs]" );
+      $reo->log( "error: cannot load file [$fn] for page [$pn] from [@$dirs]" );
       }
     else
       {
-      $reo->log( "warning: cannot load file for page [$pn] from [@$dirs]" ) if $reo->is_debug();
+      $reo->log( "warning: cannot load file [$fn] for page [$pn] from [@$dirs]" ) if $reo->is_debug();
       }
     return undef;
     }
 
-  $reo->log_debug( "debug: preprocessor load page filename [$fn]" );
-  my $fdata = file_load( $fn );
-  $self->{ 'FILE_CACHE' }{ $lang }{ $pn } = $fdata;
+  my $fdata = file_load( $fname );
+  $reo->log_debug( "debug: preprocessor load page [$pn] file [$fn] OK [$fname]" );
+  $self->{ 'FILE_CACHE' }{ $lang }{ $pn }{ $fn } = $fdata;
 
   return $fdata;
 }
@@ -127,14 +158,18 @@ sub process
   my $opt  = shift || {};
   my $ctx  = shift || {};
 
-  boom "too many nesting levels in preprocess, probable bug in actions or pages" if (caller(512))[0] ne ''; # FIXME: config option for max level
+  boom "too many nesting levels in preprocess, probable bug in actions or page files" if (caller(512))[0] ne ''; # FIXME: config option for max level
 
   $ctx = { %$ctx };
   $ctx->{ 'LEVEL' }++;
 
+#print STDERR Dumper( 'PROCESS PRE --- ' x 7, $pn, $text );
+
   # FIXME: cache here? moje bi ne, zaradi modulite
   $text =~ s/<([\$\&\#]|\$\$)([a-zA-Z_\-0-9]+)(\s*[^>]*)?>/$self->__process_tag( $pn, $1, $2, $3, $opt, $ctx )/ge;
   $text =~ s/reactor_((new|back|here|none)_)?(href|src)=(["'])?([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"']*)(\4)?/$self->__process_href( $2, $3, $5, $7 )/gie;
+
+#print STDERR Dumper( 'PROCESS POST --- ' x 7, $pn, $text );
 
   return $text;
 }
@@ -144,11 +179,13 @@ sub __process_tag
   my $self = shift;
 
   my $pn   = lc shift; # page name
-  my $type = shift; # types are: $ variable, & callback, # template file include
-  my $tag  = shift;
-  my $args = shift; # the rest of the tag
-  my $opt  = shift;
-  my $ctx  = shift;
+  my $type =    shift; # types are: $ variable, & callback, # template file include
+  my $tag  =    shift;
+  my $args =    shift; # the rest of the tag
+  my $opt  =    shift;
+  my $ctx  =    shift;
+
+#print STDERR Dumper( 'PROCESS ARGS --- ' x 7, ( $pn, $type, $tag, $args, $opt, $ctx ) );
 
   $ctx = { %$opt };
   $ctx->{ 'PATH' } .= ", $type$tag";
@@ -176,7 +213,7 @@ sub __process_tag
     }
   elsif( $type eq '#' )
     {
-    $text = $self->load_file( $tag );
+    $text = $self->load_file( $pn, $tag );
     }
   elsif( $type eq '&' )
     {
@@ -196,6 +233,7 @@ sub __process_tag
     re_log( "debug: invalid tag: [$type$tag]" );
     }
 
+# print STDERR Dumper( 'PROCESS TEXT --- ' x 7, ( $pn, $text, $opt, $ctx ) );
   $text = $self->process( $pn, $text, $opt, $ctx );
 
   return $text;

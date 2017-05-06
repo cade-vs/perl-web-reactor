@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -9,7 +9,9 @@
 ##############################################################################
 package Web::Reactor::Sessions;
 use strict;
-use Carp;
+use Exception::Sink;
+
+use parent 'Web::Reactor::Base'; 
 
 sub new
 {
@@ -223,7 +225,7 @@ sub compose_key_from_id
   my $type = uc shift;
   my $id   = shift;
 
-  confess "Web::Reactor::Sessions::compose_key_from_id: invalid type, expected ALPHANUMERIC" unless $type =~ /^[A-Z0-9]+$/;
+  boom "Web::Reactor::Sessions::compose_key_from_id: invalid type, expected ALPHANUMERIC" unless $type =~ /^[A-Z0-9]+$/;
  
   my @key;
  
@@ -242,19 +244,28 @@ sub compose_key_from_id
 sub get_user_sid
 {
   my $self = shift;
-  my $user_sid = $self->{ 'REO_REACTOR' }{ 'SESSIONS' }{ 'SID'  }{ 'USER' };
+  my $user_sid = $self->{ 'REO_REACTOR' }->{ 'SESSIONS' }{ 'SID'  }{ 'USER' };
 
-  confess "missing USER SESSION" unless $user_sid;
+  boom "missing USER SESSION" unless $user_sid;
 
   return $user_sid;
 }
 
 # return ENV hash reference from the reactor
+# FIXME: TODO: move to Web::Reactor::Base::get_env()
 sub _renv
 {
   my $self = shift;
- 
+  
+  $self->get_reo()->{ 'ENV' };
 }
+
+#sub DESTROY
+#{
+#  my $self = shift;
+#
+#  print "DESTROY: $self\n";
+#}
 
 ##############################################################################
 1;

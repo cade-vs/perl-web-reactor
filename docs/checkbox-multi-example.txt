@@ -1,0 +1,48 @@
+##############################################################################
+##
+##  Web::Reactor application machinery
+##  2013-2017 (c) Vladi Belperchinov-Shabanski "Cade"
+##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
+##
+##  LICENSE: GPLv2
+##
+##############################################################################
+
+Using Web::Reactor::HTML::Form::checkbox_multi() function requires CSS styles
+for each stage (checkbox value) it has.
+
+Here is example of stage 0 and stage 1 (No/Yes values) CSS styles:
+
+---cut------------------------------------------------------------------------
+
+div.checkbox-0
+        {
+        cursor: pointer;
+        text-align: center;
+        color: #999;
+        background-color: #422;
+        border: solid 1px #644;
+        padding: 0.5em;
+        display: table-cell;
+        width: 3em;
+        }
+
+div.checkbox-1
+        {
+        cursor: pointer;
+        text-align: center;
+        color: #FFF;
+        font-weight: bold;
+        background-color: #242;
+        border: solid 1px #464;
+        padding: 0.5em;
+        display: table-cell;
+        width: 3em;
+        }
+
+---cut------------------------------------------------------------------------
+
+If more stages are needed, there should be more CSS classes defined and list
+of stage labels must be given as 'LABELS' argument of checkbox_multi().
+
+

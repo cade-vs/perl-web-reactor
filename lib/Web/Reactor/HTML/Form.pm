@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2017 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -10,13 +10,16 @@
 package Web::Reactor::HTML::Form;
 use strict;
 use Exporter;
-use Carp;
 use Data::Tools;
 use Exception::Sink;
+
+use Web::Reactor::HTML::Utils;
 
 # FIXME: TODO: use common func to add html elements common tags: ID,DISABLED,etc.
 # FIXME: TODO: ...including abstract ones as GEO(metry)
 # FIXME: TODO: change VALUE to be html value (currently it is DATA), and DISPLAY to be visible text (currently it is VALUE)
+
+use parent 'Web::Reactor::Base';
 
 ##############################################################################
 
@@ -30,17 +33,10 @@ sub new
              'ENV'        => \%env,
              };
 
-  my $reo = $env{ 'REO_REACTOR' };
-  if( ref( $reo ) =~ /^Web::Reactor(::|$)/ )
-    {
-    $self->{ 'REO_REACTOR' } = $reo;
-    }
-  else
-    {
-    confess "missing REO reactor object";
-    }
-
   bless $self, $class;
+
+  # FIXME: move as argument, not env option
+  $self->__set_reo( $env{ 'REO_REACTOR' } );
 
   return $self;
 }
@@ -52,13 +48,13 @@ sub html_new_id
   my $self = shift;
 
   my $form_name = $self->{ 'FORM_NAME' };
-  $form_name or confess "empty form name, need begin() first";
+  $form_name or boom "empty form name, need begin() first";
 
-  my $reo = $self->{ 'REO_REACTOR' };
+  my $reo = $self->get_reo();
   my $psid = $reo->get_page_session_id();
   $self->{ 'HTML_ID_COUNTER' }++;
   # FIXME: hash $psid once more to hide...
-  return $form_name . "_EID_$psid\_" . $self->{ 'HTML_ID_COUNTER' };
+  return $form_name . "_EID_$psid\_" . $self->{ 'HTML_ID_COUNTER' } . '_' . int(rand()*10_000_000_000);
 }
 
 ##############################################################################
@@ -78,10 +74,10 @@ sub begin
 
   $self->{ 'CLASS_MAP' } = $opt{ 'CLASS_MAP' } || {};
 
-  $form_name =~ /^[A-Z_0-9:]+$/ or confess "invalid or empty NAME attribute";
-  $method    =~ /^(POST|GET)$/  or confess "METHOD can either POST or GET";
+  $form_name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute";
+  $method    =~ /^(POST|GET)$/  or boom "METHOD can either POST or GET";
 
-  my $reo = $self->{ 'REO_REACTOR' };
+  my $reo = $self->get_reo();
   my $psid = $reo->get_page_session_id();
 
   $form_id ||= $form_name;
@@ -96,7 +92,7 @@ sub begin
 
   # FIXME: TODO: debug info inside html text, begin formname end etc.
 
-  my $reo = $self->{ 'REO_REACTOR' };
+  my $reo = $self->get_reo();
 
   my $page_session = $reo->get_page_session();
   $page_session->{ ':FORM_DEF' }{ $form_name } = {};
@@ -110,7 +106,6 @@ sub begin
     {
     $text .= "<input style='display: none;' type='image' name='BUTTON:$default_button' src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQI12NgYGBgAAAABQABXvMqOgAAAABJRU5ErkJggg==' border=0 height=0 width=0 onDblClick='return false;' form='$form_id'>"
     }
-
   return $text;
 }
 
@@ -125,7 +120,7 @@ sub end
 
 # FIXME: TODO: debug info inside html text, begin formname end etc.
 
-  my $reo = $self->{ 'REO_REACTOR' };
+  my $reo = $self->get_reo();
   my $page_session = $reo->get_page_session();
 
   my $form_name = $self->{ 'FORM_NAME' };
@@ -135,7 +130,7 @@ sub end
   return $text;
 }
 
-sub __set_ret_map
+sub __ret_map_set
 {
   my $self = shift;
   my $name = shift; # entry input name
@@ -144,7 +139,7 @@ sub __set_ret_map
 
   if( @_ > 0 )
     {
-    confess "expected even number of arguments" unless @_ % 2 == 0;
+    boom "expected even number of arguments" unless @_ % 2 == 0;
     %{ $self->{ 'RET_MAP' }{ $name } } = ( %{ $self->{ 'RET_MAP' }{ $name } }, @_ );
     }
 
@@ -152,6 +147,7 @@ sub __set_ret_map
 }
 
 ##############################################################################
+# classic html input checkbox
 
 sub checkbox
 {
@@ -164,7 +160,7 @@ sub checkbox
   my $value =    $opt{ 'VALUE' } ? 1 : 0;
   my $args  =    $opt{ 'ARGS'  };
 
-  $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
+  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
 
   my $options;
   $options .= $value ? " checked " : undef;
@@ -179,10 +175,74 @@ sub checkbox
   $text .= "\n";
   $text .= "<input type='hidden' name='$name' id='$ch_id' value='$value' form='$form_id' $args>";
 #  $text .= qq[ <input type='checkbox' $options checkbox_data_input_id="$ch_id" onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
-  $text .= qq[ <input type='checkbox' $options data-checkbox-input-id="$ch_id" onclick='reactor_form_checkbox_toggle(this)'> ];
+  $text .= qq[ <input type='checkbox' $options data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle(this)' class='$class'> ];
   $text .= "\n";
 
   return $text;
+}
+
+##############################################################################
+# multi-stages css-styled checkbox
+
+sub checkbox_multi
+{
+  my $self = shift;
+
+  my %opt = @_;
+
+  my $name   = uc $opt{ 'NAME'   };
+  my $class  =    $opt{ 'CLASS'  } || $self->{ 'CLASS_MAP' }{ 'CHECKBOX' } || 'checkbox';
+  my $value  =    $opt{ 'VALUE'  } ? 1 : 0;
+  my $args   =    $opt{ 'ARGS'   };
+  my $stages =    $opt{ 'STAGES' } || 2;
+  my $labels =    $opt{ 'LABELS' } || [ 'x', '&radic;' ];
+
+  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
+
+  $value = abs( int( $value ) );
+  $value = 0 if $value >= $stages;
+
+  my $options;
+  my $current_class;
+
+  for my $s ( 0 .. $stages - 1 )
+    {
+    my $c = ref( $class ) eq 'ARRAY' ? $class->[ $s ] : "$class-$s cursor-pointer";
+    my $v = $labels->[ $s ];
+    $options .= "data-value-label-$s='$v' ";
+    $options .= "data-value-class-$s='$c' ";
+    $current_class = $c if $s == 0;
+    $current_class = $c if $s == $value;
+    }
+
+  my $label = $labels->[ $value ];
+
+  my $text;
+
+  my $ch_id = $self->html_new_id(); # checkbox data holder
+
+  my $form_id = $self->{ 'FORM_ID' };
+  #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
+  #$text .= "<input type='checkbox' name='$name' value='1' $options>";
+  $text .= "\n";
+  $text .= "<input type='hidden' name='$name' id='$ch_id' value='$value' form='$form_id' $args>";
+####  $text .= qq[ <input type='checkbox' $options checkbox_data_input_id="$ch_id" onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
+#  $text .= qq[ <input type='checkbox' $options data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle(this)' class='$class'> ];
+#  $text .= qq[ <input type='checkbox' $options data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle(this)' class='$class'> ];
+  $text .= qq[ <div class='$current_class' data-stages='$stages' data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle_multi(this)' $options>$label</div> ];
+  $text .= "\n";
+
+  return $text;
+}
+
+##############################################################################
+
+sub checkbox_3state
+{
+  my $self = shift;
+
+  my %args = @_; # to fix uneven args
+  return $self->checkbox_multi( %args, STAGES => 3, LABELS => [ '?', '&radic;', 'x' ] );
 }
 
 ##############################################################################
@@ -198,7 +258,7 @@ sub radio
   my $on    =    $opt{ 'ON'    }; # active?
   my $ret   =    $opt{ 'RET'   } || $opt{ 'RETURN' } || 1; # map return value!
 
-  $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
+  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
 
   my $text;
 
@@ -208,7 +268,7 @@ sub radio
   my $checked = $on ? 'checked' : undef;
   $text .= "<input type='radio' $checked name='$name' value='$val' form='$form_id'>";
 
-  $self->__set_ret_map( $name, $val => $ret ) if defined $ret;
+  $self->__ret_map_set( $name, $val => $ret ) if defined $ret;
 
   $text .= "\n";
   return $text;
@@ -261,7 +321,7 @@ sub select
   my $rows  =    $opt{ 'SIZE'  } || $opt{ 'ROWS'  } || 1;
   my $args  =    $opt{ 'ARGS' };
 
-  $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
+  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
 
   my $data   = $opt{ 'DATA'     }; # array reference or hash reference, inside hashesh are the same
   my $sel_hr = $opt{ 'SELECTED' }; # hashref with selected keys (values are true's)
@@ -273,7 +333,7 @@ sub select
     my %res;
     while( my ( $k, $v ) = each %$data )
       {
-      my %e = ( KEY => $k );
+      my %e = ( 'KEY' => $k );
       if( ref($v) eq 'HASH' )
         {
         %e = ( %e, %$v );
@@ -296,6 +356,8 @@ sub select
     }
   hash_uc_ipl( $_ ) for @$sel_data;
 
+  my $extra = $opt{ 'EXTRA' };
+
   my $text;
   my $form_id = $self->{ 'FORM_ID' };
 
@@ -309,7 +371,7 @@ sub select
 
       $sel = 'selected' if $sel_hr and $sel_hr->{ $key };
 #print STDERR "sssssssssssssssssssssssss RADIO [$name] [$value] [$key] $sel\n";
-      $text .= $self->radio( NAME => $name, RET => $key, ON => $sel ) . " $value";
+      $text .= $self->radio( NAME => $name, RET => $key, ON => $sel, EXTRA => $extra ) . " $value";
       $text .= "<br>" if $opt{ 'RADIO' } != 2;
       }
     # FIXME: kakvo stava ako nqma dadeno selected pri submit na formata?
@@ -317,7 +379,7 @@ sub select
   else
     {
     my $multiple = 'multiple' if $opt{ 'MULTIPLE' };
-    $text .= "<select class='$class' id='$id' name='$name' size='$rows' $multiple form='$form_id' $args>";
+    $text .= "<select class='$class' id='$id' name='$name' size='$rows' $multiple form='$form_id' $args $extra>";
 
     my $pad = '&nbsp;' x 3;
     for my $hr ( @$sel_data )
@@ -326,7 +388,7 @@ sub select
       my $key   = $hr->{ 'KEY'      };
       my $value = $hr->{ 'VALUE'    };
       my $id = $self->html_new_id();
-      $self->__set_ret_map( $name, $id => $key );
+      $self->__ret_map_set( $name, $id => $key );
 
       $sel = 'selected' if $sel_hr and $sel_hr->{ $key };
 #print STDERR "sssssssssssssssssssssssss RADIO [$name] [$value] [$key] $sel\n";
@@ -365,8 +427,9 @@ sub textarea
   my $rows  =    $opt{ 'ROWS'  } || 10;
   my $cols  =    $opt{ 'COLS'  } ||  5;
   my $geo   =    $opt{ 'GEOMETRY' }  || $opt{ 'GEO' };
+  my $args  =    $opt{ 'ARGS'    };
 
-  $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
+  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
 
   ( $cols, $rows ) = ( $1, $2 ) if $geo =~ /(\d+)[\*\/\\](\d+)/i;
 
@@ -387,7 +450,7 @@ sub textarea
   my $text;
   my $form_id = $self->{ 'FORM_ID' };
 
-  $text .= "<textarea class='$class' id='$id' name='$name' rows='$rows' cols='$cols' $options form='$form_id'>$data</textarea>";
+  $text .= "<textarea class='$class' id='$id' name='$name' rows='$rows' cols='$cols' $options form='$form_id' $args>$data</textarea>";
 
   $text .= "\n";
   return $text;
@@ -412,6 +475,11 @@ sub input
   my $len   =    $opt{ 'LEN'     };
   my $args  =    $opt{ 'ARGS'    };
 
+  my $hid   =    $opt{ 'HIDDEN'  };
+  my $ret   =    $opt{ 'RET'     } || $opt{ 'RETURN'  }; # if return value should be mapped, works only with HIDDEN
+
+  my $clear =    $opt{ 'CLEAR'   };
+
   $size = $maxl = $len if $len > 0;
 
   my $options;
@@ -423,18 +491,44 @@ sub input
   $options .= "ID='$id' "                    if $id ne '';
   # $options .= "ID='$name' "                  if $opt{ 'NAME_ID' } or $id eq '';
   $options .= "type='password' "             if $opt{ 'PASS' } || $opt{ 'PASSWORD' };
-  $options .= "type='hidden' " if $opt{ 'HIDDEN'  }; # FIXME: handle TYPE better
+  $options .= "type='hidden' " if $hid; # FIXME: handle TYPE better
 
-#  my $extra = $opt{ 'EXTRA' };
-  #$options .= " $extra ";
+
+  my $extra = $opt{ 'EXTRA' };
+  $options .= " $extra ";
 
   $value = str_html_escape( $value );
 
-  $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
+  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
+
+  if( $hid and defined $ret )
+    {
+    # if input is hidden and return value mapping requested, VALUE is not used!
+    $value = $self->html_new_id();
+    $self->__ret_map_set( $name, $value => $ret );
+    }
+
+  my $clear_tag;
+  if( $clear )
+    {
+    my $reo = $self->get_reo();
+    my $clear_hint_handler = html_hover_layer( $reo, VALUE => 'Clear field' );
+
+    if( $clear =~ /^[a-z_\-0-9\/]+\.(png|jpg|jpeg|gif)$/ )
+      {
+      $clear_tag = qq[ <img class='icon' src='$clear' border='0' onClick='return set_value("$id", "")' $clear_hint_handler > ];
+      }
+    else
+      {
+      my $s = $clear eq 1 ? '&otimes;' : $clear;
+      $clear_tag = qq[ <span class='icon' border='0' onClick='return set_value("$id", "")' $clear_hint_handler >$s</span> ];
+      }
+    }
+
   my $text;
 
   my $form_id = $self->{ 'FORM_ID' };
-  $text .= "<input class='$class' name='$name' value='$value' $options form='$form_id' $args>";
+  $text .= "<input class='$class' name='$name' value='$value' $options form='$form_id' $args>$clear_tag";
 
   $text .= "\n";
   return $text;
@@ -458,7 +552,7 @@ sub button
   $value =~ s/'//g;
   $value = str_html_escape( $value );
 
-  $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
+  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
   my $text;
 
   $name =~ s/^button://i;
@@ -481,6 +575,7 @@ sub image_button
   my $class =    $opt{ 'CLASS' } || 'image_button';
   my $src   =    $opt{ 'SRC'   } || $opt{ 'IMG'  };
   my $args  =    $opt{ 'ARGS'  };
+  my $extra =    $opt{ 'EXTRA' };
 
   my $options;
 
@@ -492,11 +587,12 @@ sub image_button
     $options .= "$o='$e' " if $e ne '';
     }
 
-  $name =~ /^[A-Z_0-9:]+$/ or croak "invalid or empty NAME attribute [$name]";
+  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
   my $text;
 
   my $form_id = $self->{ 'FORM_ID' };
-  $text .= "<input class='$class' id='$id' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;' $args form='$form_id'>";
+  $name =~ s/^button://i;
+  $text .= "<input class='$class' id='$id' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;' $args form='$form_id' $extra>";
 
   $text .= "\n";
   return $text;
@@ -508,7 +604,7 @@ sub image_button_default
 
   my %opt = @_;
 
-  my $user_agent = $self->{ 'REO_REACTOR' }->get_user_session_agent();
+  my $user_agent = $self->get_reo()->get_user_session_agent();
 
   my $default_class = 'hidden';
   $default_class = 'hidden2' if $user_agent =~ /MSIE|Safari/;

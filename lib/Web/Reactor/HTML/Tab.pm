@@ -1,20 +1,22 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
 ##
 ##############################################################################
-#
-# HTML Tabs
-#
+##
+## HTML Tabs
+##
 ##############################################################################
 package Web::Reactor::HTML::Tab;
 use strict;
-use Carp;
+use Exception::Sink;
 use Web::Reactor::HTML::Utils;
+
+use parent 'Web::Reactor::Base'; 
 
 sub new
 {
@@ -27,17 +29,11 @@ sub new
              'ENV'        => \%env,
              };
 
-  my $reo = $env{ 'REO_REACTOR' };
-  if( ref( $reo ) =~ /^Web::Reactor(::|$)/ )
-    {
-    $self->{ 'REO_REACTOR' } = $reo;
-    }
-  else
-    {
-    confess "missing REO reactor object";
-    }
-
   bless $self, $class;
+
+  # FIXME: move as argument, not env option
+  $self->__set_reo( $env{ 'REO_REACTOR' } );
+  my $reo = $self->get_reo();
 
   $self->{ 'TABS_LIST'         } = []; # contain tab IDs
   $self->{ 'TAB_CONTROLLER_ID' } = join '_', ( 'RE_TAB', $reo->get_page_session_id(), ( $env{ 'NAME' } || $reo->html_new_id() ) );
@@ -66,7 +62,7 @@ sub add
   my $class = $opt{ 'CLASS' } || 'reactor_tab';
   my $args  = $opt{ 'ARGS'  };
 
-  croak "TYPE can be only one of DIV|TR|TD" unless $et =~ /^(DIV|TR|TD)$/i;
+  boom "TYPE can be only one of DIV|TR|TD" unless $et =~ /^(DIV|TR|TD)$/i;
 
   my $tab_controller_id =    $self->{ 'TAB_CONTROLLER_ID' };
   my $tab_counter       = ++ $self->{ 'TAB_COUNTER'       };
@@ -118,7 +114,7 @@ sub finish
 </DIV>
 };
 
-  my $reo = $self->{ 'REO_REACTOR' };
+  my $reo = $self->get_reo();
   $reo->html_content_accumulator( 'ACCUMULATOR_HTML', $html );
 }
 

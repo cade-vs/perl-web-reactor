@@ -229,7 +229,7 @@ sub checkbox_multi
 ####  $text .= qq[ <input type='checkbox' $options checkbox_data_input_id="$ch_id" onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
 #  $text .= qq[ <input type='checkbox' $options data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle(this)' class='$class'> ];
 #  $text .= qq[ <input type='checkbox' $options data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle(this)' class='$class'> ];
-  $text .= qq[ <div class='$current_class' data-stages='$stages' data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle_multi(this)' $options>$label</div> ];
+  $text .= qq[ <span class='$current_class' data-stages='$stages' data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle_multi(this)' $options>$label</span> ];
   $text .= "\n";
 
   return $text;

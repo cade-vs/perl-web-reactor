@@ -192,7 +192,7 @@ sub checkbox_multi
 
   my $name   = uc $opt{ 'NAME'   };
   my $class  =    $opt{ 'CLASS'  } || $self->{ 'CLASS_MAP' }{ 'CHECKBOX' } || 'checkbox';
-  my $value  =    $opt{ 'VALUE'  } ? 1 : 0;
+  my $value  =    $opt{ 'VALUE'  };
   my $args   =    $opt{ 'ARGS'   };
   my $stages =    $opt{ 'STAGES' } || 2;
   my $labels =    $opt{ 'LABELS' } || [ 'x', '&radic;' ];
@@ -214,7 +214,6 @@ sub checkbox_multi
     $current_class = $c if $s == 0;
     $current_class = $c if $s == $value;
     }
-
   my $label = $labels->[ $value ];
 
   my $text;

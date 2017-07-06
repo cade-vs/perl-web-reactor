@@ -1332,6 +1332,7 @@ sub forward_new_action
 sub __param
 {
   my $self = shift;
+  my $peek = shift; # 1 not save, 0 save in cache
   my $safe = shift; # 1 safe_input, 0 user_input
 
   my $input_hr;
@@ -1349,17 +1350,24 @@ sub __param
 
   my $ps = $self->get_page_session();
 
-  $ps->{ $save_key } ||= {};
+  $ps->{ $save_key } ||= {} unless $peek;
 
   my @res;
   while( @_ )
     {
     my $p = uc shift;
-    if( exists $input_hr->{ $p } )
+    if( $peek )
       {
-      $ps->{ $save_key }{ $p } = $input_hr->{ $p };
+      push @res, $input_hr->{ $p };
       }
-    push @res, $ps->{ $save_key }{ $p };
+    else
+      {  
+      if( exists $input_hr->{ $p } )
+        {
+        $ps->{ $save_key }{ $p } = $input_hr->{ $p };
+        }
+      push @res, $ps->{ $save_key }{ $p };
+      }
     }
 
   return wantarray ? @res : shift( @res );
@@ -1368,19 +1376,37 @@ sub __param
 sub param_unsafe
 {
   my $self = shift;
-  return $self->__param( 0, @_ );
+  return $self->__param( 0, 0, @_ );
 }
 
 sub param
 {
   my $self = shift;
-  return $self->__param( 1, @_ );
+  return $self->__param( 0, 1, @_ );
 }
 
 sub param_safe
 {
   my $self = shift;
   return $self->param( @_ );
+}
+
+sub param_peek_unsafe
+{
+  my $self = shift;
+  return $self->__param( 1, 0, @_ );
+}
+
+sub param_peek
+{
+  my $self = shift;
+  return $self->__param( 1, 1, @_ );
+}
+
+sub param_peek_safe
+{
+  my $self = shift;
+  return $self->param_peek( @_ );
 }
 
 sub param_clear_cache

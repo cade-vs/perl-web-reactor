@@ -425,6 +425,7 @@ sub textarea
   my $data  =    $opt{ 'VALUE' };
   my $rows  =    $opt{ 'ROWS'  } || 10;
   my $cols  =    $opt{ 'COLS'  } ||  5;
+  my $maxl  =    $opt{ 'MAXLEN'  } || $opt{ 'MAX' };
   my $geo   =    $opt{ 'GEOMETRY' }  || $opt{ 'GEO' };
   my $args  =    $opt{ 'ARGS'    };
 
@@ -432,24 +433,25 @@ sub textarea
 
   ( $cols, $rows ) = ( $1, $2 ) if $geo =~ /(\d+)[\*\/\\](\d+)/i;
 
+
   my $options;
 
-#  $options .= "SIZE='$size' "      if $size > 0;
-#  $options .= "MAXLENGTH='$maxl' " if $maxl > 0;
-  $options .= $opt{ 'DISABLED' } ? 'disabled ' : '';
+  $options .= "disabled='disabled'"  if $opt{ 'DISABLED' };
+  $options .= "maxlength='$maxl' "   if $maxl > 0;
+  $options .= "id='$id' "            if $id ne '';
+  $options .= "readonly='readonly' " if $opt{ 'READONLY' } || $opt{ 'RO' };
+  $options .= "required='required' " if $opt{ 'REQUIRED' } || $opt{ 'REQ' };
   $options .= "onFocus=\"this.value=''\" " if $opt{ 'FOCUS_AUTO_CLEAR' };
-#  $options .= "ID='$id' "   if $id ne '';
-#  $options .= "ID='$name' " if $opt{ 'NAME_ID' };
 
-#  my $extra = $opt{ 'EXTRA' };
-#  $options .= " $extra ";
+  my $extra = $opt{ 'EXTRA' };
+  $options .= " $extra ";
 
   $data = str_html_escape( $data );
 
   my $text;
   my $form_id = $self->{ 'FORM_ID' };
 
-  $text .= "<textarea class='$class' id='$id' name='$name' rows='$rows' cols='$cols' $options form='$form_id' $args>$data</textarea>";
+  $text .= "<textarea class='$class' name='$name' rows='$rows' cols='$cols' $options form='$form_id' $args>$data</textarea>";
 
   $text .= "\n";
   return $text;
@@ -473,7 +475,6 @@ sub input
 
   my $len   =    $opt{ 'LEN'     };
   my $args  =    $opt{ 'ARGS'    };
-
   my $hid   =    $opt{ 'HIDDEN'  };
   my $ret   =    $opt{ 'RET'     } || $opt{ 'RETURN'  }; # if return value should be mapped, works only with HIDDEN
 
@@ -483,14 +484,15 @@ sub input
 
   my $options;
 
-  $options .= $opt{ 'DISABLED' } ? 'disabled ' : '';
-  $options .= "size='$size' "                if $size > 0;
-  $options .= "maxlength='$maxl' "           if $maxl > 0;
-  # $options .= "onFocus=\"this.value=''\" "   if $opt{ 'FOCUS_AUTO_CLEAR' };
-  $options .= "ID='$id' "                    if $id ne '';
-  # $options .= "ID='$name' "                  if $opt{ 'NAME_ID' } or $id eq '';
-  $options .= "type='password' "             if $opt{ 'PASS' } || $opt{ 'PASSWORD' };
-  $options .= "type='hidden' " if $hid; # FIXME: handle TYPE better
+  $options .= "disabled='disabled'"  if $opt{ 'DISABLED' };
+  $options .= "size='$size' "        if $size > 0;
+  $options .= "maxlength='$maxl' "   if $maxl > 0;
+  $options .= "id='$id' "            if $id ne '';
+  $options .= "type='password' "     if $opt{ 'PASS' } || $opt{ 'PASSWORD' };
+  $options .= "type='hidden' "       if $hid; # FIXME: handle TYPE better
+  $options .= "readonly='readonly' " if $opt{ 'READONLY' } || $opt{ 'RO' };
+  $options .= "required='required' " if $opt{ 'REQUIRED' } || $opt{ 'REQ' };
+  $options .= "onFocus=\"this.value=''\" " if $opt{ 'FOCUS_AUTO_CLEAR' };
 
 
   my $extra = $opt{ 'EXTRA' };

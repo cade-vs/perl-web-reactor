@@ -87,6 +87,10 @@ sub begin
   $self->{ 'FORM_ID'   } = $form_id = $form_id || $self->html_new_id();
   $self->{ 'RADIO'     } = {};
   $self->{ 'RET_MAP'   } = {}; # return data mapping (combo, checkbox, etc.)
+  
+  my $options;
+  
+  $options .= " autocomplete='off'" if $opt{ 'NO_AUTOCOMPLETE' };
 
   my $text;
 
@@ -98,7 +102,7 @@ sub begin
   $page_session->{ ':FORM_DEF' }{ $form_name } = {};
 
   $state_keeper ||= $reo->args_here( FORM_NAME => $form_name ); # keep state and more args
-  $text .= "<form name='$form_name' id='$form_id' action='$action' method='$method' enctype='multipart/form-data'>";
+  $text .= "<form name='$form_name' id='$form_id' action='$action' method='$method' enctype='multipart/form-data' $options>";
   $text .= "</form>";
   $text .= "<input type=hidden name='_' value='$state_keeper' form='$form_id'>";
   $text .= "<input style='display: none;' name='__avoidiebug__' form='$form_id'>"; # stupid IE bugs
@@ -493,6 +497,7 @@ sub input
   $options .= "readonly='readonly' " if $opt{ 'READONLY' } || $opt{ 'RO' };
   $options .= "required='required' " if $opt{ 'REQUIRED' } || $opt{ 'REQ' };
   $options .= "onFocus=\"this.value=''\" " if $opt{ 'FOCUS_AUTO_CLEAR' };
+  $options .= "autocomplete='off' "  if $opt{ 'NO_AUTOCOMPLETE' };
 
 
   my $extra = $opt{ 'EXTRA' };

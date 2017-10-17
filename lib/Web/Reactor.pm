@@ -15,6 +15,7 @@ use CGI::Cookie;
 use Data::Tools;
 use Exception::Sink;
 use Data::Dumper;
+use Encode;
 
 use Web::Reactor::Utils;
 use Web::Reactor::HTML::Form;
@@ -289,6 +290,9 @@ sub main_process
       $v = $iconv->convert( $v );
       $_ = $iconv->convert( $_ ) for @v;
       }
+
+    $v = decode( $app_charset, $v );
+    $_ = decode( $app_charset, $_ ) for @v;
 
     $self->log_debug( "debug: CGI input param [$n] value [$v] [@v]" );
 

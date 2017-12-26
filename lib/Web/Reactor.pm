@@ -264,7 +264,7 @@ sub main_process
     }
 
   # import plain parameters from GET/POST request
-  for my $n ( CGI::param() )
+  for my $n ( CGI::url_param(), CGI::param() )
     {
     if( $n !~ /^[A-Za-z0-9\-\_\.\:]+$/o )
       {
@@ -272,7 +272,8 @@ sub main_process
       next;
       }
     my $u = CGI::upload( $n );
-    my $v = CGI::param( $n );
+    my $v = CGI::url_param( $n );
+       $v = CGI::param( $n ) if $v eq '';
     my @v = CGI::multi_param( $n ); # TODO: handling of multi-values
     
     $n = uc $n;

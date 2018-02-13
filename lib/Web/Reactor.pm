@@ -1136,6 +1136,7 @@ sub render
   my $page_fh   = $portray_data->{ 'FH'        }; # filehandle has priority
   my $page_type = $portray_data->{ 'TYPE'      };
   my $file_name = $portray_data->{ 'FILE_NAME' };
+  my $disp_type = $portray_data->{ 'DISPOSITION_TYPE' } || 'inline'; # default, rest must be handled as 'attachment', ref: rfc6266#section-4.2
 
   if( lc $page_type =~ /^text\/html/ )
     {
@@ -1158,7 +1159,7 @@ sub render
 
   # FIXME: charset
   $self->set_headers( 'content-type'        => $page_type );
-  $self->set_headers( 'content-disposition' => "attachment; filename=$file_name" ) if $file_name;
+  $self->set_headers( 'content-disposition' => "$disp_type; filename=$file_name" ) if $file_name;
 
   my $http_csp = $self->{ 'ENV' }{ 'HTTP_CSP' }; # || " default-src 'self' ";
   $self->set_headers( 'Content-Security-Policy' => $http_csp );

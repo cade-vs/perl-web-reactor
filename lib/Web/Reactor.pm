@@ -1571,7 +1571,7 @@ sub load_trans
 
   for my $tf ( @tf )
     {
-    my $hr = hash_load( $tf );
+    my $hr = $self->load_trans_file( $tf );
     # trim whitespace
     my @temp = %$hr;
     for( @temp )
@@ -1585,6 +1585,11 @@ sub load_trans
     }
 
   return 1;
+}
+
+sub load_trans_file
+{
+  return hash_load( shift );
 }
 
 ##############################################################################

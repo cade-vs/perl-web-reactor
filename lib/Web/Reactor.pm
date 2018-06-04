@@ -1589,6 +1589,8 @@ sub load_trans
 
 sub load_trans_file
 {
+  my $self = shift;
+
   return hash_load( shift );
 }
 

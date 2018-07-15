@@ -66,7 +66,7 @@ sub __load_action_file
   
   return $self->{ 'ACTIONS_CODE_CACHE' }{ $name } if exists $self->{ 'ACTIONS_CODE_CACHE' }{ $name };
   
-  my $dirs = $self->{ 'ENV' }{ 'ACTIONS_DIRS' } || [];
+  my $dirs = $self->{ 'ENV' }{ 'ACTIONS_DIRS' } || [ $self->{ 'ENV' }{ 'APP_ROOT' } . '/actions' ];
   my $pkgs = $self->{ 'ENV' }{ 'ACTIONS_PKGS' } || 'reactor::actions::';
   
   my $found;
@@ -91,7 +91,7 @@ sub __load_action_file
   if( ! $@ )  
     {
     $reo->log_debug( "status: load action ok: $ap [$found]" );
-    $self->{ 'ACTIONS_CODE_CACHE' }{ $name } = $cr = \&{ "${ap}::main" }; # call/function reference
+    my $cr = $self->{ 'ACTIONS_CODE_CACHE' }{ $name } = \&{ "${ap}::main" }; # call/function reference
     return $cr;
     }
   elsif( $@ =~ /Can't locate $found/)

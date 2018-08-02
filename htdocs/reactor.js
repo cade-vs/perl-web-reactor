@@ -292,37 +292,51 @@ function reactor_form_checkbox_set_all( form_id, value )
 
 /*** multi-state checkboxes ************************************************/
 
-function reactor_form_checkbox_toggle_multi( el )
+function reactor_form_multi_checkbox_setup_id( el_id )
 {
-   reactor_form_checkbox_set_multi( el, el.value );
+   var el     = document.getElementById( el_id );
+   var cb_id  = el.dataset.checkboxInputId;
+   var cb     = document.getElementById( cb_id );
+
+   reactor_form_multi_checkbox_set( el, cb, cb.value );
 }
 
-function reactor_form_checkbox_set_multi( el, value )
+function reactor_form_multi_checkbox_toggle( el )
 {
-   var ch_id  = el.dataset.checkboxInputId;
-   var cb     = document.getElementById( ch_id );
-   
+   var cb_id  = el.dataset.checkboxInputId;
+   var cb     = document.getElementById( cb_id );
+
+   reactor_form_multi_checkbox_set( el, cb, +cb.value + 1 );
+}
+
+function reactor_form_multi_checkbox_set( el, cb, new_value )
+{
    var stages = el.dataset.stages;
    var value = cb.value;
-   value++;
-   if( value >= stages ) value = 0;
-   cb.value   = value;
-   
-   var new_label = el.dataset[ "valueLabel-" + value ];
-   var new_class = el.dataset[ "valueClass-" + value ];
+   if( new_value >= stages ) 
+     cb.value = 0;
+   else
+     cb.value = new_value;  
+
+   var new_label = el.dataset[ "valueLabel-" + cb.value ];
+   var new_class = el.dataset[ "valueClass-" + cb.value ];
 
    el.className = new_class;
    el.innerHTML = new_label;
 
-   var onchange = cb.getAttribute( 'ONCHANGE' );
-   if( onchange )
+   if( new_value != value )
      {
-     if( is_msie )
-       onchange();
-     else
-       eval( onchange );
-     }
+     var onchange = cb.getAttribute( 'ONCHANGE' );
+     if( onchange )
+       {
+       if( is_msie )
+         onchange();
+       else
+         eval( onchange );
+       }
+     }  
 }
+
 
 /*** hover layers *******************************************************/
 

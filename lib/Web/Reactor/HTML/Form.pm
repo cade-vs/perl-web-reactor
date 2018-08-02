@@ -222,17 +222,16 @@ sub checkbox_multi
 
   my $text;
 
-  my $ch_id = $self->html_new_id(); # checkbox data holder
+  my $cb_id = $self->html_new_id(); # checkbox id
+  my $el_id = $self->html_new_id(); # checkbox label element id
 
   my $form_id = $self->{ 'FORM_ID' };
   #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
   #$text .= "<input type='checkbox' name='$name' value='1' $options>";
   $text .= "\n";
-  $text .= "<input type='hidden' name='$name' id='$ch_id' value='$value' form='$form_id' $args>";
-####  $text .= qq[ <input type='checkbox' $options checkbox_data_input_id="$ch_id" onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
-#  $text .= qq[ <input type='checkbox' $options data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle(this)' class='$class'> ];
-#  $text .= qq[ <input type='checkbox' $options data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle(this)' class='$class'> ];
-  $text .= qq[ <span class='$current_class' data-stages='$stages' data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle_multi(this)' $options>$label</span> ];
+  $text .= "<input type='hidden' name='$name' id='$cb_id' value='$value' form='$form_id' $args>";
+  $text .= qq[ <span class='$current_class' id='$el_id' data-stages='$stages' data-checkbox-input-id="$cb_id" onclick='reactor_form_multi_checkbox_toggle(this)' $options>$label</span> ];
+  $text .= "<script>reactor_form_multi_checkbox_setup_id( '$el_id' )</script>";
   $text .= "\n";
 
   return $text;

@@ -10,6 +10,7 @@
 package Web::Reactor::Preprocessor::Native;
 use strict;
 use Exception::Sink;
+use Data::Dumper;
 use Data::Tools;
 use Web::Reactor::Preprocessor;
 

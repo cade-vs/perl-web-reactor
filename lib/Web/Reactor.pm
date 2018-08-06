@@ -285,12 +285,12 @@ sub main_process
       my $uc = 0;
       for my $uh ( @u )
         {
-        $input_user_hr->{ "$n:FILE_NAME:$uc"   } = "$uh";
-        $input_user_hr->{ "$n:FH:$uc"          } = $uh;
-        $input_user_hr->{ "$n:UPLOAD_INFO:$uc" } = CGI::uploadInfo( $uh );
+        $input_user_hr->{ "$n:FN:$uc" } = "$uh"; # file name
+        $input_user_hr->{ "$n:FH:$uc" } = $uh;   # file handle
+        $input_user_hr->{ "$n:FI:$uc" } = CGI::uploadInfo( $uh ); # file info
         $uc++;
         }
-      $input_user_hr->{ "$n:FILE_COUNT"   } = @u;
+      $input_user_hr->{ "$n:FC" } = @u; # file count
       }
     
     if( ref( $u ) )

@@ -12,6 +12,7 @@ use strict;
 use Storable qw( dclone freeze thaw ); # FIXME: move to Data::Tools (data_freeze/data_thaw)
 use CGI 4.08;
 use CGI::Cookie;
+use MIME::Base64;
 use Data::Tools;
 use Exception::Sink;
 use Data::Dumper;
@@ -271,6 +272,7 @@ sub main_process
       $self->log( "error: invalid CGI/input parameter name: [$n]" );
       next;
       }
+    my @u = CGI::upload( $n );
     my $u = CGI::upload( $n );
     my $v = CGI::url_param( $n );
        $v = CGI::param( $n ) if $v eq '';
@@ -278,6 +280,19 @@ sub main_process
     
     $n = uc $n;
 
+    if( @u > 0 )
+      {
+      my $uc = 0;
+      for my $uh ( @u )
+        {
+        $input_user_hr->{ "$n:FILE_NAME:$uc"   } = "$uh";
+        $input_user_hr->{ "$n:FH:$uc"          } = $uh;
+        $input_user_hr->{ "$n:UPLOAD_INFO:$uc" } = CGI::uploadInfo( $uh );
+        $uc++;
+        }
+      $input_user_hr->{ "$n:FILE_COUNT"   } = @u;
+      }
+    
     if( ref( $u ) )
       {
       $input_user_hr->{ "$n:FH" } = $u;
@@ -905,6 +920,36 @@ sub crypto_thaw_hex
   my $data = shift; # hex encoded data
 
   return thaw( $self->decrypt_hex( $data ) );
+}
+
+sub encrypt_base64u
+{
+  my $self = shift;
+
+  return MIME::Base64::encode_base64url( $self->encrypt( @_ ) );
+}
+
+sub decrypt_base64u
+{
+  my $self = shift;
+
+  return $self->decrypt( MIME::Base64::decode_base64url( @_ ) );
+}
+
+sub crypto_freeze_base64u
+{
+  my $self = shift;
+  my $data = shift; # reference to any data/scalar/hash/array
+
+  return $self->encrypt_base64u( freeze( $data ) );
+}
+
+sub crypto_thaw_base64u
+{
+  my $self = shift;
+  my $data = shift; # base64u encoded data
+
+  return thaw( $self->decrypt_base64u( $data ) );
 }
 
 ##############################################################################

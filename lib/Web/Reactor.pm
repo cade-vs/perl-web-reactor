@@ -58,6 +58,8 @@ sub new
   my %env = @_;
 
   # FIXME: verify %env content! Data::Validate::Struct
+  boom "request scheme [HTTP] does not match cookies security policy! either enable HTTPS scheme or set DISABLE_SECURE_COOKIES=1"
+      if uc $ENV{ 'REQUEST_SCHEME' } eq 'HTTP' and ! $env{ 'DISABLE_SECURE_COOKIES' };
 
   $class = ref( $class ) || $class;
   my $self = {

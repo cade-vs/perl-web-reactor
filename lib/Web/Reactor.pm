@@ -1230,7 +1230,8 @@ sub render
     }
   else
     {  
-    print $page_data;
+    # TODO: FIXME: check app-charset and convert only if needed
+    print encode( $app_charset, $page_data );
     }
 
   $self->log_debug( "debug: page response content: page, action, type, headers, data: " . Dumper( $page, $action, $page_type, $page_headers, $page_type =~ /^text\// ? $page_data : '*binary*' ) ) if $self->is_debug() > 2;

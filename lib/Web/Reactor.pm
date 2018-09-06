@@ -21,7 +21,7 @@ use Encode;
 use Web::Reactor::Utils;
 use Web::Reactor::HTML::Form;
 
-our $VERSION = '2.06';
+our $VERSION = '2.07';
 
 ##############################################################################
 
@@ -1263,6 +1263,7 @@ sub render
 my %SIMPLE_PORTRAY_TYPE_MAP = (
                               html => 'text/html',
                               text => 'text/plain',
+                              txt  => 'text/plain',
                               jpeg => 'image/jpeg',
                               png  => 'image/png',
                               bin  => 'application/octet-stream',

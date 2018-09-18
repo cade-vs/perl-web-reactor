@@ -89,7 +89,8 @@ sub new
     push @INC, $lib_dir;
     $lib_dirs_ok++;
     }
-  boom "invalid or not accessible LIB_DIR's [@$lib_dirs]" unless $lib_dirs_ok;
+  # FIXME: this should not be a fatal error?
+  #boom "invalid or not accessible LIB_DIR's [@$lib_dirs]" unless $lib_dirs_ok;
 
   # sanity, remove '.' from include list, TODO: optionally remove other entries by config (%env)
   for my $z ( 0 .. scalar( @INC ) - 1 )
@@ -281,6 +282,12 @@ sub main_process
     my @v = CGI::multi_param( $n ); # TODO: handling of multi-values
     
     $n = uc $n;
+    if( $n eq 'POSTDATA' )
+      {
+      # post data is raw, do not process
+      $input_user_hr->{ $n } = $v;
+      next;
+      }
 
     if( @u > 0 )
       {
@@ -335,7 +342,6 @@ sub main_process
       }
     else
       {
-      $n = uc $n;
       $input_user_hr->{ $n } = $v;
       }
     }

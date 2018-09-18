@@ -1191,6 +1191,8 @@ sub render
   my $file_name = $portray_data->{ 'FILE_NAME' };
   my $disp_type = $portray_data->{ 'DISPOSITION_TYPE' } || 'inline'; # default, rest must be handled as 'attachment', ref: rfc6266#section-4.2
 
+  my $page_type_is_text = $page_type =~ /^text\//i;
+
   if( lc $page_type =~ /^text\/html/ )
     {
     my $prep_opt1 = {};
@@ -1218,7 +1220,11 @@ sub render
   $self->set_headers( 'Content-Security-Policy' => $http_csp );
 
   my $app_charset = uc $self->{ 'ENV' }{ 'APP_CHARSET' } || 'UTF-8';
-  $self->set_headers( 'content-charset' => $app_charset );
+  if( $page_type_is_text )
+    {
+    # set charset for TEXT only
+    $self->set_headers( 'content-charset' => $app_charset );
+    }
 
   my $page_headers = $self->__make_headers();
 
@@ -1237,7 +1243,7 @@ sub render
   else
     {  
     # TODO: FIXME: check app-charset and convert only if needed
-    print encode( $app_charset, $page_data );
+    print $page_type_is_text ? encode( $app_charset, $page_data ) : $page_data;
     }
 
   $self->log_debug( "debug: page response content: page, action, type, headers, data: " . Dumper( $page, $action, $page_type, $page_headers, $page_type =~ /^text\// ? $page_data : '*binary*' ) ) if $self->is_debug() > 2;

@@ -1399,8 +1399,8 @@ sub forward_new_action
 sub __param
 {
   my $self = shift;
-  my $peek = shift; # 1 not save, 0 save in cache
-  my $safe = shift; # 1 safe_input, 0 user_input
+  my $save = shift; # 0 not save, 1 save in cache, 2 save in cache and page session (ps)
+  my $safe = shift; # 0 user (unsafe) input, 1 safe input
 
   my $input_hr;
   my $save_key;
@@ -1417,23 +1417,24 @@ sub __param
 
   my $ps = $self->get_page_session();
 
-  $ps->{ $save_key } ||= {} unless $peek;
+  $ps->{ $save_key } ||= {} if $save > 0;
 
   my @res;
   while( @_ )
     {
     my $p = uc shift;
-    if( $peek )
-      {
-      push @res, $input_hr->{ $p };
-      }
-    else
+    if( $save > 0 )
       {  
       if( exists $input_hr->{ $p } )
         {
         $ps->{ $save_key }{ $p } = $input_hr->{ $p };
+        $ps->{ $p } = $input_hr->{ $p } if $save > 1;
         }
       push @res, $ps->{ $save_key }{ $p };
+      }
+    else
+      {
+      push @res, $input_hr->{ $p };
       }
     }
 
@@ -1443,13 +1444,19 @@ sub __param
 sub param_unsafe
 {
   my $self = shift;
-  return $self->__param( 0, 0, @_ );
+  return $self->__param( 1, 0, @_ );
 }
 
 sub param
 {
   my $self = shift;
-  return $self->__param( 0, 1, @_ );
+  return $self->__param( 1, 1, @_ );
+}
+
+sub param_save
+{
+  my $self = shift;
+  return $self->__param( 2, 1, @_ );
 }
 
 sub param_safe
@@ -1461,13 +1468,13 @@ sub param_safe
 sub param_peek_unsafe
 {
   my $self = shift;
-  return $self->__param( 1, 0, @_ );
+  return $self->__param( 0, 0, @_ );
 }
 
 sub param_peek
 {
   my $self = shift;
-  return $self->__param( 1, 1, @_ );
+  return $self->__param( 0, 1, @_ );
 }
 
 sub param_peek_safe

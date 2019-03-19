@@ -285,13 +285,18 @@ sub html_alink
 
   my $href = $reo->args_type( $type, @args );
 
-  my $hint = $opts->{ 'HINT' };
-  my $hl_handle = html_hover_layer( $reo, VALUE => $hint, DELAY => 250 ) if $hint;
-  
-  my $class = $opts->{ 'CLASS' };
-  my $a_class = "class='$class'";
+  my $tag_args;
 
-  return "<a $a_class href=?_=$href $hl_handle>$value</a>";
+  my $class = $opts->{ 'CLASS' };
+  $tag_args .= '  ' . "class='$class'";
+
+  my $hint = $opts->{ 'HINT' };
+  $tag_args .= '  ' . html_hover_layer( $reo, VALUE => $hint, DELAY => 250 ) if $hint;
+  
+  my $confirm = $opts->{ 'CONFIRM' };
+  $tag_args .= '  ' . qq( onclick="return confirm('$confirm');" ) if $confirm =~ /^([^"']+)$/;
+
+  return "<a href=?_=$href $tag_args>$value</a>";
 }
 
 ##############################################################################

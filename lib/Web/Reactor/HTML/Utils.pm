@@ -296,6 +296,10 @@ sub html_alink
   my $confirm = $opts->{ 'CONFIRM' };
   $tag_args .= '  ' . qq( onclick="return confirm('$confirm');" ) if $confirm =~ /^([^"']+)$/;
 
+  # FIXME: FIX REACTOR TO HAVE SENSIBLE HTML_LINK FUNCTIONS, I>E> CONVERT HINT TO HASHREF!
+  my $disable_on_click = int( $opts->{ 'DISABLE_ON_CLICK' } || { @args }->{ 'DISABLE_ON_CLICK' } );
+  $tag_args .= '  ' . qq( onclick="return reactor_element_disable_on_click( this, $disable_on_click );" ) if $confirm !~ /^([^"']+)$/ and $disable_on_click > 0;
+
   return "<a href=?_=$href $tag_args>$value</a>";
 }
 

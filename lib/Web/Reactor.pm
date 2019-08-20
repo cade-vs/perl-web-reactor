@@ -879,7 +879,7 @@ sub __new_crypto_object
 
   my $ci = $self->{ 'ENV' }{ 'ENCRYPT_CIPHER' } || 'Twofish2'; # :)
 
-  return new Crypt::CBC->new( -key => $key, -cipher => $ci );
+  return Crypt::CBC->new( -key => $key, -cipher => $ci );
 }
 
 sub encrypt

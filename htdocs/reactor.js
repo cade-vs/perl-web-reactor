@@ -12,6 +12,11 @@ var user_agent = navigator.userAgent.toLowerCase();
 var is_msie    = ( ( user_agent.indexOf( "msie"  ) != -1 ) && ( user_agent.indexOf("opera") == -1 ) );
 var is_opera   =   ( user_agent.indexOf( "opera" ) != -1 );
 
+function get_utime()
+{
+  return Math.round((new Date()).getTime() / 1000);
+}
+
 /*** SHOW/HIDE elements ****************************************************/
 
 function html_element_show( elem )
@@ -546,6 +551,15 @@ function reactor_popup_hide( el )
   popup_layer.style.display = "none";
   
   reactor_popup_clear_tos( el );
+}
+
+/*-------------------------------------------------------------------*/
+
+function reactor_element_disable_on_click( el, secs )
+{
+  if( get_utime() < el.getAttribute( 'is-disabled' ) ) return false;
+  el.setAttribute( 'is-disabled', get_utime() + secs );
+  return true;
 }
 
 /***EOF*********************************************************************/

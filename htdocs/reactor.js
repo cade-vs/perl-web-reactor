@@ -555,10 +555,14 @@ function reactor_popup_hide( el )
 
 /*-------------------------------------------------------------------*/
 
-function reactor_element_disable_on_click( el, secs )
+function reactor_element_disable_on_click( el, timeout )
 {
-  if( get_utime() < el.getAttribute( 'is-disabled' ) ) return false;
-  el.setAttribute( 'is-disabled', get_utime() + secs );
+  if( get_utime() < el.is_disabled ) return false;
+  el.is_disabled = get_utime() + timeout;
+  var con  = el.dataset.classOn;
+  var coff = el.dataset.classOff;
+  el.className = coff;
+  el.disabled_to = setTimeout( function() { el.is_disabled = 0; el.className = con; }, timeout * 1000 );
   return true;
 }
 

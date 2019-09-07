@@ -288,7 +288,7 @@ sub html_alink
   my $tag_args;
 
   my $class = $opts->{ 'CLASS' };
-  $tag_args .= '  ' . "class='$class'";
+  $tag_args .= '  ' . "class='$class' data-class-on='$class' data-class-off='button disabled-button'";
 
   my $hint = $opts->{ 'HINT' };
   $tag_args .= '  ' . html_hover_layer( $reo, VALUE => $hint, DELAY => 250 ) if $hint;

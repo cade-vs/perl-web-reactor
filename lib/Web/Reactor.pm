@@ -164,7 +164,7 @@ sub run
     $self->log_dumper( "SAFE INPUT -----------------------------------", $self->get_safe_input() );
     $self->log_dumper( "FINAL PAGE SESSION [$psid]-----------------------------------", $self->get_page_session() );
     $self->log_dumper( "FINAL REF  SESSION [$rsid]-----------------------------------", $self->get_page_session( 1 ) );
-    #$self->log_dumper( "FINAL USER SESSION [$psid]-----------------------------------", $self->get_user_session() );
+    $self->log_dumper( "FINAL USER SESSION [$psid]-----------------------------------", $self->get_user_session() );
     }
 
 }

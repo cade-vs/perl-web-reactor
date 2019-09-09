@@ -57,6 +57,13 @@ sub html_new_id
   return $form_name . "_EID_$psid\_" . $self->{ 'HTML_ID_COUNTER' } . '_' . int(rand()*10_000_000_000);
 }
 
+sub __check_name
+{
+  my $name = shift;
+  $name =~ /^[A-Z_0-9:.]+$/ or boom "invalid or empty NAME attribute [$name]";
+  return 1;
+}
+
 ##############################################################################
 
 sub begin
@@ -74,7 +81,7 @@ sub begin
 
   $self->{ 'CLASS_MAP' } = $opt{ 'CLASS_MAP' } || {};
 
-  $form_name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute";
+  __check_name( $form_name );
   $method    =~ /^(POST|GET)$/  or boom "METHOD can either POST or GET";
 
   my $reo = $self->get_reo();
@@ -164,7 +171,7 @@ sub checkbox
   my $value =    $opt{ 'VALUE' } ? 1 : 0;
   my $args  =    $opt{ 'ARGS'  };
 
-  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
+  __check_name( $name );
 
   my $options;
   $options .= $value ? " checked " : undef;
@@ -201,7 +208,7 @@ sub checkbox_multi
   my $stages =    $opt{ 'STAGES' } || 2;
   my $labels =    $opt{ 'LABELS' } || [ 'x', '&radic;' ];
 
-  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
+  __check_name( $name );
 
   $value = abs( int( $value ) );
   $value = 0 if $value >= $stages;
@@ -260,7 +267,7 @@ sub radio
   my $on    =    $opt{ 'ON'    }; # active?
   my $ret   =    $opt{ 'RET'   } || $opt{ 'RETURN' } || 1; # map return value!
 
-  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
+  __check_name( $name );
 
   my $text;
 
@@ -323,7 +330,7 @@ sub select
   my $rows  =    $opt{ 'SIZE'  } || $opt{ 'ROWS'  } || 1;
   my $args  =    $opt{ 'ARGS' };
 
-  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
+  __check_name( $name );
 
   my $data   = $opt{ 'DATA'     }; # array reference or hash reference, inside hashesh are the same
   my $sel_hr = $opt{ 'SELECTED' }; # hashref with selected keys (values are true's)
@@ -432,7 +439,7 @@ sub textarea
   my $geo   =    $opt{ 'GEOMETRY' }  || $opt{ 'GEO' };
   my $args  =    $opt{ 'ARGS'    };
 
-  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
+  __check_name( $name );
 
   ( $cols, $rows ) = ( $1, $2 ) if $geo =~ /(\d+)[\*\/\\](\d+)/i;
 
@@ -504,7 +511,7 @@ sub input
 
   $value = str_html_escape( $value );
 
-  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
+  __check_name( $name );
 
   if( $hid and defined $ret )
     {
@@ -557,7 +564,8 @@ sub button
   $value =~ s/'//g;
   $value = str_html_escape( $value );
 
-  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
+  __check_name( $name );
+
   my $text;
 
   $name =~ s/^button://i;
@@ -592,7 +600,8 @@ sub image_button
     $options .= "$o='$e' " if $e ne '';
     }
 
-  $name =~ /^[A-Z_0-9:]+$/ or boom "invalid or empty NAME attribute [$name]";
+  __check_name( $name );
+
   my $text;
 
   my $form_id = $self->{ 'FORM_ID' };

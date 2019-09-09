@@ -280,7 +280,7 @@ sub html_alink
   my $reo   =    shift;
   my $type  = lc shift;
   my $value =    shift;
-  my $opts  =    shift;
+  my $opts  =    shift; # hashref with alink options
   my @args  = @_;
 
   my $href = $reo->args_type( $type, @args );

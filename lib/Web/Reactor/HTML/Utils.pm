@@ -287,6 +287,9 @@ sub html_alink
 
   my $tag_args;
 
+  my $tag_id = $opts->{ 'ID' };
+  $tag_args .= '  ' . "ID='$tag_id'";
+
   my $class = $opts->{ 'CLASS' };
   $tag_args .= '  ' . "class='$class' data-class-on='$class' data-class-off='button disabled-button'";
 

@@ -78,6 +78,11 @@ sub load_file
   my $pn = lc shift || 'main'; # page name
   my $fn = lc shift; # file name
 
+  # sanitize page name
+  $pn =~ s/^\/+//o;
+  $pn =~ s/\/+$//o;
+  $pn =~ s/\/+/\//go;
+
   boom "invalid page name, expected ALPHANUMERIC, got [$pn]" unless $pn =~ /^[a-z_\-0-9\/]+$/;
   boom "invalid file name, expected ALPHANUMERIC, got [$fn]" unless $fn =~ /^[a-z_\-0-9]+$/;
 
@@ -114,7 +119,7 @@ sub load_file
       }
 
     @$dirs = grep { -d } reverse @$dirs;
-    #print STDERR Dumper( $orgs, $pn, \@pn, $dirs );
+    # print STDERR Dumper( 'PREPROCESSOR EXTENDED LOAD FILE DIRS:', $orgs, $pn, \@pn, $dirs );
 
     $self->{ 'DIRS_CACHE' }{ $lang }{ $pn } = $dirs;
     }

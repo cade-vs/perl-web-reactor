@@ -1135,6 +1135,8 @@ sub render
   my $self = shift;
   my %opt  = @_;
 
+#print STDERR Dumper( 'RENDER --- ' x 11, \%opt );
+
   boom "too many nesting levels in rendering, probable bug in actions or pages" if (caller(512))[0] ne ''; # FIXME: config option for max level
 
   my $action = $opt{ 'ACTION' };

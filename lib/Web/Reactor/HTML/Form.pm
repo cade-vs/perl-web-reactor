@@ -207,6 +207,7 @@ sub checkbox_multi
   my $args   =    $opt{ 'ARGS'   };
   my $stages =    $opt{ 'STAGES' } || 2;
   my $labels =    $opt{ 'LABELS' } || [ 'x', '&radic;' ];
+  my $hint   =    $opt{ 'HINT'   };
 
   __check_name( $name );
 
@@ -229,6 +230,9 @@ sub checkbox_multi
 
   my $text;
 
+  my $reo = $self->get_reo();
+  my $hint_handler = $hint ? html_hover_layer( $reo, VALUE => $hint ) : undef;
+
   my $cb_id = $self->html_new_id(); # checkbox id
   my $el_id = $self->html_new_id(); # checkbox label element id
 
@@ -237,7 +241,7 @@ sub checkbox_multi
   #$text .= "<input type='checkbox' name='$name' value='1' $options>";
   $text .= "\n";
   $text .= "<input type='hidden' name='$name' id='$cb_id' value='$value' form='$form_id' $args>";
-  $text .= qq[ <span class='$current_class' id='$el_id' data-stages='$stages' data-checkbox-input-id="$cb_id" onclick='reactor_form_multi_checkbox_toggle(this)' $options>$label</span> ];
+  $text .= qq[ <span class='$current_class' id='$el_id' data-stages='$stages' data-checkbox-input-id="$cb_id" onclick='reactor_form_multi_checkbox_toggle(this)' $hint_handler $options>$label</span> ];
   $text .= "<script>reactor_form_multi_checkbox_setup_id( '$el_id' )</script>";
   $text .= "\n";
 

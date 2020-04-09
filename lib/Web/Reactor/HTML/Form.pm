@@ -78,6 +78,7 @@ sub begin
   my $action         =    $opt{ 'ACTION' } || '?';
   my $default_button =    $opt{ 'DEFAULT_BUTTON' };
   my $state_keeper   =    $opt{ 'STATE_KEEPER'   };
+  my $extra_args     =    $opt{ 'EXTRA_ARGS'     } || {};
 
   $self->{ 'CLASS_MAP' } = $opt{ 'CLASS_MAP' } || {};
 
@@ -108,7 +109,7 @@ sub begin
   my $page_session = $reo->get_page_session();
   $page_session->{ ':FORM_DEF' }{ $form_name } = {};
 
-  $state_keeper ||= $reo->args_here( FORM_NAME => $form_name ); # keep state and more args
+  $state_keeper ||= $reo->args_here( FORM_NAME => $form_name, %$extra_args ); # keep state and more args
   $text .= "<form name='$form_name' id='$form_id' action='$action' method='$method' enctype='multipart/form-data' $options>";
   $text .= "</form>";
   $text .= "<input type=hidden name='_' value='$state_keeper' form='$form_id'>";
@@ -404,7 +405,7 @@ sub select
       $self->__ret_map_set( $name, $id => $key );
 
       $sel = 'selected' if $sel_hr and $sel_hr->{ $key };
-#print STDERR "sssssssssssssssssssssssss RADIO [$name] [$value] [$key] $sel\n";
+#print STDERR "sssssssssssssssssssssssss COMBO [$name] [$value] [$key] $sel\n";
       $text .= "<option value='$id' $sel>$value$pad</option>\n";
       }
 

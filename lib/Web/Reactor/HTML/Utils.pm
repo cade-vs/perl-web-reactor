@@ -262,8 +262,9 @@ sub html_popup_layer
   my $handle  = qq( $trigger data-popup-layer-id="$popup_layer_id" );
   my $html    = qq( <div class=$class id="$popup_layer_id">$value</div> );
 
-  if ( $opt{ 'NO_ACCUMULATOR' } )
+  if ( wantarray )
     {
+    # will not use ACCUMULATOR_HTML
     return ( $handle, $html );
     }
   else

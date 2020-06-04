@@ -11,5 +11,5 @@ lib/Web/Reactor/HTML/FormEngine.pm
 lib/Web/Reactor/Sessions.pm
 lib/Web/Reactor/Sessions/Filesystem.pm
 lib/Web/Reactor/Actions.pm
-lib/Web/Reactor/Preprocessor/Expander.pm
+lib/Web/Reactor/Preprocessor/Extended.pm
 lib/Web/Reactor/Utils.pm

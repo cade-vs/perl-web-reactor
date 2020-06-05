@@ -213,9 +213,16 @@ sub html_hover_layer
   $handle = qq{ onmouseover='reactor_hover_show_delay( this,"$hover_layer_id", $delay, event )' };
   $html   = qq{ <div class=$class id="$hover_layer_id">$value</div> };
 
-  $reo->html_content_accumulator( 'ACCUMULATOR_HTML', $html );
-
-  return $handle;
+  if ( wantarray )
+    {
+    # will not use ACCUMULATOR_HTML
+    return ( $handle, $html );
+    }
+  else
+    {
+    $reo->html_content_accumulator( 'ACCUMULATOR_HTML', $html );
+    return $handle;
+    }
 }
 
 ##############################################################################
@@ -287,6 +294,7 @@ sub html_alink
   my $href = $reo->args_type( $type, @args );
 
   my $tag_args;
+  my $out_extra; # FIXME: TODO: option for using this
 
   my $tag_id = $opts->{ 'ID' };
   $tag_args .= '  ' . "ID='$tag_id'";
@@ -295,7 +303,12 @@ sub html_alink
   $tag_args .= '  ' . "class='$class' data-class-on='$class' data-class-off='button disabled-button'";
 
   my $hint = $opts->{ 'HINT' };
-  $tag_args .= '  ' . html_hover_layer( $reo, VALUE => $hint, DELAY => 250 ) if $hint;
+  if( $hint )
+    {
+    my ( $hint_tag_arg, $hint_out_extra ) = html_hover_layer( $reo, VALUE => $hint, DELAY => 250 );
+    $tag_args  .= '  ' . $hint_tag_arg;
+    $out_extra .= $hint_out_extra; # FIXME: TODO: option for using this
+    }
   
   my $confirm = $opts->{ 'CONFIRM' };
   $tag_args .= '  ' . qq( onclick="return confirm('$confirm');" ) if $confirm =~ /^([^"']+)$/;
@@ -304,7 +317,7 @@ sub html_alink
   my $disable_on_click = int( $opts->{ 'DISABLE_ON_CLICK' } || { @args }->{ 'DISABLE_ON_CLICK' } );
   $tag_args .= '  ' . qq( onclick="return reactor_element_disable_on_click( this, $disable_on_click );" ) if $confirm !~ /^([^"']+)$/ and $disable_on_click > 0;
 
-  return "<a href=?_=$href $tag_args>$value</a>";
+  return "<a href=?_=$href $tag_args>$value</a>$out_extra";
 }
 
 ##############################################################################

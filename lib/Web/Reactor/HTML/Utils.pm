@@ -314,7 +314,7 @@ sub html_alink
   $tag_args .= '  ' . qq( onclick="return confirm('$confirm');" ) if $confirm =~ /^([^"']+)$/;
 
   # FIXME: FIX REACTOR TO HAVE SENSIBLE HTML_LINK FUNCTIONS, I.E. CONVERT HINT TO HASHREF!
-  my $disable_on_click = int( $opts->{ 'DISABLE_ON_CLICK' } || { @args }->{ 'DISABLE_ON_CLICK' } );
+  my $disable_on_click = int( $opts->{ 'DISABLE_ON_CLICK' } );
   if( $confirm !~ /^([^"']+)$/ and $disable_on_click > 0 )
     {
     my $class_off = $opts->{ 'DISABLE_ON_CLICK_CLASS' };

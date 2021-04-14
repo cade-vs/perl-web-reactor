@@ -317,7 +317,8 @@ sub html_alink
   my $disable_on_click = int( $opts->{ 'DISABLE_ON_CLICK' } || { @args }->{ 'DISABLE_ON_CLICK' } );
   if( $confirm !~ /^([^"']+)$/ and $disable_on_click > 0 )
     {
-    $tag_args .= '  ' . "data-class-on='$class' data-class-off='button disabled-button'";
+    my $class_off = $opts->{ 'DISABLE_ON_CLICK_CLASS' };
+    $tag_args .= '  ' . "data-class-on='$class' data-class-off='$class_off'";
     $tag_args .= '  ' . qq( onclick="return reactor_element_disable_on_click( this, $disable_on_click );" );
     }
 

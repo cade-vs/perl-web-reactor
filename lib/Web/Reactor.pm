@@ -11,6 +11,7 @@ package Web::Reactor;
 use strict;
 use Storable qw( dclone freeze thaw ); # FIXME: move to Data::Tools (data_freeze/data_thaw)
 use CGI 4.08;
+# use CGI 4.51;
 use CGI::Cookie;
 use MIME::Base64;
 use Data::Tools;
@@ -21,7 +22,7 @@ use Encode;
 use Web::Reactor::Utils;
 use Web::Reactor::HTML::Form;
 
-our $VERSION = '2.07';
+our $VERSION = '2.08';
 
 ##############################################################################
 
@@ -58,7 +59,7 @@ sub new
   my %env = @_;
 
   # FIXME: verify %env content! Data::Validate::Struct
-  boom "request scheme [HTTP] does not match cookies security policy! either enable HTTPS scheme or set DISABLE_SECURE_COOKIES=1"
+  boom "fatal: configuration: request scheme [HTTP] does not match cookies security policy! either enable HTTPS scheme or set DISABLE_SECURE_COOKIES=1"
       if uc $ENV{ 'REQUEST_SCHEME' } eq 'HTTP' and ! $env{ 'DISABLE_SECURE_COOKIES' };
 
   $class = ref( $class ) || $class;
@@ -176,7 +177,8 @@ sub main_process
   # 0. load/setup env/config defaults
   my $app_name = $self->{ 'ENV' }{ 'APP_NAME' } or $self->boom( "missing APP_NAME" );
 
-  # 1. loading request header
+  # 1. loading request header and environment
+  $self->{ 'HTTP_ENV' } = { %ENV };
 
   # 2. loading cookie
   my $cookie_name = lc( $self->{ 'ENV' }{ 'COOKIE_NAME' } || "$app_name\_cookie" );
@@ -195,7 +197,7 @@ sub main_process
   $self->{ 'SESSIONS' }{ 'SID'  }{ 'USER' } = $user_sid;
   $self->{ 'SESSIONS' }{ 'DATA' }{ 'USER' }{ $user_sid } = $user_shr;
 
-  # read http environment data, used for checks and info
+  # read and save http environment data into user session, used for checks and info
   $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $ENV{ $_ } } @HTTP_VARS_SAVE  };
 
   if( ( $user_shr->{ ':LOGGED_IN' } and $user_shr->{ ':XTIME' } > 0 and time() > $user_shr->{ ':XTIME' } )
@@ -244,27 +246,12 @@ sub main_process
   # FIXME: TODO: handle and URL params here. only for EX?
   my $iconv;
   my $app_charset = uc $self->{ 'ENV' }{ 'APP_CHARSET' } || 'UTF-8';
+  my $incoming_charset = $app_charset;
 
-  if( $app_charset )
+  if( uc( CGI::http( 'HTTP_X_REQUESTED_WITH' ) ) eq 'XMLHTTPREQUEST' )
     {
-    my $incoming_charset;
-    if( uc( CGI::http( 'HTTP_X_REQUESTED_WITH' ) ) eq 'XMLHTTPREQUEST' )
-      {
-      $incoming_charset = 'UTF-8';
-      }
-    if( $incoming_charset and $incoming_charset ne $app_charset )
-      {
-      eval
-        {
-        # FIXME: use Encode; instead
-        require 'Text/Iconv.pm';
-        $iconv = Text::Iconv->new( $incoming_charset, $app_charset );
-        };
-      if( $@ )
-        {
-        $self->log( "error: cannot convert charset from [$incoming_charset] to [$app_charset] error: $@" );
-        }
-      }
+    # TODO: it can be different, but nobody seems to use it, should be fixed eventually
+    $incoming_charset = 'UTF-8';
     }
 
   # import plain parameters from GET/POST request
@@ -280,15 +267,19 @@ sub main_process
     my $v = CGI::url_param( $n );
        $v = CGI::param( $n ) if $v eq '';
     my @v = CGI::multi_param( $n ); # TODO: handling of multi-values
+
+    #my $iiuu = Encode::is_utf8( $v );
+    #print STDERR "------------->>>>>>>>>>>>>>. INCOMING PARAM [$n] => [$v] (utf:$iiuu)\n";
     
     $n = uc $n;
-    if( $n eq 'POSTDATA' )
+    if( $n eq 'PUTDATA' or $n eq 'POSTDATA' or $n eq 'PATCHDATA' )
       {
       # post data is raw, do not process
       $input_user_hr->{ $n } = $v;
       next;
       }
 
+    # process multiple incoming file uploads
     if( @u > 0 )
       {
       my $uc = 0;
@@ -310,14 +301,18 @@ sub main_process
       $v = "$v";
       }
 
-    if( $iconv )
+    #my $iiuu = Encode::is_utf8( $v );
+    #print STDERR "------------->>>>>>>>>>>>>>. PRE ICOV [$v] (utf:$iiuu)\n";
+    if( $incoming_charset ne $app_charset )
       {
-      $v = $iconv->convert( $v );
-      $_ = $iconv->convert( $_ ) for @v;
+      Encode::from_to( $v, $incoming_charset, $app_charset );
+      Encode::from_to( $_, $incoming_charset, $app_charset ) for @v;
       }
 
-    $v = decode( $app_charset, $v );
-    $_ = decode( $app_charset, $_ ) for @v;
+    #print STDERR "------------->>>>>>>>>>>>>>. INCOMING [$v]\n";
+        #$v = decode( $app_charset, $v );
+    #print STDERR "------------->>>>>>>>>>>>>>. DECODED  [$v] from $app_charset\n\n";
+        #$_ = decode( $app_charset, $_ ) for @v;
 
     $self->log_debug( "debug: CGI input param [$n] value [$v] [@v]" );
 
@@ -476,8 +471,18 @@ sub __create_new_user_session
   $self->{ 'SESSIONS' }{ 'SID'  }{ 'USER' } = $user_sid;
   $self->{ 'SESSIONS' }{ 'DATA' }{ 'USER' }{ $user_sid } = $user_shr;
 
+  my $path = $self->{ 'ENV' }{ 'COOKIE_PATH' };
+  if( ! $path )
+    {
+    $path = $self->{ 'HTTP_ENV' }{ 'REQUEST_URI' };
+    #print STDERR ">>>>>>>>>>>>>>>>>>>111>>>>>>>>>>>>>>> cookie path [$path]\n";
+    $path =~ s/^([^\?]*\/)([^\?\/]*\?)(.*)$/$1/; # remove args: ?...
+    #print STDERR ">>>>>>>>>>>>>>>>>>>222>>>>>>>>>>>>>>> cookie path [$path]\n";
+    }
+  $path ||= '/';  
+
   my $secure_cookie = $self->{ 'ENV' }{ 'DISABLE_SECURE_COOKIES' } ? 0 : 1;
-  $self->set_cookie( $cookie_name, -value => $user_sid, -httponly => 1, -secure => $secure_cookie );
+  $self->set_cookie( $cookie_name, -value => $user_sid, -path => $path, -httponly => 1, -secure => $secure_cookie );
   $self->log( "debug: creating new user session [$user_sid]" );
 
   my $user_session_expire = $self->{ 'ENV' }{ 'USER_SESSION_EXPIRE' } || 600; # 10 minutes
@@ -1159,6 +1164,9 @@ sub render
     {
     # FIXME: handle content type also!
     $portray_data = $self->action_call( $action );
+    
+    #print STDERR Dumper( '--------------->>> RENDER >>>>>>>>>>>>>>>>>>>>>', $portray_data );
+    
     $page = undef;
     }
   elsif( $page )
@@ -1219,7 +1227,7 @@ sub render
   $self->set_headers( 'content-disposition' => "$disp_type; filename=$file_name" ) if $file_name;
 
   my $http_csp = $self->{ 'ENV' }{ 'HTTP_CSP' }; # || " default-src 'self' ";
-  $self->set_headers( 'Content-Security-Policy' => $http_csp );
+  $self->set_headers( 'Content-Security-Policy' => $http_csp ) if $http_csp;
 
   my $app_charset = uc $self->{ 'ENV' }{ 'APP_CHARSET' } || 'UTF-8';
   if( $page_type_is_text )
@@ -1245,10 +1253,12 @@ sub render
   else
     {  
     # TODO: FIXME: check app-charset and convert only if needed
-    print $page_type_is_text ? encode( $app_charset, $page_data ) : $page_data;
+    #print $page_type_is_text ? encode( $app_charset, $page_data ) : $page_data;
+    #print "[[$page_type_is_text|$app_charset]]";
+    print $page_data;
     }
 
-  $self->log_debug( "debug: page response content: page, action, type, headers, data: " . Dumper( $page, $action, $page_type, $page_headers, $page_type =~ /^text\// ? $page_data : '*binary*' ) ) if $self->is_debug() > 2;
+  $self->log_debug( "debug: page response content: page, action, type, headers:\n" . Dumper( $page, $action, $page_type, $page_headers ) ) if $self->is_debug() > 2;
 
   if( $self->is_debug() > 1 and lc $page_type =~ /^text\/html/ )
     {
@@ -1690,6 +1700,15 @@ sub new_form
   my $form = new Web::Reactor::HTML::Form( @_, REO_REACTOR => $self );
 
   return $form;
+}
+
+##############################################################################
+
+sub set_browser_window_title
+{
+  my $self = shift;
+
+  $self->html_content( 'BROWSER_WINDOW_TITLE', shift() );
 }
 
 ##############################################################################

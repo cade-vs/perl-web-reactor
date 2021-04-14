@@ -305,7 +305,7 @@ sub html_alink
   my $hint = $opts->{ 'HINT' };
   if( $hint )
     {
-    my ( $hint_tag_arg, $hint_out_extra ) = html_hover_layer( $reo, VALUE => $hint, DELAY => 250 );
+    my ( $hint_tag_arg, $hint_out_extra ) = html_hover_layer( $reo, VALUE => $hint, DELAY => 1000 );
     $tag_args  .= '  ' . $hint_tag_arg;
     $out_extra .= $hint_out_extra; # FIXME: TODO: option for using this
     }

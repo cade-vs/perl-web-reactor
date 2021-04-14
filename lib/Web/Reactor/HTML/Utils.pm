@@ -300,7 +300,7 @@ sub html_alink
   $tag_args .= '  ' . "ID='$tag_id'";
 
   my $class = $opts->{ 'CLASS' };
-  $tag_args .= '  ' . "class='$class' data-class-on='$class' data-class-off='button disabled-button'";
+  $tag_args .= '  ' . "class='$class'";
 
   my $hint = $opts->{ 'HINT' };
   if( $hint )
@@ -313,9 +313,13 @@ sub html_alink
   my $confirm = $opts->{ 'CONFIRM' };
   $tag_args .= '  ' . qq( onclick="return confirm('$confirm');" ) if $confirm =~ /^([^"']+)$/;
 
-  # FIXME: FIX REACTOR TO HAVE SENSIBLE HTML_LINK FUNCTIONS, I>E> CONVERT HINT TO HASHREF!
+  # FIXME: FIX REACTOR TO HAVE SENSIBLE HTML_LINK FUNCTIONS, I.E. CONVERT HINT TO HASHREF!
   my $disable_on_click = int( $opts->{ 'DISABLE_ON_CLICK' } || { @args }->{ 'DISABLE_ON_CLICK' } );
-  $tag_args .= '  ' . qq( onclick="return reactor_element_disable_on_click( this, $disable_on_click );" ) if $confirm !~ /^([^"']+)$/ and $disable_on_click > 0;
+  if( $confirm !~ /^([^"']+)$/ and $disable_on_click > 0 )
+    {
+    $tag_args .= '  ' . "data-class-on='$class' data-class-off='button disabled-button'";
+    $tag_args .= '  ' . qq( onclick="return reactor_element_disable_on_click( this, $disable_on_click );" );
+    }
 
   return "<a href=?_=$href $tag_args>$value</a>$out_extra";
 }

@@ -531,7 +531,7 @@ sub input
     my $reo = $self->get_reo();
     my $clear_hint_handler = html_hover_layer( $reo, VALUE => 'Clear field' );
 
-    if( $clear =~ /^[a-z_\-0-9\/]+\.(png|jpg|jpeg|gif)$/ )
+    if( $clear =~ /^[a-z_\-0-9\/]+\.(png|jpg|jpeg|gif|svg)$/ )
       {
       $clear_tag = qq[ <img class='icon' src='$clear' border='0' onClick='return set_value("$id", "")' $clear_hint_handler > ];
       }

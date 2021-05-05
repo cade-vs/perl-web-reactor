@@ -1,3 +1,12 @@
+##############################################################################
+##
+##  Web::Reactor application machinery
+##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
+##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
+##
+##  LICENSE: GPLv2
+##
+##############################################################################
 package Web::Reactor::Actions::demo::test1;
 use strict;
 use Data::Dumper;
@@ -9,10 +18,11 @@ sub main
 
   my $text;
 
+  $reo->login();
 
   if( $reo->get_input_form_name() eq 'PERSON_FORM' and $reo->get_input_button() eq 'PERSON_CANCEL' )
     {
-    print STDERR "FOOOOOOOOOOOOOOOOOOOOOOOORM BACK HER---------------------\n";
+    print STDERR "FORM BACK HER---------------------\n";
     return $reo->forward_back( OPA => 'hehe' );
     }
 
@@ -55,7 +65,7 @@ sub main
 
   $text .= $form->begin( NAME => 'TEST_FORM' );
   $text .= $form->input( NAME => 'in1' );
-  $text .= $form->cb( NAME => 'cb1' );
+  $text .= $form->checkbox( NAME => 'cb1' );
   $text .= $form->select( NAME => 'sel1', DATA => \@selarr, ROWS => 7, MULTIPLE => 1 );
   $text .= $form->select( NAME => 'sel2', DATA => \@selarr, ROWS => 1 );
   $text .= $form->button( NAME => 'b1', VALUE => 'testing button' );

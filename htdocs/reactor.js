@@ -1,7 +1,7 @@
 /****************************************************************************
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2017 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -11,6 +11,11 @@
 var user_agent = navigator.userAgent.toLowerCase();
 var is_msie    = ( ( user_agent.indexOf( "msie"  ) != -1 ) && ( user_agent.indexOf("opera") == -1 ) );
 var is_opera   =   ( user_agent.indexOf( "opera" ) != -1 );
+
+function get_utime()
+{
+  return Math.round((new Date()).getTime() / 1000);
+}
 
 /*** SHOW/HIDE elements ****************************************************/
 
@@ -61,7 +66,7 @@ function html_element_toggle_id( elem_id )
 function html_block_show( block )
 {
   var ds = "block"; // display style
-  
+
   if( block.tagName == "TR" && ! is_msie )
     ds = "table-row";
 
@@ -113,14 +118,14 @@ function ftree_click( ftree_id, branch_id )
   branch_tr.open = ! branch_tr.open;
 
   var elems = root_table.getElementsByTagName( 'TR' )
-  var bia = branch_id.split(".");
+  var bia = branch_id.split( "." );
 
   for( var i = 0; i < elems.length; i++ )
     {
     var el = elems[i];
     var el_id = elems[i].id;
 
-    var eia = el_id.split(".");
+    var eia = el_id.split( "." );
 
     if( el_id.substr( 0, branch_id.length ) == branch_id )
       {
@@ -138,15 +143,14 @@ function ftree_click( ftree_id, branch_id )
           html_block_hide( el );
           el.open = false;
           }
-        }    
-      }  
+        }
+      }
     }
-
 }
 
 /***************************************************************************/
 
-function current_date()
+function current_date( fmt )
   {
   var now = new Date();
   var d = now.getDate();
@@ -155,7 +159,14 @@ function current_date()
   if( y < 1000 ) y += 1900; // stupid msie shit
   if( d < 10 ) d = '0' + d;
   if( m < 10 ) m = '0' + m;
-  return d + '.' + m + '.' + y;
+  
+  fmt = fmt.substr( 0, 3 );
+  if( fmt == "MDY" )
+    return m + '.' + d + '.' + y;
+  if( fmt == "YMD" )
+    return y + '.' + m + '.' + d;
+  //default: if( fmt == "DMY" ) 
+    return d + '.' + m + '.' + y;
   }
 
 function current_time()
@@ -170,10 +181,10 @@ function current_time()
   return  h + ':' + m + ':' + s;
   }
 
-function current_utime()
+function current_utime( fmt )
   {
   var now = new Date();
-  return current_date() + ' ' + current_time();
+  return current_date( fmt ) + ' ' + current_time();
   }
 
 /* used for input html elements with onClick=js:etc... */
@@ -186,6 +197,25 @@ function set_value( id_name, val )
 
 /***************************************************************************/
 
+function element_absolute_position( el )
+{
+  var pa = el;
+
+  var x = pa.offsetLeft;
+  var y = pa.offsetTop;
+
+  while( pa = pa.offsetParent )
+    {
+    x += pa.offsetLeft;
+    y += pa.offsetTop;
+    }
+
+  var abs_pos = { x: x, y: y, w: el.offsetWidth, h: el.offsetHeight };
+  return abs_pos;
+}
+
+/***************************************************************************/
+
 // TABs support with browser localStorage persistence
 
 function reactor_tab_activate_id( tab_id )
@@ -193,7 +223,7 @@ function reactor_tab_activate_id( tab_id )
   if( ! tab_id ) return;
 
   var tab = document.getElementById( tab_id );
-  
+
   return reactor_tab_activate( tab );
   }
 
@@ -227,5 +257,313 @@ function reactor_tab_activate( tab )
   return false;
   }
 
+/***************************************************************************/
+
+function reactor_form_checkbox_set( el, value )
+{
+   var ch_id  = el.dataset.checkboxInputId;
+   var cb     = document.getElementById( ch_id );
+   cb.value   = value ? 1 : 0;
+   el.checked = value;
+
+   var onchange = cb.getAttribute( 'ONCHANGE' );
+   if( onchange )
+     {
+     if( is_msie )
+       onchange();
+     else
+       eval( onchange );
+     }
+}
+
+function reactor_form_checkbox_toggle( el )
+{
+   reactor_form_checkbox_set( el, el.checked );
+}
+
+function reactor_form_checkbox_set_all( form_id, value )
+{
+  var arr = document.getElementById( form_id ).elements;
+  for( z = 0; z < arr.length; z++ )
+    {
+    var ch_id = arr[z].dataset.checkboxInputId;
+    if( ! ch_id ) continue;
+    if( value == -1 )
+      reactor_form_checkbox_toggle( arr[z] );
+    else  
+      reactor_form_checkbox_set( arr[z], value );
+    }
+}
+
+/*** multi-state checkboxes ************************************************/
+
+function reactor_form_multi_checkbox_setup_id( el_id )
+{
+   var el     = document.getElementById( el_id );
+   var cb_id  = el.dataset.checkboxInputId;
+   var cb     = document.getElementById( cb_id );
+
+   reactor_form_multi_checkbox_set( el, cb, cb.value );
+}
+
+function reactor_form_multi_checkbox_toggle( el )
+{
+   var cb_id  = el.dataset.checkboxInputId;
+   var cb     = document.getElementById( cb_id );
+
+   reactor_form_multi_checkbox_set( el, cb, +cb.value + 1 );
+}
+
+function reactor_form_multi_checkbox_set( el, cb, new_value )
+{
+   var stages = el.dataset.stages;
+   var value = cb.value;
+   if( new_value >= stages ) 
+     cb.value = 0;
+   else
+     cb.value = new_value;  
+
+   var new_label = el.dataset[ "valueLabel-" + cb.value ];
+   var new_class = el.dataset[ "valueClass-" + cb.value ];
+
+   el.className = new_class;
+   el.innerHTML = new_label;
+
+   if( new_value != value )
+     {
+     var onchange = cb.getAttribute( 'ONCHANGE' );
+     if( onchange )
+       {
+       if( is_msie )
+         onchange();
+       else
+         eval( onchange );
+       }
+     }  
+}
+
+
+/*** hover layers *******************************************************/
+
+var reactor_hover_layer;
+var reactor_hover_layer_timeout_id;
+
+function reactor_hover_show( el, hl_name )
+  {
+  reactor_hover_show_delay( el, hl_name, 0 );
+  }
+
+function reactor_hover_show_delay( el, hl_name, delay, event )
+  {
+  if( reactor_hover_layer_timeout_id ) 
+    clearTimeout( reactor_hover_layer_timeout_id );
+
+  reactor_hover_layer = document.getElementById( hl_name );
+  reactor_hover_layer_timeout_id = setTimeout( "reactor_hover_activate()", delay );
+  reactor_hover_reposition( event );
+  el.onmousemove = is_msie ? reactor_hover_reposition_ie : reactor_hover_reposition;
+  el.onmouseout  = reactor_hover_hide;
+  }
+
+function reactor_hover_activate()
+  {
+  clearTimeout( reactor_hover_layer_timeout_id );
+  reactor_hover_layer.style.display  = "block";
+  reactor_hover_layer.style.position = "absolute";
+  }
+
+function reactor_hover_hide()
+  {
+  reactor_hover_layer.style.display = "none";
+  clearTimeout( reactor_hover_layer_timeout_id );
+  }
+
+function reactor_hover_reposition_xy( ex, ey )
+  {
+  var pw = window.innerWidth;
+  var ph = window.innerHeight;
+  var dw = reactor_hover_layer.offsetWidth;
+  var dh = reactor_hover_layer.offsetHeight;
+
+  var px = ex;
+  var py = ey;
+  
+  var doc  = document.documentElement;
+  var body = document.body;
+
+  var scrollLeft = (doc && doc.scrollLeft || body && body.scrollLeft || 0);
+  var scrollTop  = (doc && doc.scrollTop  || body && body.scrollTop  || 0);
+  
+  px += scrollLeft;
+  py += scrollTop;
+
+  var left = px + ( ( px + 16 + dw ) > pw ? -( 16 + dw ) : 16 );
+  var top  = py + ( ( py + 16 + dh ) > ph ? -( 16 + dh ) : 16 );
+
+  reactor_hover_layer.style.left = left + 'px';
+  reactor_hover_layer.style.top  = top  + 'px';
+
+  return false;
+  }
+
+function reactor_hover_reposition( event )
+  {
+  reactor_hover_reposition_xy( event.clientX, event.clientY );
+  }
+
+function reactor_hover_reposition_ie()
+  {
+  return reactor_hover_reposition( event );
+  }
+
+/*** popup layers **********************************************************/
+
+function reactor_get_popup_layer( el )
+{
+  return document.getElementById( el.dataset.popupLayerId );
+}
+
+function reactor_popup_mouse_toggle( el, opt )
+{
+  var popup_layer = reactor_get_popup_layer( el );
+  if( popup_layer.style.display == 'block' )
+    reactor_popup_hide( el );
+  else
+    reactor_popup_show( el );
+
+  return false;
+};
+
+/*-------------------------------------------------------------------*/
+
+function reactor_popup_mouse_over( el, opt )
+{
+  if( ! opt ) opt = {};
+  
+  var timeout = opt.timeout > 0 ? opt.timeout : 200;
+  
+  var popup_layer = reactor_get_popup_layer( el );
+  if( popup_layer.style.display == 'block' )
+    {
+    //console.log( "there is open popup, remove all running timeouts" );
+    reactor_popup_clear_tos( el );
+    return false;
+    }  
+  else
+    {
+    //console.log( "there is no open popup, set timeout for open" );
+    if( opt.click_open )
+      reactor_popup_show( el );
+    else
+      el.open_to = setTimeout( function() { reactor_popup_show( el ) }, timeout );
+    el.onmouseout = function()
+                    {
+                    //console.log( "mouse out from main element, cancel open timeout, set close timeout" );
+                    if( el.open_to )
+                      clearTimeout( el.open_to );
+                    el.onmouseout = null;
+                    el.close_to   = setTimeout( function() 
+                                                { 
+                                                //console.log( "close timeout up, hide popup" );
+                                                reactor_popup_hide( el ) 
+                                                }, timeout );
+                    
+                    popup_layer.onmouseover = function() 
+                                              { 
+                                              //console.log( "mouse inside popup, cancel all timeouts" );
+                                              reactor_popup_clear_tos( el );
+                                              };
+
+                    popup_layer.onmouseout  = function() 
+                                              { 
+                                              //console.log( "mouse leave popup, set close timeout" );
+                                              reactor_popup_clear_tos( el );
+                                              el.close_to = setTimeout( function() { reactor_popup_hide( el ) }, timeout );
+                                              };
+                    };
+    }  
+
+  return false;
+};
+
+function reactor_popup_clear_tos( el )
+{
+  if( el.open_to )
+    clearTimeout( el.open_to );
+  if( el.close_to )
+    clearTimeout( el.close_to );
+}
+
+/*-------------------------------------------------------------------*/
+
+function reactor_popup_show( el )
+{
+  var class_on = el.dataset.popupClassOn;
+  if( class_on )
+    el.className = class_on;
+
+  var popup_layer = reactor_get_popup_layer( el );
+  popup_layer.style.display  = "block";
+  popup_layer.style.position = "absolute";
+
+  var abs_pos = element_absolute_position( el );
+
+  var pw = window.innerWidth;
+  var ph = window.innerHeight;
+  var dw = popup_layer.offsetWidth;
+  var dh = popup_layer.offsetHeight;
+
+  var ex = abs_pos.x;
+  var ey = abs_pos.y;
+  var ew = abs_pos.w;
+  var eh = abs_pos.h;
+
+  var doc  = document.documentElement;
+  var body = document.body;
+
+  var scrollLeft = (doc && doc.scrollLeft || body && body.scrollLeft || 0);
+  var scrollTop  = (doc && doc.scrollTop  || body && body.scrollTop  || 0);
+
+  ex += scrollLeft;
+//  ey += scrollTop; // for some (stupid) reason, ey is page-absolute
+
+  pw += scrollLeft;
+  ph += scrollTop;
+
+  var left = (ex + 16 + dw) > pw ? pw - dw - 16 : ex;
+  var top  = (ey + 16 + dh) > ph ? ph - dh - 16 : ey;
+
+  top += eh;
+
+  popup_layer.style.left = left + 'px';
+  popup_layer.style.top  = top  + 'px';
+
+  return false;
+}
+
+function reactor_popup_hide( el )
+{
+  var class_off = el.dataset.popupClassOff;
+  if( class_off )
+    el.className = class_off;
+
+  var popup_layer = reactor_get_popup_layer( el );
+  popup_layer.style.display = "none";
+  
+  reactor_popup_clear_tos( el );
+}
+
+/*-------------------------------------------------------------------*/
+
+function reactor_element_disable_on_click( el, timeout )
+{
+  if( get_utime() < el.is_disabled ) return false;
+  el.is_disabled = get_utime() + timeout;
+  var con  = el.dataset.classOn;
+  var coff = el.dataset.classOff;
+  el.className = coff;
+  el.disabled_to = setTimeout( function() { el.is_disabled = 0; el.className = con; }, timeout * 1000 );
+  return true;
+}
 
 /***EOF*********************************************************************/

@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2017 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -23,15 +23,24 @@ our @EXPORT = qw(
                 html_hover_layer
                 html_popup_layer
 
+                html_alink
+
                 html_tabs_table
                 );
 use strict;
-use Carp; # FIXME: da se smeni sys exception::sink
+use Exception::Sink;
 use Data::Tools;
 use Web::Reactor::HTML::Tab;
+use Web::Reactor::HTML::Layout;
 my %HTML_ESCAPES = (
+                   '&' => '&amp;',
                    '>' => '&gt;',
                    '<' => '&lt;',
+                   ' ' => '&#32;',
+                   '"' => '&#34;',
+                   "'" => '&#39;',
+                   '/' => '&#47;',
+                   '=' => '&#61;',
                    );
 
 ##############################################################################
@@ -39,169 +48,10 @@ my %HTML_ESCAPES = (
 sub html_escape
 {
   my $s = shift;
-  $s =~ s/([<>])/$HTML_ESCAPES{ $1 }/ge;
+  $s =~ s|([&<> "'/=])|$HTML_ESCAPES{ $1 }|ge;
   return $s;
 }
 
-##############################################################################
-
-
-=pod
-
-takes two-dimensional perl array and formats it in html table
-
-DEMO:
-
-  my @data;
-
-  push @data, [
-              '123',
-              { ARGS => 'align=right', DATA => 'asd' },
-              'qwe'
-              ];
-  push @data, {
-                CLASS => 'grid',
-                DATA => [
-                        '123',
-                        { ARGS  => 'align=center', DATA => 'asd' },
-                        { CLASS => 'fmt-img',      DATA => 'qwe' },
-                        ],
-              };
-  push @data, {
-              # columns class list (CCL), used only for current row
-              # use PCCL for permanent (for the rest of the rows)
-              CCL  => [ 'view-name-h', 'view-value-h' ],
-              DATA => [ 'name',        'value'        ],
-              };
-  push @data, {
-              PCCL  => [ 'view-name-h', 'view-value-h' ],
-              # set only PCCL and skip this row
-              SKIP  => YES,
-              };
-
-  $text .= html_table( \@data, ARGS => 'width=100%' );
-
-=cut
-
-
-sub html_table
-{
-  my $rows = shift;
-  my %opt  = @_;
-
-  hash_uc_ipl( \%opt );
-
-  # t_* table attr
-  # r_* row   attr
-  # c_* cell  attr
-
-  my $t_args;
-  $t_args ||= $opt{ 'ARGS' };
-  $t_args ||= 'class=' . $opt{ 'CLASS' } if $opt{ 'CLASS' };
-
-  my $tr1 = $opt{ 'TR1' } || $opt{ 'TR-1' } || 'tr-1';
-  my $tr2 = $opt{ 'TR2' } || $opt{ 'TR-2' } || 'tr-2';
-  my $trh = $opt{ 'TRH' };
-  my $tdh = $opt{ 'TDH' };
-
-  my $ccl  = $opt{ 'CCL'  } || undef;
-  my $pccl = $opt{ 'PCCL' } || undef;
-
-  my $t_cmt = $opt{ 'COMMENT' };
-
-  my $text;
-  $text .= "\n\n\n";
-  $text .= "<!--- BEGIN TABLE: $t_cmt --->\n" if $t_cmt;
-  $text .= "<table $t_args>\n<tbody>\n";
-
-  my $r_class = $tr1;
-
-  my $row_num = 0;
-  for my $row ( @$rows )
-    {
-    my $cols;
-    $r_class = $r_class eq $tr1 ? $tr2 : $tr1;
-    my $r_args;
-
-    $r_class = $trh if $trh and $row_num == 0;
-
-    if ( ! ref( $row ) ) # SCALAR
-      {
-      # fallback
-      $row = [ $row ];
-      }
-
-    if ( ref( $row ) eq 'ARRAY' )
-      {
-      $cols  = $row;
-      $r_args = "class='$r_class'";
-      }
-    elsif ( ref( $row ) eq 'HASH' )
-      {
-      $row      = hash_uc( $row );
-      $cols     = $row->{ 'DATA' };
-      $r_args ||= $row->{ 'ARGS' };
-      $r_args ||= 'class=' . ( $row->{ 'CLASS' } || $r_class );
-      $ccl      = $row->{ 'CCL'  } if $row->{ 'CCL'  };
-      $pccl     = $row->{ 'PCCL' } if $row->{ 'PCCL' };
-
-      next if $row->{ 'SKIP' };
-      }
-    else
-      {
-      # FIXME: carp croak boom :)
-      next;
-      }
-
-    $text  .= "  <tr $r_args>\n";
-
-    $ccl = $pccl if $pccl and ! $ccl; # use permanent cols class list if permanent specified and not local one
-
-    my $col_num = 0;
-    for my $cell ( @$cols )
-      {
-      my $c_class;
-      my $c_args;
-      my $val;
-
-      $c_class = $tdh if $tdh and $row_num == 0;
-      $c_class = $ccl->[ $col_num ] if $ccl and $ccl->[ $col_num ];
-
-      if ( ! ref( $cell ) ) # SCALAR
-        {
-        $val = $cell;
-        }
-      elsif( ref( $cell ) eq 'HASH' )
-        {
-        $cell    = hash_uc( $cell );
-        $val     = $cell->{ 'DATA' };
-        $c_args  = $cell->{ 'ARGS' };
-        $c_args .= " class='" . $cell->{ 'CLASS' } . "'" if $cell->{ 'CLASS' };
-        $c_args .= " width='" . $cell->{ 'WIDTH' } . "'" if $cell->{ 'WIDTH' };
-        }
-      else
-        {
-        # FIXME: carp croak boom :)
-        next;
-        }
-
-      $c_args ||= "class='" . $c_class . "'";
-      $text .= "    <td $c_args>$val</td>\n";
-      $col_num++;
-      }
-
-    $ccl = undef;
-
-    $text  .= "  </tr>\n";
-    $row_num++;
-    }
-
-  $text .= "</tbody>\n</table>\n";
-  $text .= "<!--- END TABLE: $t_cmt --->\n" if $t_cmt;
-  $text .= "\n\n\n";
-
-  return $text;
-}
 
 ##############################################################################
 
@@ -218,12 +68,12 @@ DEMO:
           'yoyo',
           'didi',
           {
-          TITLE => 'TITLE:opa',
+          LABEL => 'opa',
           DATA  => [
                      'tralala',
                      'heyo',
                      {
-                     TITLE => 'TITLE:sesssil',
+                     LABEL => 'sesssil',
                      DATA  => [
                               'tralala',
                               'heyo',
@@ -259,10 +109,10 @@ sub html_ftree
 
   my $html;
 
-  $html .= "<table id=$ftree_table_id $t_args>";
   $html .= "\n";
+  $html .= "<table id=$ftree_table_id $t_args>";
 
-  $html .= __html_ftree_branch( $data, $ftree_table_id, $ftree_table_id . '.' );
+  $html .= __html_ftree_branch( $data, $ftree_table_id, $ftree_table_id . '.', 0, \%opt );
 
   $html .= "</table>";
   $html .= "\n";
@@ -276,15 +126,19 @@ sub __html_ftree_branch
   my $ftree_table_id = shift;
   my $branch_id      = shift;
   my $level          = shift;
+  my $opt            = shift;
 
   my $html;
+
+  $html .= "\n";
 
   for my $row ( @$data )
     {
     my $label;
     my $data;
 
-    my $r_args; # row args
+    my $r_args; # row  args
+    my $c_args; # cell args
 
     if( ref( $row ) eq 'HASH' )
       {
@@ -299,6 +153,9 @@ sub __html_ftree_branch
       $label = $row;
       }
 
+    $r_args ||= $opt->{ 'ARGS_TR' };
+    $c_args ||= $opt->{ 'ARGS_TD' };
+ 
     $ftree_item_id++;
 
     my $row_id = $branch_id . $ftree_item_id . '.';
@@ -306,17 +163,20 @@ sub __html_ftree_branch
     # $label = "($row_id) $label"; # DEBUG
 
     my $hidden = $level > 0 ? "style='display: none'" : undef;
+    my $pad = $level * 2 + 1;
+    my $cell = html_layout_2lr( '&nbsp;', $label, "$pad=<" );
 
     if( ref( $data ) eq 'ARRAY' )
       {
       my $open_code = qq{ onclick='ftree_click( "$ftree_table_id", "$row_id" )' };
-      $html .= "<tr id=$row_id $open_code $hidden $r_args><td>$label</td></tr>";
-      $html .= __html_ftree_branch( $data, $ftree_table_id, $row_id, $level + 1 );
+      $html .= "<tr id=$row_id $open_code $r_args $hidden><td $c_args>$cell</td></tr>";
+      $html .= __html_ftree_branch( $data, $ftree_table_id, $row_id, $level + 1, $opt );
       }
     else
       {
-      $html .= "<tr id=$row_id $hidden $r_args><td>$label</td></tr>";
+      $html .= "<tr id=$row_id $hidden $r_args><td $c_args>$cell</td></tr>";
       }
+
     $html .= "\n";
     }
 
@@ -332,7 +192,7 @@ sub html_hover_layer
 
   if( ref( $reo ) !~ /^Web::Reactor(::|$)/ )
     {
-    confess "missing REO reactor object";
+    boom "missing REO reactor object";
     }
 
   if( @_ == 1 )
@@ -342,7 +202,7 @@ sub html_hover_layer
 
   my $value = $opt{ 'VALUE' };
   my $class = $opt{ 'CLASS' } || 'hover-layer';
-  my $delay = $opt{ 'DELAY' } || 150;
+  my $delay = $opt{ 'DELAY' } || 250;
 
   my $hover_layer_counter = $reo->html_new_id();
   my $hover_layer_id = "R_HOVER_LAYER_$hover_layer_counter";
@@ -350,12 +210,19 @@ sub html_hover_layer
   my $html;
   my $handle;
 
-  $handle = qq{ onmouseover='hint_layer_show_delay(this,"$hover_layer_id", $delay )' };
+  $handle = qq{ onmouseover='reactor_hover_show_delay( this,"$hover_layer_id", $delay, event )' };
   $html   = qq{ <div class=$class id="$hover_layer_id">$value</div> };
 
-  $reo->html_content_accumulator( 'ACCUMULATOR_HTML', $html );
-
-  return $handle;
+  if ( wantarray )
+    {
+    # will not use ACCUMULATOR_HTML
+    return ( $handle, $html );
+    }
+  else
+    {
+    $reo->html_content_accumulator( 'ACCUMULATOR_HTML', $html );
+    return $handle;
+    }
 }
 
 ##############################################################################
@@ -367,7 +234,7 @@ sub html_popup_layer
 
   if( ref( $reo ) !~ /^Web::Reactor(::|$)/ )
     {
-    confess "missing REO reactor object";
+    boom "missing REO reactor object";
     }
 
   if( @_ == 1 )
@@ -375,56 +242,36 @@ sub html_popup_layer
     %opt = ( VALUE => shift() );
     }
 
-  my $value  = $opt{ 'VALUE' };
-  my $class  = $opt{ 'CLASS' } || 'popup-layer';
-  my $delay  = $opt{ 'DELAY' } || 150;
-  my $show   = $opt{ 'SHOW' } || 'CLICK';
-  my $title  = $opt{ 'TITLE' };
-  my $single = $opt{ 'SINGLE' } ? 1 : 0;
-  my $title_class = $opt{ 'TITLE_CLASS' } || $class . '-title';
+  my $value  = $opt{ 'VALUE'  };
+  my $class  = $opt{ 'CLASS'  } || 'popup-layer';
+  my $delay  = $opt{ 'DELAY'  } || 150;
+  my $type   = $opt{ 'TYPE'   } || 'CLICK';
 
-  my $type  = uc $opt{ 'TYPE' };
+  $delay = 0 unless $delay > 0;
 
-  my $event;
-  my $func = 'return popup_layer_toggle( this, single )';
-
-  $event = $type eq 'CONTEXT' ? 'oncontextmenu' : ( $show eq 'CLICK' ? 'onclick' : 'onmouseover' );
-  $func  = "return popup_layer_show_context_mouse( this, event )"     if $type eq 'CONTEXT';
-  $func  = "return popup_layer_toggle_with_autohide( this, $single )" if $type =~ 'AUTOHIDE2?';
-  $func  = "return popup_layer_show_mouse( this, $single )"           if $show eq 'MOUSE';
+  my $trigger;
+  if( $type eq 'HOVER' )
+    {
+    $trigger = qq( onMouseOver="return reactor_popup_mouse_over( this )" );
+    }
+  elsif( $type eq 'CONTEXT' )  
+    {
+    $trigger = qq( onContextMenu="return reactor_popup_mouse_over( this )" );
+    }
+  else # ( $type eq 'CLICK' )  
+    {
+    $trigger = qq( onClick="return reactor_popup_mouse_over( this, { click_open: 1 } )" );
+    }  
 
   my $popup_layer_id_counter = $reo->html_new_id();
   my $popup_layer_id = "R_POPUP_LAYER_$popup_layer_id_counter";
 
-  my $html;
-  my $handle;
+  my $handle  = qq( $trigger data-popup-layer-id="$popup_layer_id" );
+  my $html    = qq( <div class=$class id="$popup_layer_id">$value</div> );
 
-  $handle  = qq{ popup_layer_id="$popup_layer_id" $event="$func" };
-###  $handle .= qq{ onmouseout="$func" } if $event eq 'onmouseover';
-  $html   .= qq{
-                <div class=$class id="$popup_layer_id">
-                <table cellspacing=0 cellpadding=5>
-              };
-  if( $title )
+  if ( wantarray )
     {
-    my $closebox = $type eq 'AUTOHIDE' ? '&nbsp;' : qq{ <img popup_layer_id="$popup_layer_id" onclick="popup_layer_hide( this )" src=img/close.png> };
-    $html .= qq{
-                 <tr>
-                     <td class=$title_class><b>$title</b></td>
-                     <td align=right class=$title_class>$closebox</td>
-                 </tr>
-               };
-    }
-  $html .= qq{
-                 <tr>
-                     <td colspan=2>$value</td>
-                 </tr>
-               </table>
-               </div>
-             };
-
-  if ( $opt{ 'NO_ACCUMULATOR' } )
-    {
+    # will not use ACCUMULATOR_HTML
     return ( $handle, $html );
     }
   else
@@ -432,6 +279,50 @@ sub html_popup_layer
     $reo->html_content_accumulator( 'ACCUMULATOR_HTML', $html );
     return $handle;
     }
+}
+
+##############################################################################
+
+sub html_alink
+{
+  my $reo   =    shift;
+  my $type  = lc shift;
+  my $value =    shift;
+  my $opts  =    shift; # hashref with alink options
+  my @args  = @_;
+
+  my $href = $reo->args_type( $type, @args );
+
+  my $tag_args;
+  my $out_extra; # FIXME: TODO: option for using this
+
+  my $tag_id = $opts->{ 'ID' };
+  $tag_args .= '  ' . "ID='$tag_id'";
+
+  my $class = $opts->{ 'CLASS' };
+  $tag_args .= '  ' . "class='$class'";
+
+  my $hint = $opts->{ 'HINT' };
+  if( $hint )
+    {
+    my ( $hint_tag_arg, $hint_out_extra ) = html_hover_layer( $reo, VALUE => $hint, DELAY => 1000 );
+    $tag_args  .= '  ' . $hint_tag_arg;
+    $out_extra .= $hint_out_extra; # FIXME: TODO: option for using this
+    }
+  
+  my $confirm = $opts->{ 'CONFIRM' };
+  $tag_args .= '  ' . qq( onclick="return confirm('$confirm');" ) if $confirm =~ /^([^"']+)$/;
+
+  # FIXME: FIX REACTOR TO HAVE SENSIBLE HTML_LINK FUNCTIONS, I.E. CONVERT HINT TO HASHREF!
+  my $disable_on_click = int( $opts->{ 'DISABLE_ON_CLICK' } );
+  if( $confirm !~ /^([^"']+)$/ and $disable_on_click > 0 )
+    {
+    my $class_off = $opts->{ 'DISABLE_ON_CLICK_CLASS' };
+    $tag_args .= '  ' . "data-class-on='$class' data-class-off='$class_off'";
+    $tag_args .= '  ' . qq( onclick="return reactor_element_disable_on_click( this, $disable_on_click );" );
+    }
+
+  return "<a href=?_=$href $tag_args>$value</a>$out_extra";
 }
 
 ##############################################################################

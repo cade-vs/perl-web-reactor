@@ -1,3 +1,12 @@
+##############################################################################
+##
+##  Web::Reactor application machinery
+##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
+##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
+##
+##  LICENSE: GPLv2
+##
+##############################################################################
 package Web::Reactor::Actions::demo::view;
 use strict;
 use Data::Dumper;

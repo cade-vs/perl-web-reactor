@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -10,6 +10,8 @@
 package Web::Reactor::Preprocessor;
 use strict;
 
+use parent 'Web::Reactor::Base'; 
+ 
 sub new
 {
   my $class = shift;
@@ -47,6 +49,13 @@ sub load_file { die "Web::Reactor::Preprocessor::*::load_file() is not implement
 # returns:
 #       preprocessed page text
 sub process { die "Web::Reactor::Preprocessor::*::process() is not implemented!"; }
+
+#sub DESTROY
+#{
+#  my $self = shift;
+#
+#  print "DESTROY: $self\n";
+#}
 
 ##############################################################################
 1;

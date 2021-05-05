@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -15,9 +15,8 @@ use Web::Reactor::Utils;
 use POSIX;
 use Storable qw( freeze thaw lock_store lock_retrieve );
 use Data::Dumper; 
-use Carp;
 
-our @ISA = qw( Web::Reactor::Sessions );
+use parent 'Web::Reactor::Sessions';
 
 ##############################################################################
 ##
@@ -43,7 +42,7 @@ sub _storage_create
   
   my $fn = $self->_key_to_fn( {}, @_ );
   my $F;
-  if( sysopen $F, $fn, O_CREAT | O_EXCL, oct(600) )
+  if( sysopen $F, $fn, O_CREAT | O_EXCL, 0600 )
     {
     close $F;
     return 1;
@@ -66,18 +65,18 @@ sub _storage_load
   my $fn = $self->_key_to_fn( { READONLY => 1 }, @_ );
   if( ! -r $fn )
     {
-    carp "error: session file not readable: $fn";
+    $self->get_reo()->log( "error: session file not readable: $fn" );
     return undef;
     }
   my $in_data;
   eval
     {
     $in_data = lock_retrieve( $fn );
-    die "error: cannot retrieve session data from [$fn]" unless $in_data;
+    boom "error: cannot retrieve session data from [$fn]" unless $in_data;
     };
-  if ($@)
+  if( $@ )
     {
-    carp "error: retrieving session failed $fn\n($@)"; # FIXME: must not be fatal
+    $self->get_reo()->log( "error: retrieving session failed $fn\n($@)" );
     return undef;
     }
 
@@ -149,7 +148,7 @@ sub _key_to_fn
   my @key  = @_;
 
   my $r = shift @key; # this should be type
-  confess "invalid key component 0, needs ALPHANUMERIC type, got [$r]" unless $r =~ /^[A-Z]+$/;
+  boom "invalid key component 0, needs ALPHANUMERIC type, got [$r]" unless $r =~ /^[A-Z]+$/;
   
   my $vd = $self->{ 'ENV' }{ 'SESS_VAR_DIR' };
   if( ! $vd )
@@ -159,12 +158,12 @@ sub _key_to_fn
     $vd = "$app_root/var";
     }
   dir_path_check( $vd ) unless -d $vd;
-  confess "missing SESS_VAR_DIR or APP_ROOT/var" unless -d $vd;
+  boom "missing SESS_VAR_DIR or APP_ROOT/var [$vd]" unless -d $vd;
 
   while( @key > 0 )
     {
     my $c = shift @key;
-    confess "invalid key component needs ALPHANUMERIC, got [$c]" unless $c =~ /^[A-Za-z0-9]+$/;
+    boom "invalid key component needs ALPHANUMERIC, got [$c]" unless $c =~ /^[A-Za-z0-9]+$/;
     $r .= '/' . $self->_split_dir_components( $c, 2, 2 );
     }
 

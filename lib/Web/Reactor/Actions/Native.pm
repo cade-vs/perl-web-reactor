@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -10,11 +10,10 @@
 package Web::Reactor::Actions::Native;
 use strict;
 use Exception::Sink;
-use Carp;
 use Web::Reactor::Actions;
 use Data::Dumper;
 
-our @ISA = qw( Web::Reactor::Actions );
+use parent 'Web::Reactor::Actions';
 
 # calls an action (function) by name
 # args:
@@ -31,13 +30,15 @@ sub call
   my $name = lc shift;
   my %args = @_;
 
+  die "invalid action name, expected ALPHANUMERIC, got [$name]" unless $name =~ /^[a-z_\-0-9]+$/;
+
   my $ap = $self->__find_act_pkg( $name );
 
 #  print STDERR Dumper( $name, $ap, \%args );
 
   if( ! $ap )
     {
-    confess "action package for action name [$name] not found";
+    boom "action package for action name [$name] not found";
     return undef;
     }
 
@@ -46,13 +47,13 @@ sub call
 
   my $cr = \&{ "${ap}::main" }; # call/function reference
 
-  my $text;
+  my $data;
 
-  $text = $cr->( $self->{ 'REO_REACTOR' }, %args );
+  $data = $cr->( $self->get_reo(), %args );
 
-  # print STDERR "reactor::actions::call result: $text\n";
+  # print STDERR "reactor::actions::call result: $data\n";
 
-  return $text;
+  return $data;
 }
 
 sub __find_act_pkg
@@ -74,6 +75,7 @@ sub __find_act_pkg
     $dirs = [ "$app_root/lib" ]; # FIXME: 'act' actions ?
     }
 
+  # actions sets list
   my @asl = @{ $self->{ 'ENV' }{ 'ACTIONS_SETS' } || [] };
   @asl = ( $app_name, "Base", "Core" ) unless @asl > 0;
 
@@ -92,7 +94,7 @@ sub __find_act_pkg
       };
     if( ! $@ )  
       {
-      print STDERR "LOADED! action: $ap\n";
+      print STDERR "LOADED! action: $ap: $fn [@INC]\n";
       $act_cache->{ $name } = $ap;
       return $ap;
       }

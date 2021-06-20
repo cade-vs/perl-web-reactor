@@ -125,17 +125,17 @@ sub new
   $self->{ 'REO_ACTS' }->__set_reo( $self );
 
   # debug setup
-  $self->log_debug( "debug: setup: " . Dumper( $self->{ 'ENV' } ) );
+  $self->log_debug( "debug: Reactor[$self] setup: " . Dumper( $self->{ 'ENV' } ) );
 
   return $self;
 }
 
-#sub DESTROY
-#{
-# my $self = shift;
-#
-# print "DESTROY: Reactor: $self\n";
-#}
+sub DESTROY
+{
+  my $self = shift;
+
+  $self->log_debug( "debug: DESTROY: Reactor[$self] destroyed" );
+}
 
 ##############################################################################
 
@@ -183,6 +183,7 @@ sub main_process
   # 2. loading cookie
   my $cookie_name = lc( $self->{ 'ENV' }{ 'COOKIE_NAME' } || "$app_name\_cookie" );
   my $user_sid = $self->get_cookie( $cookie_name );
+  $self->log_debug( "debug: incoming USER_SID cookie name [$cookie_name] value [$user_sid]" );
 
   # 3. loading user session, setup new session and cookie if needed
   my $user_shr = {}; # user session hash ref
@@ -476,7 +477,7 @@ sub __create_new_user_session
     {
     $path = $self->{ 'HTTP_ENV' }{ 'REQUEST_URI' };
     #print STDERR ">>>>>>>>>>>>>>>>>>>111>>>>>>>>>>>>>>> cookie path [$path]\n";
-    $path =~ s/^([^\?]*\/)([^\?\/]*\?)(.*)$/$1/; # remove args: ?...
+    $path =~ s/^([^\?]*\/)([^\?\/]*\??)(.*)$/$1/; # remove args: ?...
     #print STDERR ">>>>>>>>>>>>>>>>>>>222>>>>>>>>>>>>>>> cookie path [$path]\n";
     }
   $path ||= '/';  

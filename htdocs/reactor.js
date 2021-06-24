@@ -311,7 +311,7 @@ function reactor_form_multi_checkbox_toggle( el )
    var cb_id  = el.dataset.checkboxInputId;
    var cb     = document.getElementById( cb_id );
 
-   reactor_form_multi_checkbox_set( el, cb, +cb.value + 1 );
+   reactor_form_multi_checkbox_set( el, cb, (+cb.value) + 1 );
 }
 
 function reactor_form_multi_checkbox_set( el, cb, new_value )

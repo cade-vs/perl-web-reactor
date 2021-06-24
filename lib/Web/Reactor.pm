@@ -477,7 +477,7 @@ sub __create_new_user_session
     {
     $path = $self->{ 'HTTP_ENV' }{ 'REQUEST_URI' };
     #print STDERR ">>>>>>>>>>>>>>>>>>>111>>>>>>>>>>>>>>> cookie path [$path]\n";
-    $path =~ s/^([^\?]*\/)([^\?\/]*\??)(.*)$/$1/; # remove args: ?...
+    $path =~ s/^([^\?]*\/)([^\?\/]*)(\?.*)?$/$1/; # remove args: ?...
     #print STDERR ">>>>>>>>>>>>>>>>>>>222>>>>>>>>>>>>>>> cookie path [$path]\n";
     }
   $path ||= '/';  

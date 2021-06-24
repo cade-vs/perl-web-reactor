@@ -533,12 +533,12 @@ sub input
 
     if( $clear =~ /^[a-z_\-0-9\/]+\.(png|jpg|jpeg|gif|svg)$/ )
       {
-      $clear_tag = qq[ <img class='icon' src='$clear' border='0' onClick='return set_value("$id", "")' $clear_hint_handler > ];
+      $clear_tag = qq[ <img class='icon icon-clear' src='$clear' border='0' onClick='return set_value("$id", "")' $clear_hint_handler > ];
       }
     else
       {
       my $s = $clear eq 1 ? '&otimes;' : $clear;
-      $clear_tag = qq[ <span class='icon' border='0' onClick='return set_value("$id", "")' $clear_hint_handler >$s</span> ];
+      $clear_tag = qq[ <span class='icon icon-clear' border='0' onClick='return set_value("$id", "")' $clear_hint_handler >$s</span> ];
       }
     }
 

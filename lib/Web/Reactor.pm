@@ -161,11 +161,12 @@ sub run
     {
     my $psid = $self->get_page_session_id( 0 ) || 'empty';
     my $rsid = $self->get_page_session_id( 1 ) || 'empty';
+    my $usid = $self->get_user_session_id() || 'empty';
     $self->log_dumper( "USER INPUT -----------------------------------", $self->get_user_input() );
     $self->log_dumper( "SAFE INPUT -----------------------------------", $self->get_safe_input() );
     $self->log_dumper( "FINAL PAGE SESSION [$psid]-----------------------------------", $self->get_page_session() );
     $self->log_dumper( "FINAL REF  SESSION [$rsid]-----------------------------------", $self->get_page_session( 1 ) );
-    $self->log_dumper( "FINAL USER SESSION [$psid]-----------------------------------", $self->get_user_session() );
+    $self->log_dumper( "FINAL USER SESSION [$usid]-----------------------------------", $self->get_user_session() );
     }
 
 }
@@ -198,8 +199,7 @@ sub main_process
   $self->{ 'SESSIONS' }{ 'SID'  }{ 'USER' } = $user_sid;
   $self->{ 'SESSIONS' }{ 'DATA' }{ 'USER' }{ $user_sid } = $user_shr;
 
-  # read and save http environment data into user session, used for checks and info
-  $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $ENV{ $_ } } @HTTP_VARS_SAVE  };
+  my $immediate_render_error_page;
 
   if( ( $user_shr->{ ':LOGGED_IN' } and $user_shr->{ ':XTIME' } > 0 and time() > $user_shr->{ ':XTIME' } )
       or
@@ -214,7 +214,7 @@ sub main_process
 
     ( $user_sid, $user_shr ) = $self->__create_new_user_session();
 
-    $self->render( PAGE => 'eexpired' );
+    $immediate_render_error_page = 'eexpired';
     }
 
   for my $k ( keys %{ $user_shr->{ ":HTTP_CHECK_HR" } } )
@@ -230,9 +230,14 @@ sub main_process
 
     ( $user_sid, $user_shr ) = $self->__create_new_user_session();
 
-    $self->render( PAGE => 'einvalid' );
+    $immediate_render_error_page = 'einvalid';
     last;
     }
+
+  # read and save http environment data into user session, used for checks and info
+  $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $ENV{ $_ } } @HTTP_VARS_SAVE  };
+
+  $self->render( PAGE => $immediate_render_error_page ) if $immediate_render_error_page;
 
   # FIXME: move to single place
   my $user_session_expire = $self->{ 'ENV' }{ 'USER_SESSION_EXPIRE' } || 600; # 10 minutes

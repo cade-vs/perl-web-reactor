@@ -199,8 +199,6 @@ sub main_process
   $self->{ 'SESSIONS' }{ 'SID'  }{ 'USER' } = $user_sid;
   $self->{ 'SESSIONS' }{ 'DATA' }{ 'USER' }{ $user_sid } = $user_shr;
 
-  my $immediate_render_error_page;
-
   if( ( $user_shr->{ ':LOGGED_IN' } and $user_shr->{ ':XTIME' } > 0 and time() > $user_shr->{ ':XTIME' } )
       or
       ( $user_shr->{ ':CLOSED' } ) )
@@ -214,7 +212,7 @@ sub main_process
 
     ( $user_sid, $user_shr ) = $self->__create_new_user_session();
 
-    $immediate_render_error_page = 'eexpired';
+    $self->render( PAGE => 'eexpired' );
     }
 
   for my $k ( keys %{ $user_shr->{ ":HTTP_CHECK_HR" } } )
@@ -230,14 +228,12 @@ sub main_process
 
     ( $user_sid, $user_shr ) = $self->__create_new_user_session();
 
-    $immediate_render_error_page = 'einvalid';
+    $self->render( PAGE => 'einvalid' );
     last;
     }
 
   # read and save http environment data into user session, used for checks and info
   $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $ENV{ $_ } } @HTTP_VARS_SAVE  };
-
-  $self->render( PAGE => $immediate_render_error_page ) if $immediate_render_error_page;
 
   # FIXME: move to single place
   my $user_session_expire = $self->{ 'ENV' }{ 'USER_SESSION_EXPIRE' } || 600; # 10 minutes
@@ -499,6 +495,7 @@ sub __create_new_user_session
   $self->set_user_session_expire_time_in( $user_session_expire );
 
   $user_shr->{ ":HTTP_CHECK_HR" } = { map { $_ => $ENV{ $_ } } @HTTP_VARS_CHECK };
+  $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $ENV{ $_ } } @HTTP_VARS_SAVE  };
 
   return ( $user_sid, $user_shr );
 }

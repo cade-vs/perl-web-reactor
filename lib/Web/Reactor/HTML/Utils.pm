@@ -294,7 +294,6 @@ sub html_alink
   my $href = $reo->args_type( $type, @args );
 
   my $tag_args;
-  my $out_extra; # FIXME: TODO: option for using this
 
   my $tag_id = $opts->{ 'ID' };
   $tag_args .= '  ' . "ID='$tag_id'";
@@ -305,9 +304,8 @@ sub html_alink
   my $hint = $opts->{ 'HINT' };
   if( $hint )
     {
-    my ( $hint_tag_arg, $hint_out_extra ) = html_hover_layer( $reo, VALUE => $hint, DELAY => 1000 );
+    my $hint_tag_arg = html_hover_layer( $reo, VALUE => $hint, DELAY => 1000 );
     $tag_args  .= '  ' . $hint_tag_arg;
-    $out_extra .= $hint_out_extra; # FIXME: TODO: option for using this
     }
   
   my $confirm = $opts->{ 'CONFIRM' };
@@ -322,7 +320,7 @@ sub html_alink
     $tag_args .= '  ' . qq( onclick="return reactor_element_disable_on_click( this, $disable_on_click );" );
     }
 
-  return "<a href=?_=$href $tag_args>$value</a>$out_extra";
+  return "<a href=?_=$href $tag_args>$value</a>";
 }
 
 ##############################################################################

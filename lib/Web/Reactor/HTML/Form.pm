@@ -451,7 +451,7 @@ sub textarea
 
   my $options;
 
-  $options .= "disabled='disabled'"  if $opt{ 'DISABLED' };
+  $options .= "disabled='disabled' " if $opt{ 'DISABLED' };
   $options .= "maxlength='$maxl' "   if $maxl > 0;
   $options .= "id='$id' "            if $id ne '';
   $options .= "readonly='readonly' " if $opt{ 'READONLY' } || $opt{ 'RO' };
@@ -499,7 +499,7 @@ sub input
 
   my $options;
 
-  $options .= "disabled='disabled'"  if $opt{ 'DISABLED' };
+  $options .= "disabled='disabled' " if $opt{ 'DISABLED' };
   $options .= "size='$size' "        if $size > 0;
   $options .= "maxlength='$maxl' "   if $maxl > 0;
   $options .= "id='$id' "            if $id ne '';
@@ -571,12 +571,20 @@ sub button
 
   __check_name( $name );
 
+  my $options;
+  
+  if( $opt{ 'DISABLED' } )
+    {
+    $options .= "disabled='disabled' " ;
+    $class   .= " disabled-button";
+    }
+
   my $text;
 
   $name =~ s/^button://i;
 
   my $form_id = $self->{ 'FORM_ID' };
-  $text .= "<input class='$class' id='$id' type='submit' name='button:$name' value='$value' onDblClick='return false;' form='$form_id' $args>";
+  $text .= "<input class='$class' id='$id' type='submit' name='button:$name' value='$value' onDblClick='return false;' form='$form_id' $options $args>";
 
   $text .= "\n";
   return $text;

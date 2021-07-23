@@ -296,20 +296,27 @@ sub html_alink
   my $tag_args;
 
   my $tag_id = $opts->{ 'ID' };
-  $tag_args .= '  ' . "ID='$tag_id'";
 
   my $class = $opts->{ 'CLASS' };
-  $tag_args .= '  ' . "class='$class'";
-
   my $hint = $opts->{ 'HINT' };
+  
+  my $confirm = $opts->{ 'CONFIRM' };
+  $tag_args .= '  ' . qq( onclick="return confirm('$confirm');" ) if $confirm =~ /^([^"']+)$/;
+  
+  if( $opts->{ 'DISABLED' } )
+    {
+    $tag_args .= '  ' . qq( onclick="return false;" ) ;
+    $class .= " disabled-button";
+    $hint = undef; # remove button hints for disabled buttons
+    }
+
+  $tag_args .= '  ' . "ID='$tag_id'";
+  $tag_args .= '  ' . "class='$class'";
   if( $hint )
     {
     my $hint_tag_arg = html_hover_layer( $reo, VALUE => $hint, DELAY => 1000 );
     $tag_args  .= '  ' . $hint_tag_arg;
     }
-  
-  my $confirm = $opts->{ 'CONFIRM' };
-  $tag_args .= '  ' . qq( onclick="return confirm('$confirm');" ) if $confirm =~ /^([^"']+)$/;
 
   # FIXME: FIX REACTOR TO HAVE SENSIBLE HTML_LINK FUNCTIONS, I.E. CONVERT HINT TO HASHREF!
   my $disable_on_click = int( $opts->{ 'DISABLE_ON_CLICK' } );

@@ -1593,6 +1593,11 @@ sub get_user_session_expire_time
   my $self = shift;
 
   my $user_shr = $self->get_user_session();
+
+#use Exception::Sink;
+#my $xtt = localtime( $user_shr->{ ':XTIME' } );
+#print STDERR "get_user_session_expire_time($user_shr->{ ':XTIME' })[$xtt]\n" . Exception::Sink::get_stack_trace();
+
   return exists $user_shr->{ ':XTIME' } ? $user_shr->{ ':XTIME' } : undef;
 }
 

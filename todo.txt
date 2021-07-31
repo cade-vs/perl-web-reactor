@@ -6,13 +6,6 @@
 
 -- logging
 
-
--- func to report and dump stack on error (stack in debug only?)
-
--- logging
-
 -- formengine via $reo (proxy)
 
--- fors interface inside reactor, load forms data, save forms data, get submittend form name, etc.
-
--- %content support
+-- forms interface inside reactor, load forms data, save forms data, get submittend form name, etc.

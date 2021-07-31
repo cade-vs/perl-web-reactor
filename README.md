@@ -40,10 +40,9 @@ functionality like:
     * hiding html link data and forms data to rise page-to-page transfer safety.
     * preprocessing of text/html, including hiding data, calling actions etc.
     * on-demand loading of 'actions', perl code modules to handle dynamic pages.
-    
 
 Web::Reactor can be extended, though it was not supposed to. There are 4 main
-parts of it which can be extended. See section EXTENDING below for details.  
+parts of it which can be extended. See section EXTENDING below for details.
 
 # EXAMPLES
 
@@ -72,44 +71,44 @@ Action module example:
     {
       my $reo = shift; # Web::Reactor object. Provides all API and context.
 
-    my $text; # result html text
+      my $text; # result html text
 
-    if( $reo->get_input_button() eq 'FORM_CANCEL' )
-      {
-      # if clicked form button is cancel,
-      # return back to the calling/previous page/view with optional data
-      return $reo->forward_back( ACTION_RETURN => 'IS_CANCEL' );
-      }
+      if( $reo->get_input_button() eq 'FORM_CANCEL' )
+        {
+        # if clicked form button is cancel,
+        # return back to the calling/previous page/view with optional data
+        return $reo->forward_back( ACTION_RETURN => 'IS_CANCEL' );
+        }
 
-    # add some html content
-    $text .= "<p>Reactor::Actions::demo::test here!<p>";
+      # add some html content
+      $text .= "<p>Reactor::Actions::demo::test here!<p>";
 
-    # create link and hide its data. only accessible from inside web app.
-    my $grid_href = $reo->args_new( _PN => 'grid', TABLE => 'testtable', );
-    $text .= "<a href=?_=$grid_href>go to grid</a><p>";
+      # create link and hide its data. only accessible from inside web app.
+      my $grid_href = $reo->args_new( _PN => 'grid', TABLE => 'testtable', );
+      $text .= "<a href=?_=$grid_href>go to grid</a><p>";
 
-    # access page session. it will be auto-loaded on demand
-    my $page_session_hr = $reo->get_page_session();
-    my $fortune = $page_session_hr->{ 'FORTUNE' } ||= `/usr/games/fortune`;
+      # access page session. it will be auto-loaded on demand
+      my $page_session_hr = $reo->get_page_session();
+      my $fortune = $page_session_hr->{ 'FORTUNE' } ||= `/usr/games/fortune`;
 
-    # access input (form) data. $i and $e are hashrefs
-    my $i = $reo->get_user_input(); # get plain user input (hashref)
-    my $e = $reo->get_safe_input(); # get safe data (never reach user browser)
+      # access input (form) data. $i and $e are hashrefs
+      my $i = $reo->get_user_input(); # get plain user input (hashref)
+      my $e = $reo->get_safe_input(); # get safe data (never reach user browser)
 
-    $text .= "<p><hr><p>$fortune<hr>";
+      $text .= "<p><hr><p>$fortune<hr>";
 
-    my $bc = $reo->args_here(); # session keeper, this is manual use
+      my $bc = $reo->args_here(); # session keeper, this is manual use
 
-    $text .= "<form method=post>";
-    $text .= "<input type=hidden name=_ value=$bc>";
-    $text .= "input <input name=inp>";
-    $text .= "<input type=submit name=button:form_ok>";
-    $text .= "<input type=submit name=button:form_cancel>";
-    $text .= "</form>";
+      $text .= "<form method=post>";
+      $text .= "<input type=hidden name=_ value=$bc>";
+      $text .= "input <input name=inp>";
+      $text .= "<input type=submit name=button:form_ok>";
+      $text .= "<input type=submit name=button:form_cancel>";
+      $text .= "</form>";
 
-    my $form = $reo->new_form();
+      my $form = $reo->new_form();
 
-    $text .= "<p><hr><p>";
+      $text .= "<p><hr><p>";
 
       return $text;
     }
@@ -118,7 +117,7 @@ Action module example:
 
 # PAGE NAMES, HTML FILE TEMPLATES, PAGE INSTANCES
 
-Web::Reactor has a notion of a "page" which represents visible output to the 
+Web::Reactor has a notion of a "page" which represents visible output to the
 end user browser. It has (i.e. uses) the following attributes:
 
     * html file template (page name)
@@ -202,10 +201,6 @@ The $html\_args will look like this:
                  'flag2' => 1,
                  };
 
-
-
-
-
 # HTTP PARAMETERS NAMES
 
 Web::Reactor uses underscore and one or two letters for its system http/html
@@ -272,8 +267,6 @@ However it may pass more data when returning back to the caller:
 
 When new page instance has to be called (created):
 
-
-
     $reo->forward_new( _PN => 'some_page_name' );
 
 # CONFIG ENTRIES
@@ -314,25 +307,19 @@ Some entries may be omitted and default values are:
 Web::Reactor is designed to allow extending or replacing the 4 main parts:
 
     * Session storage (data store on filesystem, database, remote or vmem)
-      
 
       base module:    Web::Reactor::Sessions
       current in use: Web::Reactor::Sessions::Filesystem
-    
 
     * HTML creation/expansion/preprocessing
-      
 
       base module:    Web::Reactor::Preprocessor
       current in use: Web::Reactor::Preprocessor::Native
-    
 
     * Actions/modules execution (can be skipped if custom HTML prep used)
-      
 
       base module:    Web::Reactor::Actions
       current in use: Web::Reactor::Actions::Native
-    
 
     * Main Web::Reactor modules, which controlls all the functionality.
 
@@ -356,14 +343,16 @@ to add specific functionality which will be readily available everywhere.
 
 # PROJECT STATUS
 
-At the moment Web::Reactor is in beta. API is mostly frozen but it is possible 
-to be changed and/or extended. However drastic changes are not planned :)
+Web::Reactor is stable and it is used in many production sites including
+banks, insurance, travel and other smaller companies.
+
+API is frozen but it could be extended
 
 If you are interested in the project or have some notes etc, contact me at:
 
     Vladi Belperchinov-Shabanski "Cade"
-    <cade@bis.bg> 
-    <cade@cpan.org> 
+    <cade@noxrun.com>
+    <cade@cpan.org>
     <shabanski@gmail.com>
 
 further contact info, mailing list and github repository is listed below.
@@ -384,16 +373,15 @@ Reactor uses mostly perl core modules but it needs few others:
     * Scalar::Util
     * Hash::Util
     * Data::Dumper (for debugging)
-    * Exception::Sink 
+    * Exception::Sink
     * Data::Tools
-    
 
 All modules are available with the perl package or from CPAN.
 
 Additionally, several are available and from github:
 
-    * Exception::Sink 
-    https://github.com/cade-vs/perl-exception-sink    
+    * Exception::Sink
+    https://github.com/cade-vs/perl-exception-sink
 
     * Data::Tools
     https://github.com/cade-vs/perl-data-tools
@@ -405,6 +393,11 @@ directory inside distribution tarball or inside the github repository. This is
 fully functional (however stupid :)) application. It shows how data is processed,
 calling pages/views, inspecting page (calling views) stack, html forms automation,
 forwarding.
+
+Additionally you may check DECOR information systems infrastructure, which uses
+Web::Reactor for its main web interface:
+
+    https://github.com/cade-vs/perl-decor
 
 # MAILING LIST
 
@@ -422,8 +415,7 @@ forwarding.
 
     <cade@bis.bg> <cade@cpan.org> <shabanski@gmail.com>
 
-    http://cade.datamax.bg
-    
+    http://cade.noxrun.com
 
     https://github.com/cade-vs
 

@@ -22,7 +22,7 @@ use Encode;
 use Web::Reactor::Utils;
 use Web::Reactor::HTML::Form;
 
-our $VERSION = '2.09';
+our $VERSION = '2.10';
 
 ##############################################################################
 
@@ -2084,13 +2084,15 @@ to add specific functionality which will be readily available everywhere.
 
 =head1 PROJECT STATUS
 
-At the moment Web::Reactor is in beta. API is mostly frozen but it is possible
-to be changed and/or extended. However drastic changes are not planned :)
+Web::Reactor is stable and it is used in many production sites including
+banks, insurance, travel and other smaller companies.
+
+API is frozen but it could be extended
 
 If you are interested in the project or have some notes etc, contact me at:
 
   Vladi Belperchinov-Shabanski "Cade"
-  <cade@bis.bg>
+  <cade@noxrun.com>
   <cade@cpan.org>
   <shabanski@gmail.com>
 
@@ -2133,6 +2135,11 @@ fully functional (however stupid :)) application. It shows how data is processed
 calling pages/views, inspecting page (calling views) stack, html forms automation,
 forwarding.
 
+Additionally you may check DECOR information systems infrastructure, which uses
+Web::Reactor for its main web interface:
+
+    https://github.com/cade-vs/perl-decor
+
 =head1 MAILING LIST
 
   web-reactor@googlegroups.com
@@ -2149,7 +2156,7 @@ forwarding.
 
   <cade@bis.bg> <cade@cpan.org> <shabanski@gmail.com>
 
-  http://cade.datamax.bg
+  http://cade.noxrun.com
 
   https://github.com/cade-vs
 

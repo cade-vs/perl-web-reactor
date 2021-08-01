@@ -483,6 +483,7 @@ sub input
   my $name  = uc $opt{ 'NAME'    };
   my $class =    $opt{ 'CLASS'   } || $self->{ 'CLASS_MAP' }{ 'INPUT' } || 'line';
   my $value =    $opt{ 'VALUE'   };
+  my $key   =    $opt{ 'KEY'   };
   my $id    =    $opt{ 'ID'      };
   # FIXME: default data?
   my $size  =    $opt{ 'SIZE'    } || $opt{ 'LEN' } || $opt{ 'WIDTH' };
@@ -494,6 +495,8 @@ sub input
   my $ret   =    $opt{ 'RET'     } || $opt{ 'RETURN'  }; # if return value should be mapped, works only with HIDDEN
 
   my $clear =    $opt{ 'CLEAR'   };
+  
+  my $datalist = $opt{ 'DATALIST' }; # array ref with key value hash
 
   $size = $maxl = $len if $len > 0;
 
@@ -545,7 +548,26 @@ sub input
   my $text;
 
   my $form_id = $self->{ 'FORM_ID' };
-  $text .= "<input class='$class' name='$name' value='$value' $options form='$form_id' $args>$clear_tag";
+  
+  if( $datalist )
+    {
+    my $input_id    = $self->html_new_id();
+    my $datalist_id = $self->html_new_id();
+    $text .= "\n\n\n\n\n<input id=$input_id type=hidden    name='$name' value='$key'          form='$form_id'      >";
+    $text .= "\n<input class='$class' value='$value' list=$datalist_id $options form='$form_id' $args data-input-id=$input_id onchange='return reactor_datalist_change( this )'>$clear_tag";
+    $text .= "\n<datalist id=$datalist_id>";
+    for my $e ( @$datalist )
+      {
+      my $k = str_html_escape( $e->{ 'KEY'   } );
+      my $v = str_html_escape( $e->{ 'VALUE' } );
+      $text .= qq[\n  <option name='$v' value='$v' data-key=$k>];
+      }
+    $text .= "\n</datalist>\n\n\n\n";
+    }
+  else
+    {  
+    $text .= "<input class='$class' name='$name' value='$value' $options form='$form_id' $args>$clear_tag";
+    }
 
   $text .= "\n";
   return $text;

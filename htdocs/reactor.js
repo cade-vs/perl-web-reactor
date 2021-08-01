@@ -566,4 +566,23 @@ function reactor_element_disable_on_click( el, timeout )
   return true;
 }
 
+/*-------------------------------------------------------------------*/
+
+function reactor_datalist_change( el )
+{
+  var input = document.getElementById( el.dataset.inputId );
+
+  var option = el.list.options.namedItem( el.value );
+  if( option )
+    {
+    var datalist_key = option.dataset.key;
+    input.value = datalist_key;
+    }
+  else
+    {
+    input.value = '';
+    el.value    = '';  
+    }
+}
+
 /***EOF*********************************************************************/

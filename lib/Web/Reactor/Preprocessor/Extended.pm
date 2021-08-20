@@ -163,7 +163,9 @@ sub process
   my $opt  = shift || {};
   my $ctx  = shift || {};
 
-  boom "too many nesting levels in preprocess, probable bug in actions or page files" if (caller(512))[0] ne ''; # FIXME: config option for max level
+#print STDERR "DEBUG: PROCESS PAGE----------------------- [$pn]\n";
+
+  boom "too many nesting levels at page [$pn], probable bug in actions or page files" if (caller(128))[0] ne ''; # FIXME: config option for max level
 
   $ctx = { %$ctx };
   $ctx->{ 'LEVEL' }++;
@@ -189,6 +191,8 @@ sub __process_tag
   my $args =    shift; # the rest of the tag
   my $opt  =    shift;
   my $ctx  =    shift;
+
+#print STDERR "DEBUG: PROCESS PAGE TAG ----------------------- [$pn] [$type] [$tag]\n";
 
 #print STDERR Dumper( 'PROCESS ARGS --- ' x 7, ( $pn, $type, $tag, $args, $opt, $ctx ) );
 

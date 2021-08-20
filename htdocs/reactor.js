@@ -1,8 +1,8 @@
 /****************************************************************************
 ##
 ##  Web::Reactor application machinery
-##  2013-2017 (c) Vladi Belperchinov-Shabanski "Cade"
-##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
+##  2014-2021 (c) Vladi Belperchinov-Shabanski "Cade"
+##  <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
 ##
@@ -564,6 +564,25 @@ function reactor_element_disable_on_click( el, timeout )
   el.className = coff;
   el.disabled_to = setTimeout( function() { el.is_disabled = 0; el.className = con; }, timeout * 1000 );
   return true;
+}
+
+/*-------------------------------------------------------------------*/
+
+function reactor_datalist_change( el )
+{
+  var input = document.getElementById( el.dataset.inputId );
+
+  var option = el.list.options.namedItem( el.value );
+  if( option )
+    {
+    var datalist_key = option.dataset.key;
+    input.value = datalist_key;
+    }
+  else
+    {
+    input.value = '';
+    el.value    = '';  
+    }
 }
 
 /***EOF*********************************************************************/

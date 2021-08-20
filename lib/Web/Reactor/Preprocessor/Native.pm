@@ -128,7 +128,7 @@ sub process
   my $opt  = shift || {};
   my $ctx  = shift || {};
 
-  boom "too many nesting levels in preprocess, probable bug in actions or pages" if (caller(512))[0] ne ''; # FIXME: config option for max level
+  boom "too many nesting levels at page [$pn], probable bug in actions or pages" if (caller(128))[0] ne ''; # FIXME: config option for max level
 
   $ctx = { %$ctx };
   $ctx->{ 'LEVEL' }++;

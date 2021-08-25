@@ -580,7 +580,7 @@ function reactor_datalist_change( el )
     }
   else
     {
-    input.value = '';
+    input.value = el.dataset.emptyKey;
     el.value    = '';  
     }
 }

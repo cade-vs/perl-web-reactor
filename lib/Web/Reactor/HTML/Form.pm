@@ -554,7 +554,7 @@ sub input
     my $input_id    = $self->html_new_id();
     my $datalist_id = $self->html_new_id();
     $text .= "\n\n\n\n\n<input id=$input_id type=hidden    name='$name' value='$key'          form='$form_id'      >";
-    $text .= "\n<input class='$class' value='$value' list=$datalist_id $options form='$form_id' $args data-input-id=$input_id onchange='return reactor_datalist_change( this )'>$clear_tag";
+    $text .= "\n<input class='$class' value='$value' list=$datalist_id $options $options form='$form_id' $args data-input-id=$input_id onchange='return reactor_datalist_change( this )'>$clear_tag";
     $text .= "\n<datalist id=$datalist_id>";
     for my $e ( @$datalist )
       {

@@ -215,21 +215,22 @@ sub checkbox_multi
   $value = abs( int( $value ) );
   $value = 0 if $value >= $stages;
 
+  my $text;
+
   my $options;
   my $current_class;
 
   for my $s ( 0 .. $stages - 1 )
     {
     my $c = ref( $class ) eq 'ARRAY' ? $class->[ $s ] : "$class-$s cursor-pointer";
-    my $v = str_html_escape( $labels->[ $s ] );
-    $options .= "data-value-label-$s='$v' ";
-    $options .= "data-value-class-$s='$c' ";
+    my $v = str_html_escape( str_html_escape( $labels->[ $s ] ) );
+    $options .= qq[data-value-label-$s="$v" ];
+    $options .= qq[data-value-class-$s="$c" ];
     $current_class = $c if $s == 0;
     $current_class = $c if $s == $value;
     }
   my $label = $labels->[ $value ];
 
-  my $text;
 
   my $reo = $self->get_reo();
   my $hint_handler = $hint ? html_hover_layer( $reo, VALUE => $hint ) : undef;
@@ -241,9 +242,9 @@ sub checkbox_multi
   #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
   #$text .= "<input type='checkbox' name='$name' value='1' $options>";
   $text .= "\n";
-  $text .= "<input type='hidden' name='$name' id='$cb_id' value='$value' form='$form_id' $args>";
-  $text .= qq[ <span class='$current_class' id='$el_id' data-stages='$stages' data-checkbox-input-id="$cb_id" onclick='reactor_form_multi_checkbox_toggle(this)' $hint_handler $options>$label</span> ];
-  $text .= "<script>reactor_form_multi_checkbox_setup_id( '$el_id' )</script>";
+  $text .= qq[<input type='hidden' name='$name' id='$cb_id' value='$value' form='$form_id' $args>];
+  $text .= qq[<span class='$current_class' id='$el_id' data-stages='$stages' data-checkbox-input-id='$cb_id' onclick='reactor_form_multi_checkbox_toggle(this)' $hint_handler $options>$label</span>];
+  $text .= qq[<script>reactor_form_multi_checkbox_setup_id( '$el_id' )</script>];
   $text .= "\n";
 
   return $text;

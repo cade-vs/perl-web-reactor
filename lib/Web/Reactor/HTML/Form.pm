@@ -221,7 +221,7 @@ sub checkbox_multi
   for my $s ( 0 .. $stages - 1 )
     {
     my $c = ref( $class ) eq 'ARRAY' ? $class->[ $s ] : "$class-$s cursor-pointer";
-    my $v = $labels->[ $s ];
+    my $v = str_html_escape( $labels->[ $s ] );
     $options .= "data-value-label-$s='$v' ";
     $options .= "data-value-class-$s='$c' ";
     $current_class = $c if $s == 0;

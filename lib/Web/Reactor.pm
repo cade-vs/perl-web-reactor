@@ -1649,13 +1649,22 @@ sub load_trans
   my $tr = $self->{ 'TRANS' }{ $lang } = {};
 
   my $trans_dirs = $self->{ 'ENV' }{ 'TRANS_DIRS' };
+  my $trans_file = $self->{ 'ENV' }{ 'TRANS_FILE' };
 
   my @tf;
-  for my $dir ( @$trans_dirs )
+  if( $trans_file )
     {
-    push @tf, glob( "$dir/$lang/*.tr" );
-    push @tf, glob( "$dir/$lang/text/*.tr" );
+    # quick select single translation file, if specified
+    @tf = ( $trans_file );
     }
+  else
+    {  
+    for my $dir ( @$trans_dirs )
+      {
+      push @tf, glob( "$dir/$lang/*.tr" );
+      push @tf, glob( "$dir/$lang/text/*.tr" );
+      }
+    }  
 
   for my $tf ( @tf )
     {

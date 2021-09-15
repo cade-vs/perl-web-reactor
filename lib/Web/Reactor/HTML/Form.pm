@@ -271,7 +271,8 @@ sub radio
   my $name  = uc $opt{ 'NAME'  };
   my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'RADIO' } || 'radio';
   my $on    =    $opt{ 'ON'    }; # active?
-  my $ret   =    $opt{ 'RET'   } || $opt{ 'RETURN' } || 1; # map return value!
+  my $ret   =    $opt{ 'RET'   }; # map return value!
+  my $extra =    $opt{ 'EXTRA' };
 
   __check_name( $name );
 
@@ -281,7 +282,7 @@ sub radio
 
   my $form_id = $self->{ 'FORM_ID' };
   my $checked = $on ? 'checked' : undef;
-  $text .= "<input type='radio' $checked name='$name' value='$val' form='$form_id'>";
+  $text .= "<input type='radio' $checked name='$name' value='$val' form='$form_id' $extra>";
 
   $self->__ret_map_set( $name, $val => $ret ) if defined $ret;
 
@@ -376,6 +377,7 @@ sub select
   my $text;
   my $form_id = $self->{ 'FORM_ID' };
 
+  $extra .= qq[ onchange='this.form.submit()'] if $opt{ 'RESUBMIT_ON_CHANGE' };
   if( $opt{ 'RADIO' } )
     {
     for my $hr ( @$sel_data )
@@ -385,7 +387,7 @@ sub select
       my $value = $hr->{ 'VALUE'    };
 
       $sel = 'selected' if $sel_hr and $sel_hr->{ $key };
-#print STDERR "sssssssssssssssssssssssss RADIO [$name] [$value] [$key] $sel\n";
+#print STDERR "sssssssssssssssssssssssss RADIO [$name] [$value] [$key] $sel -- {$extra}\n";
       $text .= $self->radio( NAME => $name, RET => $key, ON => $sel, EXTRA => $extra ) . " $value";
       $text .= "<br>" if $opt{ 'RADIO' } != 2;
       }

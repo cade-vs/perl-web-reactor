@@ -554,11 +554,13 @@ sub input
   
   if( $datalist )
     {
+    my $resub = $opt{ 'RESUBMIT_ON_CHANGE' } ? 1 : 0;
+    
     my $empty_key   = str_html_escape( $opt{ 'EMPTY_KEY' } );
     my $input_id    = $self->html_new_id();
     my $datalist_id = $self->html_new_id();
     $text .= "\n\n\n\n\n<input id=$input_id type=hidden    name='$name' value='$key'          form='$form_id'      >";
-    $text .= "\n<input class='$class' value='$value' list=$datalist_id $options form='$form_id' $args data-input-id=$input_id data-empty-key='$empty_key' onchange='return reactor_datalist_change( this )'>$clear_tag";
+    $text .= "\n<input class='$class' value='$value' list=$datalist_id $options form='$form_id' $args data-input-id=$input_id data-empty-key='$empty_key' onchange='return reactor_datalist_change( this, $resub )'>$clear_tag";
     $text .= "\n<datalist id=$datalist_id>";
     for my $e ( @$datalist )
       {

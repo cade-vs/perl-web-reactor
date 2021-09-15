@@ -568,7 +568,7 @@ function reactor_element_disable_on_click( el, timeout )
 
 /*-------------------------------------------------------------------*/
 
-function reactor_datalist_change( el )
+function reactor_datalist_change( el, resubmit )
 {
   var input = document.getElementById( el.dataset.inputId );
 
@@ -583,6 +583,9 @@ function reactor_datalist_change( el )
     input.value = el.dataset.emptyKey;
     el.value    = '';  
     }
+    
+  if( resubmit )  
+    el.form.submit();
 }
 
 /***EOF*********************************************************************/

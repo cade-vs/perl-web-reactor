@@ -1737,7 +1737,8 @@ sub html_new_id
   my $psid = $self->get_page_session_id();
   $self->{ 'HTML_ID_COUNTER' }++;
   # FIXME: hash $psid once more to hide...
-  return "REO_EID_$psid\_" . $self->{ 'HTML_ID_COUNTER' };
+  my $uqid = $self->{ 'REO_SESS' }->create_id( 16 );
+  return "REO_EUID_$psid\_$uqid\_" . $self->{ 'HTML_ID_COUNTER' };
 }
 
 ##############################################################################

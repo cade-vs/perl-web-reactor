@@ -14,7 +14,7 @@ use CGI 4.08;
 # use CGI 4.51;
 use CGI::Cookie;
 use MIME::Base64;
-use Data::Tools;
+use Data::Tools 1.24;
 use Exception::Sink;
 use Data::Dumper;
 use Encode;
@@ -68,6 +68,10 @@ sub new
              };
   bless $self, $class;
 
+
+  $self->{ 'ENV' }{ 'APP_CHARSET' } ||= 'UTF-8';
+  
+  data_tools_set_file_io_encoding( $self->{ 'ENV' }{ 'APP_CHARSET' } );
 #  my $root = $self->{ 'ENV' }{ 'ROOT' };
 #  # autosetup defaults
 #  if( ! $self->{ 'ENV' }{ 'HTML_DIRS' } )
@@ -281,6 +285,10 @@ sub main_process
       next;
       }
 
+    # decode incoming data values
+    $v = decode( $incoming_charset, $v );
+    $_ = decode( $incoming_charset, $_ ) for @v;
+        
     # process multiple incoming file uploads
     if( @u > 0 )
       {
@@ -302,19 +310,6 @@ sub main_process
       $input_user_hr->{ "$n:UPLOAD_INFO" } = CGI::uploadInfo( $u );
       $v = "$v";
       }
-
-    #my $iiuu = Encode::is_utf8( $v );
-    #print STDERR "------------->>>>>>>>>>>>>>. PRE ICOV [$v] (utf:$iiuu)\n";
-    if( $incoming_charset ne $app_charset )
-      {
-      Encode::from_to( $v, $incoming_charset, $app_charset );
-      Encode::from_to( $_, $incoming_charset, $app_charset ) for @v;
-      }
-
-    #print STDERR "------------->>>>>>>>>>>>>>. INCOMING [$v]\n";
-        #$v = decode( $app_charset, $v );
-    #print STDERR "------------->>>>>>>>>>>>>>. DECODED  [$v] from $app_charset\n\n";
-        #$_ = decode( $app_charset, $_ ) for @v;
 
     $self->log_debug( "debug: CGI input param [$n] value [$v] [@v]" );
 
@@ -1256,9 +1251,12 @@ sub render
   else
     {  
     # TODO: FIXME: check app-charset and convert only if needed
-    #print $page_type_is_text ? encode( $app_charset, $page_data ) : $page_data;
-    #print "[[$page_type_is_text|$app_charset]]";
-    print $page_data;
+    print $page_type_is_text ? encode( $app_charset, $page_data ) : $page_data;
+    #my $uu8 = Encode::is_utf8($page_data);
+    #print "[[$page_type_is_text|$app_charset|$uu8]]" . $page_data;
+#use Data::HexDump;
+#print STDERR "++++++++++++ RENDER RENDER PAGE OUTTTTTTTTTTTTTTTTTTTTTTTTTTT++++++++++++++++++ >>>------- \n" . HexDump( $page_data );
+    #print $page_data;
     }
 
   $self->log_debug( "debug: page response content: page, action, type, headers:\n" . Dumper( $page, $action, $page_type, $page_headers ) ) if $self->is_debug() > 2;

@@ -147,7 +147,16 @@ sub load_file
     return undef;
     }
 
-  my $fdata = file_load( $fname );
+  my $fdata = file_text_load( $fname );
+
+
+#use Encode;
+#my $iu8 = Encode::is_utf8( $fdata );
+#my $lee = length( $fdata );
+#print STDERR "++++++++++++ EXTENDED LOAD TEXT FILE +++++++++++++++++++++++ $fname -- $lee -- u8 $iu8 -- [$fdata]\n";
+
+
+
   $reo->log_debug( "debug: preprocessor load page [$pn] file [$fn] OK [$fname]" );
   $self->{ 'FILE_CACHE' }{ $lang }{ $pn }{ $fn } = $fdata;
 

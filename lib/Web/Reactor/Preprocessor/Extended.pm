@@ -107,10 +107,10 @@ sub load_file
 
     my @pn = grep { $_ } split /\/+/, $pn;
 
-    for( reverse @$orgs )
+    for( @$orgs )
       {
       my $org = $_;
-      push @$dirs, $org;
+      #push @$dirs, $org;
       for my $pni ( @pn )
         {
         $org .= "/$pni";
@@ -118,7 +118,8 @@ sub load_file
         }
       }
 
-    @$dirs = grep { -d } reverse @$dirs;
+    push @$dirs, @$orgs;
+    @$dirs = grep { -d } @$dirs;
     # print STDERR Dumper( 'PREPROCESSOR EXTENDED LOAD FILE DIRS:', $orgs, $pn, \@pn, $dirs );
 
     $self->{ 'DIRS_CACHE' }{ $lang }{ $pn } = $dirs;
@@ -148,14 +149,6 @@ sub load_file
     }
 
   my $fdata = file_text_load( $fname );
-
-
-#use Encode;
-#my $iu8 = Encode::is_utf8( $fdata );
-#my $lee = length( $fdata );
-#print STDERR "++++++++++++ EXTENDED LOAD TEXT FILE +++++++++++++++++++++++ $fname -- $lee -- u8 $iu8 -- [$fdata]\n";
-
-
 
   $reo->log_debug( "debug: preprocessor load page [$pn] file [$fn] OK [$fname]" );
   $self->{ 'FILE_CACHE' }{ $lang }{ $pn }{ $fn } = $fdata;
@@ -201,9 +194,9 @@ sub __process_tag
   my $opt  =    shift;
   my $ctx  =    shift;
 
-#print STDERR "DEBUG: PROCESS PAGE TAG ----------------------- [$pn] [$type] [$tag]\n";
+print STDERR "DEBUG: PROCESS PAGE TAG ----------------------- [$pn] [$type] [$tag]\n";
 
-#print STDERR Dumper( 'PROCESS ARGS --- ' x 7, ( $pn, $type, $tag, $args, $opt, $ctx ) );
+print STDERR Dumper( 'PROCESS ARGS --- ' x 7, ( $pn, $type, $tag, $args, $opt, $ctx ) );
 
   $ctx = { %$opt };
   $ctx->{ 'PATH' } .= ", $type$tag";

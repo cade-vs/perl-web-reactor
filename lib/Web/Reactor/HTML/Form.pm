@@ -10,7 +10,7 @@
 package Web::Reactor::HTML::Form;
 use strict;
 use Exporter;
-use Data::Tools;
+use Data::Tools 1.25;
 use Exception::Sink;
 
 use Web::Reactor::HTML::Utils;

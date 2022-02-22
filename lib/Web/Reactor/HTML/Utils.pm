@@ -163,7 +163,7 @@ sub __html_ftree_branch
     # $label = "($row_id) $label"; # DEBUG
 
     my $hidden = $level > 0 ? "style='display: none'" : undef;
-    my $pad = $level * 2 + 1;
+    my $pad = $level * 4 + 1;
     my $cell = html_layout_2lr( '&nbsp;', $label, "$pad=<" );
 
     if( ref( $data ) eq 'ARRAY' )

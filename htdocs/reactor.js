@@ -1,7 +1,7 @@
 /****************************************************************************
 ##
 ##  Web::Reactor application machinery
-##  2014-2021 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2014-2022 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -378,37 +378,9 @@ function reactor_hover_hide()
   clearTimeout( reactor_hover_layer_timeout_id );
   }
 
-function reactor_hover_reposition_xy( ex, ey )
-  {
-  var pw = window.innerWidth;
-  var ph = window.innerHeight;
-  var dw = reactor_hover_layer.offsetWidth;
-  var dh = reactor_hover_layer.offsetHeight;
-
-  var px = ex;
-  var py = ey;
-  
-  var doc  = document.documentElement;
-  var body = document.body;
-
-  var scrollLeft = (doc && doc.scrollLeft || body && body.scrollLeft || 0);
-  var scrollTop  = (doc && doc.scrollTop  || body && body.scrollTop  || 0);
-  
-  px += scrollLeft;
-  py += scrollTop;
-
-  var left = px + ( ( px + 16 + dw ) > pw ? -( 16 + dw ) : 16 );
-  var top  = py + ( ( py + 16 + dh ) > ph ? -( 16 + dh ) : 16 );
-
-  reactor_hover_layer.style.left = left + 'px';
-  reactor_hover_layer.style.top  = top  + 'px';
-
-  return false;
-  }
-
 function reactor_hover_reposition( event )
   {
-  reactor_hover_reposition_xy( event.clientX, event.clientY );
+  reactor_reposition_div_to_xy( reactor_hover_layer, event.clientX, event.clientY );
   }
 
 function reactor_hover_reposition_ie()
@@ -506,37 +478,7 @@ function reactor_popup_show( el )
   popup_layer.style.display  = "block";
   popup_layer.style.position = "absolute";
 
-  var abs_pos = element_absolute_position( el );
-
-  var pw = window.innerWidth;
-  var ph = window.innerHeight;
-  var dw = popup_layer.offsetWidth;
-  var dh = popup_layer.offsetHeight;
-
-  var ex = abs_pos.x;
-  var ey = abs_pos.y;
-  var ew = abs_pos.w;
-  var eh = abs_pos.h;
-
-  var doc  = document.documentElement;
-  var body = document.body;
-
-  var scrollLeft = (doc && doc.scrollLeft || body && body.scrollLeft || 0);
-  var scrollTop  = (doc && doc.scrollTop  || body && body.scrollTop  || 0);
-
-  ex += scrollLeft;
-//  ey += scrollTop; // for some (stupid) reason, ey is page-absolute
-
-  pw += scrollLeft;
-  ph += scrollTop;
-
-  var left = (ex + 16 + dw) > pw ? pw - dw - 16 : ex;
-  var top  = (ey + 16 + dh) > ph ? ph - dh - 16 : ey;
-
-  top += eh;
-
-  popup_layer.style.left = left + 'px';
-  popup_layer.style.top  = top  + 'px';
+  reactor_reposition_div_next_to( popup_layer, el );
 
   return false;
 }
@@ -551,6 +493,71 @@ function reactor_popup_hide( el )
   popup_layer.style.display = "none";
   
   reactor_popup_clear_tos( el );
+}
+
+/*-------------------------------------------------------------------*/
+
+function reactor_reposition_div_next_to( div, el )
+{
+  var abs_pos = element_absolute_position( el );
+
+  var doc  = document.documentElement;
+  var body = document.body;
+
+  const vw = Math.max( doc && doc.clientWidth  || 0, window.innerWidth  || 0 )
+  const vh = Math.max( doc && doc.clientHeight || 0, window.innerHeight || 0 )
+
+  var dw = div.offsetWidth;
+  var dh = div.offsetHeight;
+
+  var ex = abs_pos.x;
+  var ey = abs_pos.y;
+  var ew = abs_pos.w;
+  var eh = abs_pos.h;
+
+  var scrollLeft = (doc && doc.scrollLeft || body && body.scrollLeft || 0);
+  var scrollTop  = (doc && doc.scrollTop  || body && body.scrollTop  || 0);
+
+  const pw = vw + scrollLeft;
+  const ph = vh + scrollTop;
+
+  var left = (ex + 16 + dw) > pw ? pw - dw - 16 : ex;
+  var top  = (ey + 16 + dh) > ph ? ph - dh - 16 : ey;
+
+  top += eh;
+
+  div.style.left = left + 'px';
+  div.style.top  = top  + 'px';
+}
+
+function reactor_reposition_div_to_xy( div, x, y )
+{
+  var doc  = document.documentElement;
+  var body = document.body;
+
+  const vw = Math.max( doc && doc.clientWidth  || 0, window.innerWidth  || 0 )
+  const vh = Math.max( doc && doc.clientHeight || 0, window.innerHeight || 0 )
+
+  var dw = div.offsetWidth;
+  var dh = div.offsetHeight;
+
+  var scrollLeft = (doc && doc.scrollLeft || body && body.scrollLeft || 0);
+  var scrollTop  = (doc && doc.scrollTop  || body && body.scrollTop  || 0);
+
+  const pw = vw + scrollLeft;
+  const ph = vh + scrollTop;
+
+  const nx = x + scrollLeft;
+  const ny = y + scrollTop;
+  
+  const left = nx + ( ( nx + 16 + dw ) > pw ? -( 16 + dw ) : 16 );
+  const top  = ny + ( ( ny + 16 + dh ) > ph ? -( 16 + dh ) : 16 );
+
+  //console.log( "mouse x: " + nx + ", y: " + ny );
+  //console.log( "div pos left: " + left + ", top: " + top );
+
+  div.style.left = left + 'px';
+  div.style.top  = top  + 'px';
 }
 
 /*-------------------------------------------------------------------*/

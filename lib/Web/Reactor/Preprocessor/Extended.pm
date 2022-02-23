@@ -194,9 +194,9 @@ sub __process_tag
   my $opt  =    shift;
   my $ctx  =    shift;
 
-print STDERR "DEBUG: PROCESS PAGE TAG ----------------------- [$pn] [$type] [$tag]\n";
+#print STDERR "DEBUG: PROCESS PAGE TAG ----------------------- [$pn] [$type] [$tag]\n";
 
-print STDERR Dumper( 'PROCESS ARGS --- ' x 7, ( $pn, $type, $tag, $args, $opt, $ctx ) );
+#print STDERR Dumper( 'PROCESS ARGS --- ' x 7, ( $pn, $type, $tag, $args, $opt, $ctx ) );
 
   $ctx = { %$opt };
   $ctx->{ 'PATH' } .= ", $type$tag";

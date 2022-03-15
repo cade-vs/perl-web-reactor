@@ -1,15 +1,18 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
-##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
-##
+##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
+##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
+##  http://cade.noxrun.com
+##  
 ##  LICENSE: GPLv2
+##  https://github.com/cade-vs/perl-web-reactor
 ##
 ##############################################################################
 package Web::Reactor::Sessions;
 use strict;
 use Exception::Sink;
+use Data::Tools 1.24;
 
 use parent 'Web::Reactor::Base'; 
 
@@ -212,11 +215,7 @@ sub create_id
   my $len = shift() || $env->{ 'SESS_LENGTH'  } || 128;
   my $let = shift() || $env->{ 'SESS_LETTERS' } || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
-  my $l = length( $let );
-  my $id;
-  # FIXME: move this line to function in Utils.pm
-  $id .= substr( $let, int(rand() * $l), 1 ) for ( 1 .. $len );
-  return $id;
+  return create_random_id( $len, $let );
 };
 
 sub compose_key_from_id

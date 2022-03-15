@@ -43,24 +43,17 @@ sub new
 
 ##############################################################################
 
-sub html_new_id
+sub create_uniq_id
 {
   my $self = shift;
 
-  my $form_name = $self->{ 'FORM_NAME' };
-  $form_name or boom "empty form name, need begin() first";
-
-  my $reo = $self->get_reo();
-  my $psid = $reo->get_page_session_id();
-  $self->{ 'HTML_ID_COUNTER' }++;
-  # FIXME: hash $psid once more to hide...
-  return $form_name . "_EID_$psid\_" . $self->{ 'HTML_ID_COUNTER' } . '_' . int(rand()*10_000_000_000);
+  return $self->get_reo()->create_uniq_id();
 }
 
 sub __check_name
 {
   my $name = shift;
-  $name =~ /^[A-Z_0-9:.]+$/ or boom "invalid or empty NAME attribute [$name]";
+  $name =~ /^[A-Z_0-9_:.]+$/ or boom "invalid or empty NAME attribute [$name]";
   return 1;
 }
 
@@ -77,24 +70,26 @@ sub begin
   my $method         = uc $opt{ 'METHOD' } || 'POST';
   my $action         =    $opt{ 'ACTION' } || '?';
   my $default_button =    $opt{ 'DEFAULT_BUTTON' };
-  my $state_keeper   =    $opt{ 'STATE_KEEPER'   };
-  my $extra_args     =    $opt{ 'EXTRA_ARGS'     } || {};
 
   $self->{ 'CLASS_MAP' } = $opt{ 'CLASS_MAP' } || {};
 
-  __check_name( $form_name );
   $method    =~ /^(POST|GET)$/  or boom "METHOD can either POST or GET";
 
   my $reo = $self->get_reo();
   my $psid = $reo->get_page_session_id();
 
+
+  $form_name ||= 
+  __check_name( $form_name );
+
   $form_id ||= $form_name;
   $form_id .= "_$psid";
 
-  $self->{ 'FORM_NAME' } = $form_name;
-  $self->{ 'FORM_ID'   } = $form_id = $form_id || $self->html_new_id();
-  $self->{ 'RADIO'     } = {};
-  $self->{ 'RET_MAP'   } = {}; # return data mapping (combo, checkbox, etc.)
+  $self->{ 'FORM_NAME'  } = $form_name;
+  $self->{ 'FORM_ID'    } = $form_id = $form_id || $self->create_uniq_id();
+  $self->{ 'RADIO'      } = {};
+  $self->{ 'RET_MAP'    } = {}; # return data mapping (combo, checkbox, etc.)
+  $self->{ 'FORM_STATE' } = {};
   
   my $options;
   
@@ -103,22 +98,30 @@ sub begin
   my $text;
 
   # FIXME: TODO: debug info inside html text, begin formname end etc.
+  
+  $self->state( FORM_NAME => $form_name );
 
   my $reo = $self->get_reo();
 
   my $page_session = $reo->get_page_session();
   $page_session->{ ':FORM_DEF' }{ $form_name } = {};
 
-  $state_keeper ||= $reo->args_here( FORM_NAME => $form_name, %$extra_args ); # keep state and more args
-  $text .= "<form name='$form_name' id='$form_id' action='$action' method='$method' enctype='multipart/form-data' $options>";
-  $text .= "</form>";
-  $text .= "<input type=hidden name='_' value='$state_keeper' form='$form_id'>";
-  $text .= "<input style='display: none;' name='__avoidiebug__' form='$form_id'>"; # stupid IE bugs
+  $text .= "<form name='$form_name' id='$form_id' action='$action' method='$method' enctype='multipart/form-data' $options></form>";
+  ### $text .= "<input style='display: none;' name='__avoidiebug__' form='$form_id'>"; # stupid IE bugs
   if( $default_button )
     {
     $text .= "<input style='display: none;' type='image' name='BUTTON:$default_button' src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQI12NgYGBgAAAABQABXvMqOgAAAABJRU5ErkJggg==' border=0 height=0 width=0 onDblClick='return false;' form='$form_id'>"
     }
   return $text;
+}
+
+sub state
+{
+  my $self = shift;
+
+  $self->{ 'FORM_STATE'  } = { %{ $self->{ 'FORM_STATE'  } }, @_ };
+  
+  return undef;
 }
 
 sub end
@@ -136,7 +139,11 @@ sub end
   my $page_session = $reo->get_page_session();
 
   my $form_name = $self->{ 'FORM_NAME' };
+  my $form_id   = $self->{ 'FORM_ID'   };
   $page_session->{ ':FORM_DEF' }{ $form_name }{ 'RET_MAP' } = $self->{ 'RET_MAP' };
+
+  my $state_keeper = $reo->args_here( %{ $self->{ 'FORM_STATE'  } } );
+  $text .= "<input type=hidden name='_' value='$state_keeper' form='$form_id'>";
 
   $text .= "\n";
   return $text;
@@ -179,7 +186,7 @@ sub checkbox
 
   my $text;
 
-  my $ch_id = $self->html_new_id(); # checkbox data holder
+  my $ch_id = $self->create_uniq_id(); # checkbox data holder
 
   my $form_id = $self->{ 'FORM_ID' };
   #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
@@ -235,8 +242,8 @@ sub checkbox_multi
   my $reo = $self->get_reo();
   my $hint_handler = $hint ? html_hover_layer( $reo, VALUE => $hint ) : undef;
 
-  my $cb_id = $self->html_new_id(); # checkbox id
-  my $el_id = $self->html_new_id(); # checkbox label element id
+  my $cb_id = $self->create_uniq_id(); # checkbox id
+  my $el_id = $self->create_uniq_id(); # checkbox label element id
 
   my $form_id = $self->{ 'FORM_ID' };
   #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
@@ -268,7 +275,7 @@ sub radio
 
   my %opt = @_;
 
-  my $name  = uc $opt{ 'NAME'  };
+  my $name  = uc $opt{ 'NAME'  }; # FIXME:escape or check?
   my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'RADIO' } || 'radio';
   my $on    =    $opt{ 'ON'    }; # active?
   my $ret   =    $opt{ 'RET'   }; # map return value!
@@ -278,7 +285,7 @@ sub radio
 
   my $text;
 
-  my $val = $self->html_new_id();
+  my $val = $self->create_uniq_id();
 
   my $form_id = $self->{ 'FORM_ID' };
   my $checked = $on ? 'checked' : undef;
@@ -339,8 +346,8 @@ sub select
 
   __check_name( $name );
 
-  my $data   = $opt{ 'DATA'     }; # array reference or hash reference, inside hashesh are the same
-  my $sel_hr = $opt{ 'SELECTED' }; # hashref with selected keys (values are true's)
+  my $data     = $opt{ 'DATA'     }; # array reference or hash reference, inside hashesh are the same
+  my $selected = $opt{ 'SELECTED' }; # hashref with selected keys (values are true's)
   my $sel_data;
 
   if( ref($data) eq 'HASH' )
@@ -386,7 +393,7 @@ sub select
       my $key   = $hr->{ 'KEY'      };
       my $value = $hr->{ 'VALUE'    };
 
-      $sel = 'selected' if $sel_hr and $sel_hr->{ $key };
+      $sel = 'selected' if ( ref( $selected ) and $selected->{ $key } ) or ( $selected eq $key );
 #print STDERR "sssssssssssssssssssssssss RADIO [$name] [$value] [$key] $sel -- {$extra}\n";
       $text .= $self->radio( NAME => $name, RET => $key, ON => $sel, EXTRA => $extra ) . " $value";
       $text .= "<br>" if $opt{ 'RADIO' } != 2;
@@ -404,10 +411,10 @@ sub select
       my $sel   = $hr->{ 'SELECTED' } ? 'selected' : ''; # is selected?
       my $key   = $hr->{ 'KEY'      };
       my $value = $hr->{ 'VALUE'    };
-      my $id = $self->html_new_id();
+      my $id = $self->create_uniq_id();
       $self->__ret_map_set( $name, $id => $key );
 
-      $sel = 'selected' if $sel_hr and $sel_hr->{ $key };
+      $sel = 'selected' if ( ref( $selected ) and $selected->{ $key } ) or ( $selected eq $key );
 #print STDERR "sssssssssssssssssssssssss COMBO [$name] [$value] [$key] $sel\n";
       $text .= "<option value='$id' $sel>$value$pad</option>\n";
       }
@@ -499,7 +506,7 @@ sub input
 
   my $clear =    $opt{ 'CLEAR'   };
   
-  my $datalist = $opt{ 'DATALIST' }; # array ref with key value hash
+  my $datalist = $opt{ 'DATALIST' }; # array ref with 'key' & 'value' hash
 
   $size = $maxl = $len if $len > 0;
 
@@ -527,7 +534,7 @@ sub input
   if( $hid and defined $ret )
     {
     # if input is hidden and return value mapping requested, VALUE is not used!
-    $value = $self->html_new_id();
+    $value = $self->create_uniq_id();
     $self->__ret_map_set( $name, $value => $ret );
     }
 
@@ -557,8 +564,8 @@ sub input
     my $resub = $opt{ 'RESUBMIT_ON_CHANGE' } ? 1 : 0;
     
     my $empty_key   = str_html_escape( $opt{ 'EMPTY_KEY' } );
-    my $input_id    = $self->html_new_id();
-    my $datalist_id = $self->html_new_id();
+    my $input_id    = $self->create_uniq_id();
+    my $datalist_id = $self->create_uniq_id();
     $text .= "\n\n\n\n\n<input id=$input_id type=hidden    name='$name' value='$key'          form='$form_id'      >";
     $text .= "\n<input class='$class' value='$value' list=$datalist_id $options form='$form_id' $args data-input-id=$input_id data-empty-key='$empty_key' onchange='return reactor_datalist_change( this, $resub )'>$clear_tag";
     $text .= "\n<datalist id=$datalist_id>";

@@ -1,15 +1,23 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013-2018 (c) Vladi Belperchinov-Shabanski "Cade"
-##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
+##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
+##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
+##  http://cade.noxrun.com
+##  
+##  LICENSE: GPLv2
+##  https://github.com/cade-vs/perl-web-reactor
+##
+##############################################################################
 ##
 ##  Adapted from Web::Reactor::Actions::Decor
 ##  Decor application machinery core
-##  2014-2018 (c) Vladi Belperchinov-Shabanski "Cade"
-##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
+##  Copyright (c) 2014-2022 Vladi Belperchinov-Shabanski "Cade"
+##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
+##  http://cade.noxrun.com
 ##
 ##  LICENSE: GPLv2
+##  https://github.com/cade-vs/perl-decor
 ##
 ##############################################################################
 package Web::Reactor::Actions::Alt;

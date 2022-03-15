@@ -1,10 +1,12 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
-##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
-##
+##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
+##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
+##  http://cade.noxrun.com
+##  
 ##  LICENSE: GPLv2
+##  https://github.com/cade-vs/perl-web-reactor
 ##
 ##############################################################################
 ##
@@ -36,7 +38,7 @@ sub new
   my $reo = $self->get_reo();
 
   $self->{ 'TABS_LIST'         } = []; # contain tab IDs
-  $self->{ 'TAB_CONTROLLER_ID' } = join '_', ( 'RE_TAB', $reo->get_page_session_id(), ( $env{ 'NAME' } || $reo->html_new_id() ) );
+  $self->{ 'TAB_CONTROLLER_ID' } = join '_', ( 'RE_TAB', $reo->get_page_session_id(), ( $env{ 'NAME' } || $reo->create_uniq_id() ) );
   $self->{ 'TAB_COUNTER'       } = 0;
 
   $reo->html_content_accumulator_js( "js/reactor.js" );

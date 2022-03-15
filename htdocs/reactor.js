@@ -411,7 +411,7 @@ function reactor_popup_mouse_toggle( el, opt )
 function reactor_popup_mouse_over( el, opt )
 {
   if( ! opt ) opt = {};
-  
+
   var timeout = opt.timeout > 0 ? opt.timeout : 200;
   
   var popup_layer = reactor_get_popup_layer( el );
@@ -593,6 +593,21 @@ function reactor_datalist_change( el, resubmit )
     
   if( resubmit )  
     el.form.submit();
+}
+
+/*** image click loop ******************************************************/
+
+function reactor_image_click_loop( img )
+{
+  for( var i = 0; i < 32; i++ )
+    {
+    if( img.src != img.dataset[ "src-" + i ] ) continue;
+    var ni = img.dataset[ "src-" + ++i ];
+    if( ni ) 
+      img.src = ni;
+    else  
+      img.src = img.dataset[ "src-0" ];
+    }
 }
 
 /***EOF*********************************************************************/

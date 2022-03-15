@@ -1,10 +1,12 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013-2016 (c) Vladi Belperchinov-Shabanski "Cade"
-##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
-##
+##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
+##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
+##  http://cade.noxrun.com
+##  
 ##  LICENSE: GPLv2
+##  https://github.com/cade-vs/perl-web-reactor
 ##
 ##############################################################################
 ##
@@ -29,6 +31,7 @@ our @EXPORT = qw(
                 html_layout_vbox
 
                 html_layout_2lr
+                html_layout_2lr_flex
 
                 );
 
@@ -277,6 +280,47 @@ sub html_layout_2lr
   my $ld = shift; # left data
   my $rd = shift; # right data
   my $fm = shift || '<=>'; # format: '[<>]nn%=nn%[<>]'
+  
+  my $la; # left  align
+  my $ra; # right align
+  my $lw; # left  width
+  my $rw; # right width
+  my $nw; # no-wrap
+  if( $fm =~ /^([<>]?)((\d+)%?)?=(=)?((\d+)%?)?([<>]?)$/ )
+    {
+    $la = $1;
+    $lw = $3;
+    $nw = $4;
+    $rw = $6;
+    $ra = $7;
+    }
+  else
+    {
+    boom "invalid format [$fm]";
+    }  
+  
+  $la = { '<' => 'align=left', '>' => 'align=right' }->{ $la };
+  $ra = { '<' => 'align=left', '>' => 'align=right' }->{ $ra };
+
+  $lw = $rw = 50 if $lw == 0 and $rw == 0;
+  $lw = int( 100 - $rw ) if $lw == 0 and $rw > 0;
+  $rw = int( 100 - $lw ) if $rw == 0 and $lw > 0;
+  
+  $lw = "width=$lw%";
+  $rw = "width=$rw%";
+
+  $nw = "style='white-space: nowrap'" if $nw;
+
+  return "<table width=100% cellspacing=0 cellpadding=0 border=0 $nw><tr><td $la $lw>$ld</td><td $ra $rw>$rd</td></tr></table>";
+}
+
+sub html_layout_2lr_flex
+{
+  my $ld = shift; # left data
+  my $rd = shift; # right data
+  my $fm = shift || '<=>'; # format: '[<>]nn%=nn%[<>]'
+
+  return "<div style='display: flex;'><div style='flex: 99; text-align: left;'>$ld</div><div style='flex: 1; text-align: right; white-space: nowrap;'>$rd</div></div>";
   
   my $la; # left  align
   my $ra; # right align

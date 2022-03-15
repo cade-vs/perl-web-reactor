@@ -1,10 +1,12 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013-2021 (c) Vladi Belperchinov-Shabanski "Cade"
-##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
-##
+##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
+##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
+##  http://cade.noxrun.com
+##  
 ##  LICENSE: GPLv2
+##  https://github.com/cade-vs/perl-web-reactor
 ##
 ##############################################################################
 package Web::Reactor;
@@ -381,6 +383,8 @@ sub main_process
   if( $form_name and exists $page_shr->{ ':FORM_DEF' }{ $form_name } )
     {
     my $rm = $page_shr->{ ':FORM_DEF' }{ $form_name }{ 'RET_MAP' };
+
+print STDERR "recover RETURN MAP ========================> " . Dumper( $rm );
 
     for my $k ( keys %$rm )
       {
@@ -1728,15 +1732,22 @@ sub set_browser_window_title
 
 ##############################################################################
 
-sub html_new_id
+sub create_uniq_id
 {
   my $self = shift;
 
-  my $psid = $self->get_page_session_id();
-  $self->{ 'HTML_ID_COUNTER' }++;
-  # FIXME: hash $psid once more to hide...
-  my $uqid = $self->{ 'REO_SESS' }->create_id( 16 );
-  return "REO_EUID_$psid\_$uqid\_" . $self->{ 'HTML_ID_COUNTER' };
+  my $nid;
+  my $limit = 128;
+  while( $limit-- )
+    {
+    my $nid = create_random_id( 8 );
+    next if $self->{ 'CREATE_UNIQ_ID' }{ $nid }++;
+    my $psid = $self->get_page_session_id();
+    $self->{ 'CREATE_UNIQ_ID' }{ ':COUNT' }++;
+    return $psid . $nid;
+    }
+  boom "cannot create new uniq html id";  
+  return undef;
 }
 
 ##############################################################################

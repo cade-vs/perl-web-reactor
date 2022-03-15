@@ -1,10 +1,12 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2013-2017 (c) Vladi Belperchinov-Shabanski "Cade"
-##  <cade@bis.bg> <cade@biscom.net> <cade@cpan.org>
-##
+##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
+##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
+##  http://cade.noxrun.com
+##  
 ##  LICENSE: GPLv2
+##  https://github.com/cade-vs/perl-web-reactor
 ##
 ##############################################################################
 ##
@@ -204,14 +206,14 @@ sub html_hover_layer
   my $class = $opt{ 'CLASS' } || 'hover-layer';
   my $delay = $opt{ 'DELAY' } || 250;
 
-  my $hover_layer_counter = $reo->html_new_id();
+  my $hover_layer_counter = $reo->create_uniq_id();
   my $hover_layer_id = "R_HOVER_LAYER_$hover_layer_counter";
 
   my $html;
   my $handle;
 
   $handle = qq{ onmouseover='reactor_hover_show_delay( this,"$hover_layer_id", $delay, event )' };
-  $html   = qq{ <div class=$class id="$hover_layer_id">$value</div> };
+  $html   = qq{ <div class='$class' id="$hover_layer_id">$value</div> };
 
   if ( wantarray )
     {
@@ -250,11 +252,7 @@ sub html_popup_layer
   $delay = 0 unless $delay > 0;
 
   my $trigger;
-  if( $type eq 'HOVER' )
-    {
-    $trigger = qq( onMouseOver="return reactor_popup_mouse_over( this )" );
-    }
-  elsif( $type eq 'CONTEXT' )  
+  if( $type eq 'CONTEXT' )  
     {
     $trigger = qq( onContextMenu="return reactor_popup_mouse_over( this )" );
     }
@@ -263,11 +261,11 @@ sub html_popup_layer
     $trigger = qq( onClick="return reactor_popup_mouse_over( this, { click_open: 1 } )" );
     }  
 
-  my $popup_layer_id_counter = $reo->html_new_id();
+  my $popup_layer_id_counter = $reo->create_uniq_id();
   my $popup_layer_id = "R_POPUP_LAYER_$popup_layer_id_counter";
 
   my $handle  = qq( $trigger data-popup-layer-id="$popup_layer_id" );
-  my $html    = qq( <div class=$class id="$popup_layer_id">$value</div> );
+  my $html    = qq( <div class='$class' id="$popup_layer_id">$value</div> );
 
   if ( wantarray )
     {

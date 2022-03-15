@@ -411,12 +411,10 @@ Web::Reactor for its main web interface:
 
 # AUTHOR
 
+
     Vladi Belperchinov-Shabanski "Cade"
-
-    <cade@bis.bg> <cade@cpan.org> <shabanski@gmail.com>
-
+          <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
     http://cade.noxrun.com
-
-    https://github.com/cade-vs
+    http://github.com/cade-vs
 
 ## EOF

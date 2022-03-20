@@ -1320,7 +1320,7 @@ sub forward_url
   my $url  = shift;
 
   # FIXME: use render+portray
-  $self->set_headers( location => $url );
+  $self->set_headers( status => 302, location => $url );
 
   my $page_headers = $self->__make_headers();
   print $page_headers;

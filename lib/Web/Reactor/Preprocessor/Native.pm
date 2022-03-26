@@ -21,39 +21,31 @@ use parent 'Web::Reactor::Preprocessor';
 sub new
 {
   my $class = shift;
-  my %env = @_;
-
   $class = ref( $class ) || $class;
-  my $self = {
-             'ENV'        => \%env,
-             'FILE_CACHE' => {},
-             };
-  bless $self, $class;
-  # rcd_log( "debug: rcd_rec:$self created" );
+
+  my $self = $class->SUPER::new( @_ );
+
+  $self->{ 'FILE_CACHE' } = {};
+
+  my $cfg = $self->get_cfg();
 
   # FIXME: common directories setup code?
-  if( ! $env{ 'HTML_DIRS' } or @{ $env{ 'HTML_DIRS' } } < 1 )
+  if( ! $cfg->{ 'HTML_DIRS' } or @{ $cfg->{ 'HTML_DIRS' } } < 1 )
     {
-    my $root = $self->{ 'ENV' }{ 'APP_ROOT' };
-    my $lang = $self->{ 'ENV' }{ 'LANG' };
+    my $root = $cfg->{ 'APP_ROOT' };
+    my $lang = $cfg->{ 'LANG' };
     if( $lang )
       {
-      $env{ 'HTML_DIRS' } = [ "$root/html/$lang", "$root/html/default" ];
+      $cfg->{ 'HTML_DIRS' } = [ "$root/html/$lang", "$root/html/default" ];
       }
     else
       {
-      $env{ 'HTML_DIRS' } = [ "$root/html/default" ];
+      $cfg->{ 'HTML_DIRS' } = [ "$root/html/default" ];
       }
     }
 
-  my $html_dirs = $env{ 'HTML_DIRS' } || [];
-  my $html_dirs_ok = 0;
-  for my $html_dir ( @$html_dirs )
-    {
-    next unless -d $html_dir;
-    $html_dirs_ok++;
-    }
-  boom "invalid or not accessible HTML_DIR's [@$html_dirs]" unless $html_dirs_ok;
+  my $html_dirs = $cfg->{ 'HTML_DIRS' } || [];
+  @$html_dirs = grep { -d } @$html_dirs;
 
   return $self;
 }
@@ -81,8 +73,9 @@ sub load_file
   die "invalid page name, expected ALPHANUMERIC, got [$pn]" unless $pn =~ /^[a-z_\-0-9]+$/;
 
   my $reo = $self->get_reo();
+  my $cfg = $self->get_cfg();
 
-  my $lang = $self->{ 'ENV' }{ 'LANG' };
+  my $lang = $cfg->{ 'LANG' };
 
   if( exists $self->{ 'FILE_CACHE' }{ $lang }{ $pn } )
     {
@@ -91,7 +84,7 @@ sub load_file
     }
 
   my $pn = "$pn.html";
-  my $dirs = $self->{ 'ENV' }{ 'HTML_DIRS' };
+  my $dirs = $cfg->{ 'HTML_DIRS' };
 
   my $fn;
   for my $dir ( @$dirs )

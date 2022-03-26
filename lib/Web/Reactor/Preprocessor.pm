@@ -14,27 +14,6 @@ use strict;
 
 use parent 'Web::Reactor::Base'; 
  
-sub new
-{
-  my $class = shift;
-  my %env = @_;
-  
-  $class = ref( $class ) || $class;
-  my $self = {
-             'ENV'       => \%env,
-             };
-  bless $self, $class;
-  # rcd_log( "debug: rcd_rec:$self created" );
-  
-  return $self;
-}
-
-sub load_file
-{
-  my $self = shift;
-
-}
-
 # constructs real filesystem/storage file name and load the page_text
 # args:
 #       $page_name  -- page name, it should be sanitized and load from file,

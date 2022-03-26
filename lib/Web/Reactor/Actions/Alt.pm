@@ -71,11 +71,12 @@ sub __load_action_file
   my $name = shift;
 
   my $reo = $self->get_reo();
+  my $cfg = $self->get_cfg();
   
   return $self->{ 'ACTIONS_CODE_CACHE' }{ $name } if exists $self->{ 'ACTIONS_CODE_CACHE' }{ $name };
   
-  my $dirs = $self->{ 'ENV' }{ 'ACTIONS_DIRS' } || [ $self->{ 'ENV' }{ 'APP_ROOT' } . '/actions' ];
-  my $pkgs = $self->{ 'ENV' }{ 'ACTIONS_PKGS' } || 'reactor::actions::';
+  my $dirs = $cfg->{ 'ACTIONS_DIRS' } || [ $cfg->{ 'APP_ROOT' } . '/actions' ];
+  my $pkgs = $cfg->{ 'ACTIONS_PKGS' } || 'reactor::actions::';
   
   my $found;
   for my $dir ( @$dirs )

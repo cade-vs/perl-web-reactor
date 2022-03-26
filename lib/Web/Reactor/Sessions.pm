@@ -16,20 +16,6 @@ use Data::Tools 1.24;
 
 use parent 'Web::Reactor::Base'; 
 
-sub new
-{
-  my $class = shift;
-  my %env = @_;
- 
-  $class = ref( $class ) || $class;
-  my $self = {
-             'ENV'       => \%env,
-             };
-  bless $self, $class;
- 
-  return $self;
-}
-
 ##############################################################################
 ##
 ##  public interface methods, should be used via Reactor object, see specs
@@ -50,11 +36,11 @@ sub create
   die "Web::Reactor::Sessions::create: invalid type, expected ALPHANUMERIC, got [$type]" unless $type =~ /^[A-Z0-9]+$/;
   die "Web::Reactor::Sessions::create: invalid length, expected len > 0, got [$len]" unless $len > 0;
 
-  my $env  = $self->_renv();
+  my $cfg  = $self->get_cfg();
 
   my $id;
   my $t  = time();
-  my $to = $env->{ 'SESS_CREATE_TIMEOUT' } || 5; # seconds
+  my $to = $cfg->{ 'SESS_CREATE_TIMEOUT' } || 5; # seconds
   while(4)
     {
     $id = $self->create_id( $len );
@@ -210,10 +196,10 @@ sub _storage_exists { die "Web::Reactor::Sessions::*::_storage_exists() is not i
 sub create_id
 {
   my $self = shift;
-  my $env  = $self->_renv();
+  my $cfg  = $self->get_cfg();
  
-  my $len = shift() || $env->{ 'SESS_LENGTH'  } || 128;
-  my $let = shift() || $env->{ 'SESS_LETTERS' } || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  my $len = shift() || $cfg->{ 'SESS_LENGTH'  } || 128;
+  my $let = shift() || $cfg->{ 'SESS_LETTERS' } || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
   return create_random_id( $len, $let );
 };
@@ -248,15 +234,6 @@ sub get_user_sid
   boom "missing USER SESSION" unless $user_sid;
 
   return $user_sid;
-}
-
-# return ENV hash reference from the reactor
-# FIXME: TODO: move to Web::Reactor::Base::get_env()
-sub _renv
-{
-  my $self = shift;
-  
-  $self->get_reo()->{ 'ENV' };
 }
 
 #sub DESTROY

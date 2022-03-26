@@ -19,6 +19,22 @@ use Scalar::Util;
 use Hash::Util qw( lock_ref_keys );
 use Exception::Sink;
 
+sub new
+{
+  my $class = shift;
+  my $reo   = shift;
+  my $cfg   = shift;
+ 
+  $class = ref( $class ) || $class;
+  my $self = {};
+  bless $self, $class;
+
+  $self->{ 'CFG' } = $cfg;
+  $self->__set_reo( $reo );
+ 
+  return $self;
+}
+
 sub __lock_self_keys
 {
   my $self = shift;
@@ -58,6 +74,13 @@ sub get_reo
   my $self = shift;
 
   return $self->{ 'REO_REACTOR' } or boom "missing REO object reference";
+}
+
+sub get_cfg
+{
+  my $self = shift;
+
+  return $self->{ 'CFG' }
 }
 
 #sub DESTROY

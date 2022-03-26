@@ -17,16 +17,11 @@ use parent 'Web::Reactor::Base';
 sub new
 {
   my $class = shift;
-  my %env = @_;
-  
   $class = ref( $class ) || $class;
-  my $self = {
-             'ENV'           => \%env,
-             'ACT_PKG_CACHE' => {},
-             };
-  bless $self, $class;
-  # rcd_log( "debug: $self created" );
-  
+
+  my $self = $class->SUPER::new( @_ );
+  $self->{ 'ACT_PKG_CACHE' } = {};
+
   return $self;
 }
 

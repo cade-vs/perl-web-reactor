@@ -1257,10 +1257,6 @@ sub render
   my $file_name = $portray_data->{ 'FILE_NAME' };
   my $disp_type = $portray_data->{ 'DISPOSITION_TYPE' } || 'inline'; # default, rest must be handled as 'attachment', ref: rfc6266#section-4.2
 
-use Data::Dumper;
-print STDERR ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" . Dumper( $portray_data );
-
-
   # preparing headers --------------------------------------------------------
   # FIXME: charset
   $self->res_set_headers( 'content-type'        => $page_type );

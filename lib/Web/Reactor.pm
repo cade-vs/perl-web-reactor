@@ -135,7 +135,8 @@ sub run
     my $status  = $self->res_get_status() || 200;
     my $headers = $self->res_get_headers_ar();
     my $body    = $self->res_get_body();
-    $res = [ $status, $headers, [ $body ] ];
+    $body = [ $body ] unless ref $body;
+    $res = [ $status, $headers, $body ];
     }
   elsif( surface( '*' ) )
     {
@@ -224,7 +225,7 @@ sub prepare_and_execute
     }
 
   # read and save http environment data into user session, used for checks and info
-  $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $ENV{ $_ } } @HTTP_VARS_SAVE  };
+  $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $self->{ 'IN' }{ 'ENV' }{ $_ } } @HTTP_VARS_SAVE  };
 
   # FIXME: move to single place
   my $user_session_expire = $cfg->{ 'USER_SESSION_EXPIRE' } || 600; # 10 minutes
@@ -440,9 +441,7 @@ sub __create_new_user_session
   if( ! $path )
     {
     $path = $self->get_request_uri();
-    #print STDERR ">>>>>>>>>>>>>>>>>>>111>>>>>>>>>>>>>>> cookie path [$path]\n";
     $path =~ s/^([^\?]*\/)([^\?\/]*)(\?.*)?$/$1/; # remove args: ?...
-    #print STDERR ">>>>>>>>>>>>>>>>>>>222>>>>>>>>>>>>>>> cookie path [$path]\n";
     }
   $path ||= '/';  
 
@@ -457,8 +456,8 @@ sub __create_new_user_session
 
   $self->set_user_session_expire_time_in( $user_session_expire );
 
-  $user_shr->{ ":HTTP_CHECK_HR" } = { map { $_ => $ENV{ $_ } } @HTTP_VARS_CHECK };
-  $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $ENV{ $_ } } @HTTP_VARS_SAVE  };
+  $user_shr->{ ":HTTP_CHECK_HR" } = { map { $_ => $self->{ 'IN' }{ 'ENV' }{ $_ } } @HTTP_VARS_CHECK };
+  $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $self->{ 'IN' }{ 'ENV' }{ $_ } } @HTTP_VARS_SAVE  };
 
   return ( $user_sid, $user_shr );
 }
@@ -819,12 +818,12 @@ sub res_get_status
 
 sub res_set_headers
 {
-  my $self  = shift;
-  my %h = @_;
+  my $self = shift;
+  my %h    = @_;
 
   hash_lc_ipl( \%h );
 
-  return $self->{ 'OUT' }{ 'HEADERS' } = { %{ $self->{ 'OUTPUT' }{ 'HEADERS' } || {} }, %h };
+  return $self->{ 'OUT' }{ 'HEADERS' } = { %{ $self->{ 'OUT' }{ 'HEADERS' } || {} }, %h };
 }
 
 sub res_get_headers_ar
@@ -1240,7 +1239,7 @@ sub render
 
   if( ref( $portray_data ) eq 'HASH' )
     {
-    # nothing, ok
+    # as expected but no handling required
     }
   elsif( ref( $portray_data ) )
     {
@@ -1258,12 +1257,16 @@ sub render
   my $file_name = $portray_data->{ 'FILE_NAME' };
   my $disp_type = $portray_data->{ 'DISPOSITION_TYPE' } || 'inline'; # default, rest must be handled as 'attachment', ref: rfc6266#section-4.2
 
+use Data::Dumper;
+print STDERR ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" . Dumper( $portray_data );
+
 
   # preparing headers --------------------------------------------------------
   # FIXME: charset
   $self->res_set_headers( 'content-type'        => $page_type );
   $self->res_set_headers( 'content-disposition' => "$disp_type; filename=$file_name" ) if $file_name;
 
+  # handling Content Security Policy (CSP) -- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
   my $http_csp = $self->get_cfg->{ 'HTTP_CSP' }; # || " default-src 'self' ";
   $self->res_set_headers( 'Content-Security-Policy' => $http_csp ) if $http_csp;
 
@@ -1280,7 +1283,7 @@ sub render
 
   if( $page_fh )
     {
-    $self->res_set_body( $page_data );
+    $self->res_set_body( $page_fh );
     }
   elsif( lc $page_type =~ /^text\/html/ )
     {
@@ -1298,35 +1301,10 @@ sub render
     
     $self->res_set_body( encode( $app_charset, $page_data ) );
     }
-
-=pod
-  my $page_headers = $self->__make_headers();
-
-  print $page_headers;
-  if( $page_fh )
-    {
-    my $buf_size = 1024*1024;
-    my $print_data;
-    while(4)
-      {
-      my $read_size = read( $page_fh, $print_data, $buf_size );
-      print $print_data;
-      last if $read_size < $buf_size;
-      }
-    }
   else
-    {  
-    # TODO: FIXME: check app-charset and convert only if needed
-    print $page_type_is_text ? encode( $app_charset, $page_data ) : $page_data;
-    #my $uu8 = Encode::is_utf8($page_data);
-    #print "[[$page_type_is_text|$app_charset|$uu8]]" . $page_data;
-#use Data::HexDump;
-#print STDERR "++++++++++++ RENDER RENDER PAGE OUTTTTTTTTTTTTTTTTTTTTTTTTTTT++++++++++++++++++ >>>------- \n" . HexDump( $page_data );
-    #print $page_data;
-    }
-
-  $self->log_debug( "debug: page response content: page, action, type, headers:\n" . Dumper( $page, $action, $page_type, $page_headers ) ) if $self->is_debug() > 2;
-=cut
+    {
+    $self->res_set_body( $page_data );
+    }  
 
   sink 'RENDER';
 }

@@ -823,6 +823,12 @@ sub res_set_headers
 
   hash_lc_ipl( \%h );
 
+  if( exists $h{ 'status' } )
+    {
+    $self->res_set_status( $h{ 'status' } );
+    delete $h{ 'status' };
+    }
+
   return $self->{ 'OUT' }{ 'HEADERS' } = { %{ $self->{ 'OUT' }{ 'HEADERS' } || {} }, %h };
 }
 
@@ -837,7 +843,7 @@ sub res_get_headers_ar
   # postprocess headers, custom logic, etc.
   my %headers_out = %{ $self->{ 'OUT' }{ 'HEADERS' } };
 
-  if( $headers_out{ 'content-charset' } )
+  if( exists $headers_out{ 'content-charset' } )
     {
     if( $headers_out{ 'content-type' } !~ /;\s*charset=/i )
       {
@@ -846,10 +852,9 @@ sub res_get_headers_ar
     delete $headers_out{ 'content-charset' };
     };
 
-  if( $headers_out{ 'status' } )
+  if( exists $headers_out{ 'location' } )
     {
-    $self->res_set_status( $headers_out{ 'status' } ) unless $self->res_get_status();
-    delete $headers_out{ 'status' };
+    delete $headers_out{ 'content-type' };
     }
 
   my @headers;

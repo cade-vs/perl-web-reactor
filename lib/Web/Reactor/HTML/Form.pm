@@ -588,6 +588,41 @@ sub input
 
 ##############################################################################
 
+sub file_upload
+{
+  my $self = shift;
+
+  my %opt = @_;
+
+  my $name  = uc $opt{ 'NAME'    };
+  my $class =    $opt{ 'CLASS'   } || $self->{ 'CLASS_MAP' }{ 'FILE_UPLOAD' } || 'file_upload';
+  my $id    =    $opt{ 'ID'      };
+  my $args  =    $opt{ 'ARGS'    };
+
+  my $options;
+
+  $options .= "multiple " if $opt{ 'MULTI' };
+  $options .= "id='$id' " if $id ne '';
+
+  my $text;
+
+  my $form_id = $self->{ 'FORM_ID' };
+
+  $text .= "<input class='$class' name='$name' type=file $options form='$form_id' $args>";
+
+  $text .= "\n";
+  return $text;
+}
+
+sub file_upload_multi
+{
+  my $self = shift;
+  return $self->file_upload( @_, MULTI => 1 );
+}  
+
+
+##############################################################################
+
 # TODO: include button support
 sub button
 {

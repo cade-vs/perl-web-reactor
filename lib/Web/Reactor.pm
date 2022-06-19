@@ -298,9 +298,11 @@ sub prepare_and_execute
   for my $n ( keys %$uploads )
     {
     my @u = $uploads->get_all( $n );
+    $input_user_hr->{ "$n" } = @u; # count of the uploaded files
     if( @u > 0 )
       {
-      $input_user_hr->{ "$n:UPLOADS" } = \@u;
+      $input_user_hr->{ "$n:UPLOADS" } = \@u;   # holds all uploads, even if there is just 1
+      $input_user_hr->{ "$n:UPLOAD"  } = $u[0]; # holds first or single upload
       next;
       }
     }  

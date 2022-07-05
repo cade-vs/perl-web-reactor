@@ -30,6 +30,8 @@ our @EXPORT = qw(
                 html_layout_hbox
                 html_layout_vbox
 
+                html_layout_hbox_flex
+
                 html_layout_2lr
                 html_layout_2lr_flex
 
@@ -222,7 +224,7 @@ sub html_layout_grid
         $col_args = $col->{ 'ARGS' };
         $col      = $col->{ 'DATA' };
         }
-      $text .= "<td>$col</td>";
+      $text .= "<td $col_args>$col</td>";
       }
     $text .= "</tr>";
     }
@@ -236,7 +238,40 @@ sub html_layout_hbox
 {
   my $data = shift;
   
-  return html_layout_grid( [ $data ] );
+  return html_layout_grid( [ { DATA => $data, ARGS => "valign=top" } ] );
+}
+
+sub html_layout_vbox
+{
+  my $data = shift;
+  
+  my @data;
+  push @data, [ $_ ] for @$data;
+
+  return html_layout_grid( \@data );
+}
+
+sub html_layout_hbox_flex
+{
+  my $opt = ${ shift() } if ref( $_[0] ) eq 'SCALAR';
+  my @data = @_;
+  
+  my @opt = split /,/, $opt;
+  
+  my $text;
+  
+  $text .= "<div style='display: flex; border: solid 1px #f00;'>";
+  
+  while( @data )
+    {
+    my $data = shift @data;
+    my $opt  = shift @opt || 1;
+    $text .= "<div style='flex:$opt; border: solid 2px #0f0;'>$data</div>";
+    }
+  
+  $text .= "</div>";
+  
+  return $text;
 }
 
 sub html_layout_vbox

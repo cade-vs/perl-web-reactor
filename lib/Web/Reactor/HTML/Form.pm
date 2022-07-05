@@ -343,12 +343,17 @@ sub select
   my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'SELECT' } || 'select';
   my $rows  =    $opt{ 'SIZE'  } || $opt{ 'ROWS'  } || 1;
   my $args  =    $opt{ 'ARGS' };
+  my $disabled = $opt{ 'DISABLED' };
 
   __check_name( $name );
 
   my $data     = $opt{ 'DATA'     }; # array reference or hash reference, inside hashesh are the same
   my $selected = $opt{ 'SELECTED' }; # hashref with selected keys (values are true's)
   my $sel_data;
+
+  my $options;
+
+  $options .= "disabled='disabled' " if $disabled;
 
   if( ref($data) eq 'HASH' )
     {
@@ -395,7 +400,7 @@ sub select
 
       $sel = 'selected' if ( ref( $selected ) and $selected->{ $key } ) or ( $selected eq $key );
 #print STDERR "sssssssssssssssssssssssss RADIO [$name] [$value] [$key] $sel -- {$extra}\n";
-      $text .= $self->radio( NAME => $name, RET => $key, ON => $sel, EXTRA => $extra ) . " $value";
+      $text .= $self->radio( NAME => $name, RET => $key, ON => $sel, EXTRA => $extra, DISABLED => $disabled ) . " $value";
       $text .= "<br>" if $opt{ 'RADIO' } != 2;
       }
     # FIXME: kakvo stava ako nqma dadeno selected pri submit na formata?
@@ -403,7 +408,7 @@ sub select
   else
     {
     my $multiple = 'multiple' if $opt{ 'MULTIPLE' };
-    $text .= "<select class='$class' id='$id' name='$name' size='$rows' $multiple form='$form_id' $args $extra>";
+    $text .= "<select class='$class' id='$id' name='$name' size='$rows' $multiple form='$form_id' $args $extra $options>";
 
     my $pad = '&nbsp;' x 3;
     for my $hr ( @$sel_data )
@@ -504,7 +509,7 @@ sub input
   my $hid   =    $opt{ 'HIDDEN'  };
   my $ret   =    $opt{ 'RET'     } || $opt{ 'RETURN'  }; # if return value should be mapped, works only with HIDDEN
 
-  my $clear =    $opt{ 'CLEAR'   };
+  my $clear =    $opt{ 'DISABLED' } ? undef : $opt{ 'CLEAR'   };
   
   my $datalist = $opt{ 'DATALIST' }; # array ref with 'key' & 'value' hash
 

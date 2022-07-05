@@ -1330,7 +1330,7 @@ sub portray
 
   $type = $SIMPLE_PORTRAY_TYPE_MAP{ $type } || $type;
 
-  boom "portray needs mime type xxx/xxx as arg 2, got [$type]" unless $type =~ /^[a-z\-_0-9]+\/[a-z\-_0-9]+$/;
+  boom "portray needs mime type xxx/xxx as arg 2, got [$type]" unless $type =~ /^[a-z\-_0-9]+\/[a-z\-_0-9\.]+$/;
 
   return { DATA => $data, TYPE => $type, @_ };
 }

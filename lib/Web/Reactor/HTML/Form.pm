@@ -10,7 +10,7 @@
 package Web::Reactor::HTML::Form;
 use strict;
 use Exporter;
-use Data::Tools 1.25;
+use Data::Tools 1.31;
 use Exception::Sink;
 
 use Web::Reactor::HTML::Utils;
@@ -659,7 +659,8 @@ sub button
   $name =~ s/^button://i;
 
   my $form_id = $self->{ 'FORM_ID' };
-  $text .= "<input class='$class' id='$id' type='submit' name='button:$name' value='$value' onDblClick='return false;' form='$form_id' $options $args>";
+#  $text .= "<input class='$class' id='$id' type='submit' name='button:$name' value='$value' onDblClick='return false;' form='$form_id' $options $args>";
+  $text .= "<button class='$class' id='$id' type='submit' name='button:$name' value='1' onDblClick='return false;' form='$form_id' $options $args>$value</button>";
 
   $text .= "\n";
   return $text;

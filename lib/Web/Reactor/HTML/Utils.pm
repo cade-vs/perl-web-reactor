@@ -18,6 +18,8 @@ use Exporter;
 our @ISA = qw( Exporter );
 our @EXPORT = qw(
                 html_escape
+
+                html_element
                 html_table
 
                 html_ftree
@@ -34,26 +36,28 @@ use Exception::Sink;
 use Data::Tools;
 use Web::Reactor::HTML::Tab;
 use Web::Reactor::HTML::Layout;
-my %HTML_ESCAPES = (
-                   '&' => '&amp;',
-                   '>' => '&gt;',
-                   '<' => '&lt;',
-                   ' ' => '&#32;',
-                   '"' => '&#34;',
-                   "'" => '&#39;',
-                   '/' => '&#47;',
-                   '=' => '&#61;',
-                   );
 
 ##############################################################################
 
 sub html_escape
 {
-  my $s = shift;
-  $s =~ s|([&<> "'/=])|$HTML_ESCAPES{ $1 }|ge;
-  return $s;
+  return Data::Tools::str_html_escape( @_ );
 }
 
+##############################################################################
+
+sub html_element
+{
+  my $tag = shift;
+  my $txt = shift;
+  my %atr = @_;
+  
+  $txt = str_escape_html_text( $txt );
+  my $extra = $atr{ 'extra' };
+  
+  my $html;
+  
+}
 
 ##############################################################################
 

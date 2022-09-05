@@ -31,7 +31,7 @@ sub create
 {
   my $self = shift;
   my $type = uc shift;
-  my $len  = shift || 128;
+  my $len  = shift || 97;
 
   die "Web::Reactor::Sessions::create: invalid type, expected ALPHANUMERIC, got [$type]" unless $type =~ /^[A-Z0-9]+$/;
   die "Web::Reactor::Sessions::create: invalid length, expected len > 0, got [$len]" unless $len > 0;

@@ -12,6 +12,10 @@
 ##
 ## HTML Utils
 ##
+## All checks and escaping is done accordingly to HTML Living standard from
+## 5 September 2022, chapter notes are given in the comments
+## https://html.spec.whatwg.org/multipage/
+##
 ##############################################################################
 package Web::Reactor::HTML::Utils;
 use Exporter;
@@ -30,6 +34,13 @@ our @EXPORT = qw(
                 html_alink
 
                 html_tabs_table
+                
+                html_check_tag_name
+                html_check_tag_name_boom
+                
+                html_check_attr_name
+                html_check_attr_name_boom
+                
                 );
 use strict;
 use Exception::Sink;
@@ -51,12 +62,37 @@ sub html_element
   my $tag = shift;
   my $txt = shift;
   my %atr = @_;
+
+  hash_lc_ipl( \%atr );
   
-  $txt = str_escape_html_text( $txt );
   my $extra = $atr{ 'extra' };
+  delete $atr{ 'extra' };
+
+  html_check_tag_name_boom( $tag );
   
   my $html;
   
+  $html .= "<$tag ";
+  
+  while( my ( $k, $v ) = each %atr )
+    {
+    html_check_attr_name_boom( $k, "invalid attribute name [$k] for tag [$tag]" );
+    $html .= $k;
+    if( defined $v )
+      {
+      my $vv = str_html_escape_attr( $v );
+      $html .= "='$vv'";
+      }
+    $html .= " ";
+    }
+  
+  $html .= $extra;
+  $html .= defined $txt ? ">$txt</$tag>" : "/>";
+
+use Data::Dumper;
+print STDERR Dumper( "\n"x10, $tag, $txt, \%atr, $html, "\n"x100 );
+  
+  return $html . "\n";
 }
 
 ##############################################################################
@@ -459,6 +495,28 @@ sub html_tabs_table
 
 
   return $text;
+}
+
+##############################################################################
+
+sub html_check_tag_name
+{
+  return $_[0] =~ /^[a-zA-Z0-9]+$/; # $13.1.2.1
+}                                             
+
+sub html_check_tag_name_boom
+{
+  boom( $_[1] || "invalid tag name [$_[0]]" ) unless html_check_tag_name( $_[0] );
+}
+
+sub html_check_attr_name
+{
+  return $_[0] =~ /^[a-zA-Z_0-9\:\-]+$/; # $13.1.2.3 but extra strict
+}                                             
+
+sub html_check_attr_name_boom
+{
+  boom( $_[1] || "invalid attribute name [$_[0]]" ) unless html_check_attr_name( $_[0] );
 }
 
 ##############################################################################

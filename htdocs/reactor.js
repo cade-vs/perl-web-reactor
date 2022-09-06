@@ -299,47 +299,54 @@ function reactor_form_checkbox_set_all( form_id, value )
 
 function reactor_form_multi_checkbox_setup_id( el_id )
 {
-   var el     = document.getElementById( el_id );
-   var cb_id  = el.dataset.checkboxInputId;
-   var cb     = document.getElementById( cb_id );
+  var el     = document.getElementById( el_id );
+  var cb_id  = el.dataset.checkboxInputId;
+  var cb     = document.getElementById( cb_id );
 
-   reactor_form_multi_checkbox_set( el, cb, cb.value );
+  reactor_form_multi_checkbox_set( el, cb, cb.value );
 }
 
 function reactor_form_multi_checkbox_toggle( el )
 {
-   var cb_id  = el.dataset.checkboxInputId;
-   var cb     = document.getElementById( cb_id );
+  var cb_id  = el.dataset.checkboxInputId;
+  var cb     = document.getElementById( cb_id );
 
-   reactor_form_multi_checkbox_set( el, cb, (+cb.value) + 1 );
+  reactor_form_multi_checkbox_set( el, cb, (+cb.value) + 1 );
 }
 
 function reactor_form_multi_checkbox_set( el, cb, new_value )
 {
-   var stages = el.dataset.stages;
-   var value = cb.value;
-   if( new_value >= stages ) 
-     cb.value = 0;
-   else
-     cb.value = new_value;  
+  var stages = el.dataset.stages;
+  var value = cb.value;
+  if( new_value >= stages ) 
+    cb.value = 0;
+  else
+    cb.value = new_value;  
 
+  var kids = el.children;
+  for( z = 0; z < kids.length; z++ )
+    {
+    kids[z].style.display = cb.value == z ? "inline" : "none";
+    }
+/*
    var new_label = el.dataset[ "valueLabel-" + cb.value ];
    var new_class = el.dataset[ "valueClass-" + cb.value ];
 
    el.className = new_class;
    el.innerHTML = new_label;
+*/
 
-   if( new_value != value )
-     {
-     var onchange = cb.getAttribute( 'ONCHANGE' );
-     if( onchange )
-       {
-       if( is_msie )
-         onchange();
-       else
-         eval( onchange );
-       }
-     }  
+  if( new_value != value )
+    {
+    var onchange = cb.getAttribute( 'ONCHANGE' );
+    if( onchange )
+      {
+      if( is_msie )
+        onchange();
+      else
+        eval( onchange );
+      }
+    }  
 }
 
 

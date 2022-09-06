@@ -193,8 +193,10 @@ sub checkbox
   #$text .= "<input type='checkbox' name='$name' value='1' $options>";
   $text .= "\n";
   $text .= "<input type='hidden' name='$name' id='$ch_id' value='$value' form='$form_id' $args>";
+  # --> $text .= html_element( "input", undef, type => 'hidden', name => $name, id => $ch_id, value => $value, form => $form_id, extra => $args );
 #  $text .= qq[ <input type='checkbox' $options checkbox_data_input_id="$ch_id" onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
   $text .= qq[ <input type='checkbox' $options data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle(this)' class='$class'> ];
+  # --> $text .= html_element( "input", undef, type => 'checkbox', 'data-checkbox-input-id' => $ch_id, form => $form_id, onclick='reactor_form_checkbox_toggle(this)', class => $class, extra => $options );
   $text .= "\n";
 
   return $text;
@@ -224,20 +226,11 @@ sub checkbox_multi
 
   my $text;
 
-  my $options;
-  my $current_class;
-
+  my $labels_spans;
   for my $s ( 0 .. $stages - 1 )
     {
-    my $c = ref( $class ) eq 'ARRAY' ? $class->[ $s ] : "$class-$s cursor-pointer";
-    my $v = str_html_escape( str_html_escape( $labels->[ $s ] ) );
-    $options .= qq[data-value-label-$s="$v" ];
-    $options .= qq[data-value-class-$s="$c" ];
-    $current_class = $c if $s == 0;
-    $current_class = $c if $s == $value;
+    $labels_spans .= html_element( 'span', $labels->[$s], style => "display: none" );
     }
-  my $label = $labels->[ $value ];
-
 
   my $reo = $self->get_reo();
   my $hint_handler = $hint ? html_hover_layer( $reo, VALUE => $hint ) : undef;
@@ -249,9 +242,12 @@ sub checkbox_multi
   #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
   #$text .= "<input type='checkbox' name='$name' value='1' $options>";
   $text .= "\n";
-  $text .= qq[<input type='hidden' name='$name' id='$cb_id' value='$value' form='$form_id' $args>];
-  $text .= qq[<span class='$current_class' id='$el_id' data-stages='$stages' data-checkbox-input-id='$cb_id' onclick='reactor_form_multi_checkbox_toggle(this)' $hint_handler $options>$label</span>];
-  $text .= qq[<script>reactor_form_multi_checkbox_setup_id( '$el_id' )</script>];
+  ### $text .= qq[<         input type='hidden' name='$name' id='$cb_id' value='$value' form='$form_id' $args>];
+  $text .= html_element( "input", undef, type => 'hidden', name => $name, id => $cb_id, value => $value, form => $form_id, extra => $args );
+  #$text .= qq[<span class='$current_class' id='$el_id' data-stages='$stages' data-checkbox-input-id='$cb_id' onclick='reactor_form_multi_checkbox_toggle(this)' $hint_handler $options>$label</span>];
+  $text .= html_element( "span", $labels_spans, id => $el_id, 'data-stages' => $stages, 'data-checkbox-input-id' => $cb_id, onclick => 'reactor_form_multi_checkbox_toggle(this)', extra => $hint_handler );
+  ### $text .= qq[<script>reactor_form_multi_checkbox_setup_id( '$el_id' )</script>];
+  $text .= html_element( "script", "reactor_form_multi_checkbox_setup_id( '$el_id' )" );
   $text .= "\n";
 
   return $text;
@@ -628,7 +624,6 @@ sub file_upload_multi
 
 ##############################################################################
 
-# TODO: include button support
 sub button
 {
   my $self = shift;
@@ -640,9 +635,6 @@ sub button
   my $class =    $opt{ 'CLASS' } || 'button';
   my $value =    $opt{ 'VALUE' };
   my $args  =    $opt{ 'ARGS'  };
-
-  $value =~ s/'//g;
-  $value = str_html_escape( $value );
 
   __check_name( $name );
 
@@ -660,7 +652,9 @@ sub button
 
   my $form_id = $self->{ 'FORM_ID' };
 #  $text .= "<input class='$class' id='$id' type='submit' name='button:$name' value='$value' onDblClick='return false;' form='$form_id' $options $args>";
-  $text .= "<button class='$class' id='$id' type='submit' name='button:$name' value='1' onDblClick='return false;' form='$form_id' $options $args>$value</button>";
+  #$text .= "<button class='$class' id='$id' type='submit' name='button:$name' value='1' onDblClick='return false;' form='$form_id' $options $args>$value</button>";
+  
+  $text .= html_element( 'button', $value, form => $form_id, class => $class, id => $id, name => "button:$name", onDblClick => 'return false;', extra => "$options $args" );
 
   $text .= "\n";
   return $text;

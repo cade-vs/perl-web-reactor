@@ -547,12 +547,12 @@ sub input
 
     if( $clear =~ /^[a-z_\-0-9\/]+\.(png|jpg|jpeg|gif|svg)$/ )
       {
-      $clear_tag = qq[ <img class='icon icon-clear' src='$clear' border='0' onClick='return set_value("$id", "")' $clear_hint_handler > ];
+      $clear_tag = qq[ <img class='icon-clear' src='$clear' border='0' onClick='return set_value("$id", "")' $clear_hint_handler > ];
       }
     else
       {
       my $s = $clear eq 1 ? '&otimes;' : $clear;
-      $clear_tag = qq[ <span class='icon icon-clear' border='0' onClick='return set_value("$id", "")' $clear_hint_handler >$s</span> ];
+      $clear_tag = qq[ <span class='icon-clear' border='0' onClick='return set_value("$id", "")' $clear_hint_handler >$s</span> ];
       }
     }
 
@@ -572,9 +572,9 @@ sub input
     $text .= "\n<datalist id=$datalist_id>";
     for my $e ( @$datalist )
       {
-      my $k = str_html_escape( $e->{ 'KEY'   } );
-      my $v = str_html_escape( $e->{ 'VALUE' } );
-      $text .= qq[\n  <option name='$v' value='$v' data-key=$k>];
+      my $k = $e->{ 'KEY'   };
+      my $v = $e->{ 'VALUE' };
+      $text .= html_element( 'option', undef, name => $v, value => $v, 'data-key' => $k );
       }
     $text .= "\n</datalist>\n\n\n\n";
     }

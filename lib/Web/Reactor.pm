@@ -1746,12 +1746,15 @@ sub set_browser_window_title
 sub create_uniq_id
 {
   my $self = shift;
+  my $case = shift;
 
   my $nid;
   my $limit = 128;
   while( $limit-- )
     {
     my $nid = create_random_id( 8 );
+    $nid = uc $nid if $case == 1;
+    $nid = lc $nid if $case == 2;
     next if $self->{ 'CREATE_UNIQ_ID' }{ $nid }++;
     my $psid = $self->get_page_session_id();
     $self->{ 'CREATE_UNIQ_ID' }{ ':COUNT' }++;

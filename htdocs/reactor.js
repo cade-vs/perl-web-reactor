@@ -349,6 +349,18 @@ function reactor_form_multi_checkbox_set( el, cb, new_value )
     }  
 }
 
+/*------------------------------------*/
+
+function reactor_form_sort_toggle( el, sort_ic_name )
+{
+  var cb_id  = el.dataset.checkboxInputId;
+  var cb     = document.getElementById( cb_id );
+  var ic     = document.getElementById( sort_ic_name );
+
+  reactor_form_multi_checkbox_set( el, cb, (+cb.value) + 1 );
+  
+  ic.value = ic.value + cb.name + " " + cb.value + ";";
+}
 
 /*** hover layers *******************************************************/
 

@@ -38,6 +38,7 @@ our @HTTP_VARS_CHECK = qw(
                          );
 
 our @HTTP_VARS_SAVE  = qw(
+                           _CLIENT_IP
                            REMOTE_ADDR
                            REMOTE_PORT
                            REQUEST_METHOD

@@ -33,7 +33,7 @@ our $VERSION = '2.12';
 #          );
 
 our @HTTP_VARS_CHECK = qw(
-                           REMOTE_ADDR
+                           _CLIENT_IP
                            HTTP_USER_AGENT
                          );
 
@@ -46,6 +46,12 @@ our @HTTP_VARS_SAVE  = qw(
                            QUERY_STRING
                            HTTP_COOKIE
                            HTTP_USER_AGENT
+                           HTTP_CF_CONNECTING_IP
+                           HTTP_CF_IPCOUNTRY
+                           HTTP_CF_RAY
+                           HTTP_X_FORWARDED_FOR
+                           HTTP_X_FORWARDED_PROTO
+                           HTTP_X_REAL_IP
                          );
 
 our %ENV_ALLOWED_KEYS = {
@@ -67,6 +73,7 @@ sub new
   $self->{ 'CFG' }                    = $cfg;
   $self->{ 'CFG' }{ 'APP_CHARSET' } ||= 'UTF-8';
   $self->{ 'IN'  }{ 'ENV'         }   = $env; # including headers
+  $self->{ 'IN'  }{ 'ENV'         }{ '_CLIENT_IP' } = $self->get_client_ip();
 
   $self->log_dumper( "debug: reactor[$self] setup (ENV & CFG): ", $env, $cfg );
   
@@ -210,9 +217,11 @@ sub prepare_and_execute
   for my $k ( keys %{ $user_shr->{ ":HTTP_CHECK_HR" } } )
     {
     # check if session parameters are changed, stealing session?
-    next if $user_shr->{ ":HTTP_CHECK_HR" }{ $k } eq $self->{ 'IN' }{ 'ENV' }{ $k };
+    my $chk_exp = $user_shr->{ ":HTTP_CHECK_HR" }{ $k };
+    my $chk_got = $self->{ 'IN' }{ 'ENV' }{ $k };
+    next if $chk_exp eq $chk_got;
 
-    $self->log( "status: user session parameter [$k] check failed, sid [$user_sid]" );
+    $self->log( "error: user session parameter [$k] check failed, expected [$chk_exp] got [$chk_got] for sid [$user_sid]" );
     # FIXME: move to function: close_session();
     $user_shr->{ ':CLOSED'       } = 1;
     $user_shr->{ ':ETIME'        } = time();
@@ -223,9 +232,6 @@ sub prepare_and_execute
     $self->render( PAGE => 'einvalid' );
     last;
     }
-
-  # read and save http environment data into user session, used for checks and info
-  $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $self->{ 'IN' }{ 'ENV' }{ $_ } } @HTTP_VARS_SAVE  };
 
   # FIXME: move to single place
   my $user_session_expire = $cfg->{ 'USER_SESSION_EXPIRE' } || 600; # 10 minutes
@@ -458,6 +464,7 @@ sub __create_new_user_session
 
   $self->set_user_session_expire_time_in( $user_session_expire );
 
+  # read and save http environment data into user session, used for checks and info
   $user_shr->{ ":HTTP_CHECK_HR" } = { map { $_ => $self->{ 'IN' }{ 'ENV' }{ $_ } } @HTTP_VARS_CHECK };
   $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $self->{ 'IN' }{ 'ENV' }{ $_ } } @HTTP_VARS_SAVE  };
 
@@ -547,6 +554,19 @@ sub get_http_env
   boom "missing HTTP_ENV inside user session" unless exists $user_shr->{ ':HTTP_ENV_HR' };
 
   return $user_shr->{ ':HTTP_ENV_HR' };
+}
+
+sub get_client_ip
+{
+  my $self  = shift;
+
+  my $env = $self->{ 'IN'  }{ 'ENV' };
+  
+  my $client_ip;
+  
+  $client_ip ||= $env->{ $_ } for qw( HTTP_CF_CONNECTING_IP HTTP_X_REAL_IP REMOTE_ADDR );
+  
+  return $client_ip;
 }
 
 sub get_page_session_id

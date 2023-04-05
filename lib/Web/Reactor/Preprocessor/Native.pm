@@ -185,7 +185,7 @@ sub __process_tag
       $args{ $k } = $v;
       }
     # FIXME: action calls may return non-text data, however the preprocessor expects text data for now...
-    $text = $reo->action_call( $tag, HTML_ARGS => \%args );
+    $text = $reo->act->call( $tag, HTML_ARGS => \%args );
     }
   else
     {

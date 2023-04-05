@@ -789,6 +789,13 @@ sub get_request_uri
   return $self->{ 'IN' }{ 'ENV' }{ 'REQUEST_URI' };
 }
 
+sub get_request_method
+{
+  my $self   = shift;
+  
+  return $self->{ 'IN' }{ 'ENV' }{ 'REQUEST_METHOD' };
+}
+
 sub get_headers
 {
   my $self  = shift;
@@ -1962,7 +1969,7 @@ write access to.
 
 Another way to call a module is directly from another module code with:
 
-  $reo->action_call( 'test_action', @args );
+  $reo->act->call( 'test_action', @args );
 
 The package file will look like this:
 

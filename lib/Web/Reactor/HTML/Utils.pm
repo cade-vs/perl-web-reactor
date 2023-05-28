@@ -89,8 +89,8 @@ sub html_element
   $html .= $extra;
   $html .= defined $txt ? ">$txt</$tag>" : "/>";
 
-use Data::Dumper;
-print STDERR Dumper( "\n"x10, $tag, $txt, \%atr, $html, "\n"x100 );
+#use Data::Dumper;
+#print STDERR Dumper( "\n"x10, $tag, $txt, \%atr, $html, "\n"x100 );
   
   return $html . "\n";
 }

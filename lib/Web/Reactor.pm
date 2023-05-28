@@ -1764,9 +1764,11 @@ sub new_form
 
 sub set_browser_window_title
 {
-  my $self = shift;
+  my $self  = shift;
+  my $title = shift;
 
-  $self->html_content( 'BROWSER_WINDOW_TITLE', shift() );
+  $title =~ s/<[^>]*>//g; # remove HTML if any
+  $self->html_content( 'BROWSER_WINDOW_TITLE', $title );
 }
 
 ##############################################################################

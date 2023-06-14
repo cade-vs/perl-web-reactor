@@ -21,6 +21,8 @@ use Web::Reactor::HTML::Utils;
 
 use parent 'Web::Reactor::Base';
 
+our $VERSION = '2.14';
+
 ##############################################################################
 
 sub new
@@ -89,7 +91,7 @@ sub begin
   $self->{ 'FORM_ID'    } = $form_id = $form_id || $self->create_uniq_id();
   $self->{ 'RADIO'      } = {};
   $self->{ 'RET_MAP'    } = {}; # return data mapping (combo, checkbox, etc.)
-  $self->{ 'FORM_STATE' } = {};
+  $self->{ 'FORM_STATE' } = { ':ARGS_TYPE' => 'HERE' };
   
   my $options;
   
@@ -124,6 +126,34 @@ sub state
   return undef;
 }
 
+sub state_new
+{
+  my $self = shift;
+  
+  return $self->state( @_, ':ARGS_TYPE' => 'NEW' );
+}
+
+sub state_here
+{
+  my $self = shift;
+  
+  return $self->state( @_, ':ARGS_TYPE' => 'HERE' );
+}
+
+sub state_back
+{
+  my $self = shift;
+  
+  return $self->state( @_, ':ARGS_TYPE' => 'BACK' );
+}
+
+sub state_none
+{
+  my $self = shift;
+  
+  return $self->state( @_, ':ARGS_TYPE' => 'NONE' );
+}
+
 sub end
 {
   my $self = shift;
@@ -142,7 +172,9 @@ sub end
   my $form_id   = $self->{ 'FORM_ID'   };
   $page_session->{ ':FORM_DEF' }{ $form_name }{ 'RET_MAP' } = $self->{ 'RET_MAP' };
 
-  my $state_keeper = $reo->args_here( %{ $self->{ 'FORM_STATE'  } } );
+  my $state_keeper = $reo->args_type( $self->{ 'FORM_STATE'  }{ ':ARGS_TYPE' }, %{ $self->{ 'FORM_STATE'  } } );
+
+
   $text .= "<input type=hidden name='_' value='$state_keeper' form='$form_id'>";
 
   $text .= "\n";

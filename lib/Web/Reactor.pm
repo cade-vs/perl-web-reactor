@@ -23,7 +23,7 @@ use Encode;
 use Web::Reactor::Utils;
 use Web::Reactor::HTML::Form;
 
-our $VERSION = '2.12';
+our $VERSION = '2.14';
 
 ##############################################################################
 
@@ -59,6 +59,8 @@ our %ENV_ALLOWED_KEYS = {
 
                         };
 
+my @HNS = qw( Abby Ada Alexa Alfie Alia Alice Anna Aria Ava Axel Beau Bran Chanel Cali Calla Carys Cole Cruz Dash Dean Demi Dior Dora Drew Eira Eli Elise Ella Elle Ellie Elsa Emma Enzo Eva Eve Evie Faye Fia Fifi Fox Freya Gabe Gaia Gia Greer Gwen Gogo Gyro Hugo Ilia Ilse Iris Isla Indie Inez Ivan Jace Jack June Jimmy John Kaia Kali Kate Kaya Kent Kim Kitty Knox Lane Lani Leda Lexi Levi Liam Liv Lola Lucia Lucy Luna Lyra Macy Maya Mimi Mia Milo Mina Mira Nash Neo Neve Noel Nola Nora Onyx Orla Owen Pearl Prue Reid Rhea Rhys Rose Rimini Rome Rita Ruby Rumi Runa Ryla Siena Sofia Sage Shea Svea Tate Taya Thera Tori Tova Toto Trudi Trina Uma Una Uno Veda Vidin Vida Vita Wells Willa Wren Xena Xylo Yael Zana Zara Zeev Zeno Zera Zoro );
+
 ##############################################################################
 
 sub new
@@ -76,7 +78,7 @@ sub new
   $self->{ 'IN'  }{ 'ENV'         }   = $env; # including headers
   $self->{ 'IN'  }{ 'ENV'         }{ '_CLIENT_IP' } = $self->get_client_ip();
 
-  $self->log_dumper( "debug: reactor[$self] setup (ENV & CFG): ", $env, $cfg );
+  $self->log_dumper( "debug: reactor[$self] setup (ENV & CFG): ", $env, $cfg ) if $self->is_debug() > 2;
   
   $self->{ 'PLACK' } = Plack::Request->new( $env );
 
@@ -168,7 +170,7 @@ sub run
     $self->log_dumper( "SAFE INPUT -----------------------------------", $self->get_safe_input() );
     $self->log_dumper( "FINAL PAGE SESSION [$psid]-----------------------------------", $self->get_page_session() );
     $self->log_dumper( "FINAL REF  SESSION [$rsid]-----------------------------------", $self->get_page_session( 1 ) );
-    $self->log_dumper( "FINAL USER SESSION [$usid]-----------------------------------", $self->get_user_session() );
+    $self->log_dumper( "FINAL USER SESSION [$usid]-----------------------------------", $self->get_user_session() ) if $self->is_debug() > 2;
     }
 
   # $self->log_dumper( 'RUN RESULT:', $res );
@@ -340,6 +342,10 @@ sub prepare_and_execute
     {
     $self->log( "warning: invalid page session [$page_sid]" );
     $page_sid = $self->ses->create( 'PAGE', 8 );
+    if( $self->is_debug() )
+      {
+      $page_sid = @HNS[rand(@HNS)] . $page_sid;
+      }
     $self->log( "warning: new page session created [$page_sid]" );
     $page_shr = { ':ID' => $page_sid };
     }

@@ -45,7 +45,7 @@ sub call
     }
 
   # FIXME: move to global error/log reporting
-  print STDERR "reactor::actions::call [$name] action package found [$ap]\n";
+  #print STDERR "reactor::actions::call [$name] action package found [$ap]\n";
 
   my $cr = \&{ "${ap}::main" }; # call/function reference
 
@@ -98,17 +98,17 @@ sub __find_act_pkg
       };
     if( ! $@ )  
       {
-      print STDERR "LOADED! action: $ap: $fn [@INC]\n";
+      #print STDERR "LOADED! action: $ap: $fn\n";
       $act_cache->{ $name } = $ap;
       return $ap;
       }
     elsif( $@ =~ /Can't locate $fn/)
       {
-      print STDERR "NOT FOUND: action: $ap: $fn\n";
+      #print STDERR "NOT FOUND: action: $ap: $fn\n"; #  [@INC] 
       }
     else
       {
-      print STDERR "ERROR LOADING: action: $ap: $@\n";
+      #print STDERR "ERROR LOADING: action: $ap: $@\n";
       }  
   }
 

@@ -19,9 +19,9 @@ use Web::Reactor::HTML::Utils;
 # FIXME: TODO: ...including abstract ones as GEO(metry)
 # FIXME: TODO: change VALUE to be html value (currently it is DATA), and DISPLAY to be visible text (currently it is VALUE)
 
-use parent 'Web::Reactor::Base';
-
 our $VERSION = '2.14';
+
+use parent 'Web::Reactor::Base';
 
 ##############################################################################
 

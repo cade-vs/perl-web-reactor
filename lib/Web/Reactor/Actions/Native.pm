@@ -108,7 +108,7 @@ sub __find_act_pkg
       }
     else
       {
-      #print STDERR "ERROR LOADING: action: $ap: $@\n";
+      print STDERR "ERROR LOADING: action: $ap: $@\n";
       }  
   }
 

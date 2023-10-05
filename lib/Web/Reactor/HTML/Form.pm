@@ -307,13 +307,14 @@ sub radio
   my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'RADIO' } || 'radio';
   my $on    =    $opt{ 'ON'    }; # active?
   my $ret   =    $opt{ 'RET'   }; # map return value!
+  my $key   =    $opt{ 'KEY'   }; 
   my $extra =    $opt{ 'EXTRA' };
 
   __check_name( $name );
 
   my $text;
 
-  my $val = $self->create_uniq_id();
+  my $val = defined $ret ? $self->create_uniq_id() : $key;
 
   my $form_id = $self->{ 'FORM_ID' };
   my $checked = $on ? 'checked' : undef;
@@ -424,11 +425,12 @@ sub select
       {
       my $sel   = $hr->{ 'SELECTED' } ? 'selected' : ''; # is selected?
       my $key   = $hr->{ 'KEY'      };
+      my $ret   = $hr->{ 'RET'      };
       my $value = $hr->{ 'VALUE'    };
 
       $sel = 'selected' if ( ref( $selected ) and $selected->{ $key } ) or ( $selected eq $key );
 #print STDERR "sssssssssssssssssssssssss RADIO [$name] [$value] [$key] $sel -- {$extra}\n";
-      $text .= $self->radio( NAME => $name, RET => $key, ON => $sel, EXTRA => $extra, DISABLED => $disabled ) . " $value";
+      $text .= $self->radio( NAME => $name, RET => $ret, KEY => $key, ON => $sel, EXTRA => $extra, DISABLED => $disabled ) . " $value";
       $text .= "<br>" if $opt{ 'RADIO' } != 2;
       }
     # FIXME: kakvo stava ako nqma dadeno selected pri submit na formata?
@@ -441,15 +443,22 @@ sub select
     my $pad = '&nbsp;' x 3;
     for my $hr ( @$sel_data )
       {
-      my $sel   = $hr->{ 'SELECTED' } ? 'selected' : ''; # is selected?
-      my $key   = $hr->{ 'KEY'      };
-      my $value = $hr->{ 'VALUE'    };
-      my $id = $self->create_uniq_id();
-      $self->__ret_map_set( $name, $id => $key );
+      my $sel    = $hr->{ 'SELECTED' } ? 'selected' : ''; # is selected?
+      my $key    = $hr->{ 'KEY'      };
+      my $ret    = $hr->{ 'RET'      };
+      my $value  = $hr->{ 'VALUE'    };
+
+      my $val_id = $ret ne '' ? $ret : $key;
+      
+      if( $ret ne '' )
+        {
+        $val_id = $self->create_uniq_id();
+        $self->__ret_map_set( $name, $val_id => $ret );
+        }
 
       $sel = 'selected' if ( ref( $selected ) and $selected->{ $key } ) or ( $selected eq $key );
 #print STDERR "sssssssssssssssssssssssss COMBO [$name] [$value] [$key] $sel\n";
-      $text .= "<option value='$id' $sel>$value$pad</option>\n";
+      $text .= "<option value='$val_id' $sel>$value$pad</option>\n";
       }
 
     $text .= "</select>";

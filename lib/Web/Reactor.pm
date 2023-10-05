@@ -724,7 +724,7 @@ sub args_back
   my %args = @_;
 
   $args{ '_P'  } = $self->get_ref_page_session_id();
-  $args{ '_PN' } = 'main' unless $args{ '_P' }; # return to 'main' if no referer given
+#  $args{ '_PN' } = 'main' unless $args{ '_P' }; # return to 'main' if no referer given
 
   return $self->args( %args );
 }
@@ -735,7 +735,7 @@ sub args_back_back
   my %args = @_;
 
   $args{ '_P' } = $self->get_ref_page_session_id( 1 );
-  $args{ '_PN' } = 'main' unless $args{ '_P' }; # return to 'main' if no referer given
+#  $args{ '_PN' } = 'main' unless $args{ '_P' }; # return to 'main' if no referer given
 
   return $self->args( %args );
 }
@@ -748,8 +748,10 @@ sub args_new
   $args{ '_R' } = $self->get_page_session_id();
 
   my $page_shr = $self->get_page_session();
+  $args{ '_PN' } = $page_shr->{ ':PAGE_NAME' };
   if( exists $page_shr->{ ':FRAME_NAME' } )
     {
+    # FIXME: TODO: check vframe logic
     $args{ '_FR' } = $page_shr->{ ':FRAME_NAME' };
     }
 
@@ -1271,6 +1273,7 @@ sub render
   elsif( $page )
     {
     $portray_data = $self->pre->load_page( $page );
+
     $action = undef;
     }
   else

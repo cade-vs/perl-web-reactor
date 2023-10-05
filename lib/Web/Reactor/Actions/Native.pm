@@ -49,9 +49,7 @@ sub call
 
   my $cr = \&{ "${ap}::main" }; # call/function reference
 
-  my $data;
-
-  $data = $cr->( $self->get_reo(), %args );
+  my $data = $cr->( $self->get_reo(), %args );
 
   # print STDERR "reactor::actions::call result: $data\n";
 

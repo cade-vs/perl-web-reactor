@@ -99,7 +99,7 @@ sub __load_action_file
 
   if( ! $@ )  
     {
-    $reo->log_debug( "status: load action ok: $ap [$found]" );
+    $reo->log_debug( "status: 1 load action ok: $ap [$found]" );
     my $cr = $self->{ 'ACTIONS_CODE_CACHE' }{ $name } = \&{ "${ap}::main" }; # call/function reference
     return $cr;
     }

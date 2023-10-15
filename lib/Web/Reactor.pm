@@ -261,29 +261,50 @@ sub prepare_and_execute
 
   # input parameters, GET + POST
   my $params = $plack->parameters();
+
+  for my $param_name ( keys %$params )
+    {
+    if( $param_name !~ /^[A-Za-z0-9\-\_\.\:]+$/o )
+      {
+      $self->log( "error: invalid CGI/input parameter name: [$param_name]" );
+      delete $params->{ $param_name };
+      next;
+      }
+    my @vals = $params->get_all( $param_name );
+    next unless @vals > 1;
+    $params->{ '@' . $param_name } = \@vals;
+    }
+
   hash_uc_ipl( $params );
   my @params = keys %$params;
+
+  my $check_and_make_safe_value = sub
+    {
+    my ( $n, $v ) = @_;
+    return $self->__input_cgi_make_safe_value( $n, decode( $incoming_charset, $v ) );
+    };
 
   # import plain parameters from GET/POST request
   for my $n ( @params )
     {
-    if( $n !~ /^[A-Za-z0-9\-\_\.\:]+$/o )
+    my $v = $params->{ $n };
+    if( $n =~ /^\@/ )
       {
-      $self->log( "error: invalid CGI/input parameter name: [$n]" );
-      next;
+      next unless ref( $v ) eq 'ARRAY';
+      for( my $vi = 0; $vi < @$v; $vi++ )    
+        {
+        # ignore the whole array if any value is invalid
+        next if $self->__input_cgi_skip_invalid_value( $n, $v->[$vi] );
+        $v->[$vi] = $check_and_make_safe_value->( $n, $v->[$vi] );
+        }
+      $input_user_hr->{ $n } = $v;
       }
-
-    my $v = decode( $incoming_charset, $params->{ $n } );
-
-    if( $self->__input_cgi_skip_invalid_value( $n, $v ) )
+    elsif( ref( $v ) )
       {
-      $self->log( "error: invalid CGI/input value for parameter: [$n]" );
+      # nothing really, invalid data, should be handled earlier
       next;
-      }
-    $self->log_debug( "debug: CGI input param [$n] value [$v]" );
-
-    $v = $self->__input_cgi_make_safe_value( $n, $v );
-    if ( $n =~ /BUTTON:([a-z0-9_\-]+)(:(.+?))?(\.[XY])?$/oi )
+      }  
+    elsif ( $n =~ /BUTTON:([a-z0-9_\-]+)(:(.+?))?(\.[XY])?$/oi )
       {
       # regular button BUTTON:CANCEL
       # button with id BUTTON:REDIRECT:USERID
@@ -298,8 +319,11 @@ sub prepare_and_execute
       }
     else
       {
-      $input_user_hr->{ $n } = $v;
+      my $v = decode( $incoming_charset, $v );
+      next if $self->__input_cgi_skip_invalid_value( $n, $v );
+      $input_user_hr->{ $n } = $check_and_make_safe_value->( $n, $v );
       }
+    $self->log_debug( "debug: CGI input param [$n] value [$v]" );
     }
 
   # import uploads
@@ -1154,6 +1178,11 @@ sub __input_cgi_skip_invalid_value
   # this is placeholder really
   # my $n = shift; # arg name
   # my $v = shift; # arg value
+  # if( ... )
+  #   {
+  #   $self->log( "error: invalid CGI/input value for parameter: [$n]" );
+  #   return 1; # skip it!
+  #   }
   return 0;
 }
 

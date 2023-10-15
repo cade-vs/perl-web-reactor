@@ -443,10 +443,10 @@ sub select
     my $pad = '&nbsp;' x 3;
     for my $hr ( @$sel_data )
       {
-      my $sel    = $hr->{ 'SELECTED' } ? 'selected' : ''; # is selected?
       my $key    = $hr->{ 'KEY'      };
       my $ret    = $hr->{ 'RET'      };
       my $value  = $hr->{ 'VALUE'    };
+      my $sel    = ( $hr->{ 'SELECTED' } or ( ref( $selected ) ? $selected->{ $key } : $selected eq $key ) ) ? 'selected' : ''; # is selected?
 
       my $val_id = $ret ne '' ? $ret : $key;
       
@@ -456,7 +456,6 @@ sub select
         $self->__ret_map_set( $name, $val_id => $ret );
         }
 
-      $sel = 'selected' if ( ref( $selected ) and $selected->{ $key } ) or ( $selected eq $key );
 #print STDERR "sssssssssssssssssssssssss COMBO [$name] [$value] [$key] $sel\n";
       $text .= "<option value='$val_id' $sel>$value$pad</option>\n";
       }
@@ -672,11 +671,12 @@ sub button
 
   my %opt = @_;
 
-  my $name  = uc $opt{ 'NAME'  };
-  my $id    =    $opt{ 'ID'    };
-  my $class =    $opt{ 'CLASS' } || 'button';
-  my $value =    $opt{ 'VALUE' };
-  my $args  =    $opt{ 'ARGS'  };
+  my $name    = uc $opt{ 'NAME'    };
+  my $id      =    $opt{ 'ID'      };
+  my $class   =    $opt{ 'CLASS'   } || 'button';
+  my $value   =    $opt{ 'VALUE'   };
+  my $confirm =    $opt{ 'CONFIRM' };
+  my $args    =    $opt{ 'ARGS'    };
 
   __check_name( $name );
 
@@ -695,8 +695,14 @@ sub button
   my $form_id = $self->{ 'FORM_ID' };
 #  $text .= "<input class='$class' id='$id' type='submit' name='button:$name' value='$value' onDblClick='return false;' form='$form_id' $options $args>";
   #$text .= "<button class='$class' id='$id' type='submit' name='button:$name' value='1' onDblClick='return false;' form='$form_id' $options $args>$value</button>";
+
+  if( $confirm )
+    {
+    $confirm = "[~Are you sure?]" if $confirm == 1;
+    $confirm = qq[return confirm("$confirm");];
+    }
   
-  $text .= html_element( 'button', $value, form => $form_id, class => $class, id => $id, name => "button:$name", onDblClick => 'return false;', extra => "$options $args" );
+  $text .= html_element( 'button', $value, form => $form_id, class => $class, id => $id, name => "button:$name", onDblClick => 'return false;', onClick => $confirm, extra => "$options $args" );
 
   $text .= "\n";
   return $text;

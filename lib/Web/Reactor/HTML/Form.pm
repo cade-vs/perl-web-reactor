@@ -533,7 +533,7 @@ sub input
 
   my $name  = uc $opt{ 'NAME'    };
   my $class =    $opt{ 'CLASS'   } || $self->{ 'CLASS_MAP' }{ 'INPUT' } || 'line';
-  my $value =    $opt{ 'VALUE'   };
+  my $value =    $opt{ 'VALUE'   } || "";
   my $key   =    $opt{ 'KEY'     };
   my $id    =    $opt{ 'ID'      };
   # FIXME: default data?
@@ -616,7 +616,7 @@ sub input
 #    $text  .= "\n<datalist id=$datalist_id>";
 
     $text .= html_element( 'input', undef,           id => $input_id, type => 'hidden', class => $class, name => $name, value => $key,   form => $form_id );
-    $text .= html_element( 'input', undef, %options, id => $input_id, type => 'hidden', class => $class, name => $name, value => $value, form => $form_id, list => $datalist_id, 'data-input-id' => $input_id, 'data-empty-key' => $empty_key, onChange => "return reactor_datalist_change( this, $resub )" ) . $clear_tag;
+    $text .= html_element( 'input', undef, %options, id => $input_id,                   class => $class,                value => $value, form => $form_id, list => $datalist_id, 'data-input-id' => $input_id, 'data-empty-key' => $empty_key, onChange => "return reactor_datalist_change( this, $resub )" ) . $clear_tag;
     
     my $datalist_text;
     for my $e ( @$datalist )
@@ -627,7 +627,6 @@ sub input
       }
     
     $text .= html_element( 'datalist', $datalist_text, id => $datalist_id );
-print STDERR     $text;
     }
   else
     {  

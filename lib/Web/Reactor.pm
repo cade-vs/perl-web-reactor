@@ -166,10 +166,17 @@ sub run
     my $psid = $self->get_page_session_id( 0 ) || 'empty';
     my $rsid = $self->get_page_session_id( 1 ) || 'empty';
     my $usid = $self->get_user_session_id() || 'empty';
+
+    $self->log_dumper( "DEBUG LEVEL ----------------------------------", $self->is_debug() );
     $self->log_dumper( "USER INPUT -----------------------------------", $self->get_user_input() );
     $self->log_dumper( "SAFE INPUT -----------------------------------", $self->get_safe_input() );
-    $self->log_dumper( "FINAL PAGE SESSION [$psid]-----------------------------------", $self->get_page_session() );
-    $self->log_dumper( "FINAL REF  SESSION [$rsid]-----------------------------------", $self->get_page_session( 1 ) );
+
+    my $ps = dclone( $self->get_page_session( 0 ) || {} );
+    delete $ps->{ 'BUTTON_REDIRECT' } unless $self->is_debug() > 2;
+    my $rs = dclone( $self->get_page_session( 1 ) || {} );
+    delete $rs->{ 'BUTTON_REDIRECT' } unless $self->is_debug() > 2;
+    $self->log_dumper( "FINAL PAGE SESSION [$psid]-----------------------------------", $ps );
+    $self->log_dumper( "FINAL REF  SESSION [$rsid]-----------------------------------", $rs );
     $self->log_dumper( "FINAL USER SESSION [$usid]-----------------------------------", $self->get_user_session() ) if $self->is_debug() > 2;
     }
 

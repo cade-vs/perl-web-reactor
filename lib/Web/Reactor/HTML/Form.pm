@@ -544,6 +544,8 @@ sub input
   my $args  =    $opt{ 'ARGS'    };
   my $hid   =    $opt{ 'HIDDEN'  };
   my $ret   =    $opt{ 'RET'     } || $opt{ 'RETURN'  }; # if return value should be mapped, works only with HIDDEN
+  
+  my $phi   =    $opt{ 'PH' } || $opt{ 'PHI' };
 
   my $clear =    $opt{ 'DISABLED' } ? undef : $opt{ 'CLEAR'   };
   
@@ -551,24 +553,24 @@ sub input
 
   $size = $maxl = $len if $len > 0;
 
-  my $options;
+  my %options;
 
-  $options .= "disabled='disabled' " if $opt{ 'DISABLED' };
-  $options .= "size='$size' "        if $size > 0;
-  $options .= "maxlength='$maxl' "   if $maxl > 0;
-  $options .= "id='$id' "            if $id ne '';
-  $options .= "type='password' "     if $opt{ 'PASS' } || $opt{ 'PASSWORD' };
-  $options .= "type='hidden' "       if $hid; # FIXME: handle TYPE better
-  $options .= "readonly='readonly' " if $opt{ 'READONLY' } || $opt{ 'RO' };
-  $options .= "required='required' " if $opt{ 'REQUIRED' } || $opt{ 'REQ' };
-  $options .= "onFocus=\"this.value=''\" " if $opt{ 'FOCUS_AUTO_CLEAR' };
-  $options .= "autocomplete='off' "  if $opt{ 'NO_AUTOCOMPLETE' };
+  $options{ 'disabled' } = 'disabled' if $opt{ 'DISABLED' };
+  $options{ 'size'     } = $size      if $size > 0;
+  $options{ 'maxlength'} = $maxl      if $maxl > 0;
+  $options{ 'id'       } = $id        if $id ne '';
+  $options{ 'type'     } = 'password' if $opt{ 'PASS' } || $opt{ 'PASSWORD' };
+  $options{ 'type'     } = 'hidden'   if $hid; # FIXME: handle TYPE better
+  $options{ 'readonly' } = 'readonly' if $opt{ 'READONLY' } || $opt{ 'RO' };
+  $options{ 'required' } = 'required' if $opt{ 'REQUIRED' } || $opt{ 'REQ' };
 
+  $options{ 'placeholder'  } = $phi   if $phi;
+  $options{ 'autocomplete' } = 'off'  if $opt{ 'NO_AUTOCOMPLETE' };
+
+  $options{ 'onFocus'  } = "this.value=''" if $opt{ 'FOCUS_AUTO_CLEAR' };
 
   my $extra = $opt{ 'EXTRA' };
-  $options .= " $extra ";
-
-  $value = str_html_escape( $value );
+  $options{ 'extra' } = $extra if $extra;
 
   __check_name( $name );
 
@@ -587,12 +589,12 @@ sub input
 
     if( $clear =~ /^[a-z_\-0-9\/]+\.(png|jpg|jpeg|gif|svg)$/ )
       {
-      $clear_tag = qq[ <img class='icon-clear' src='$clear' border='0' onClick='return set_value("$id", "")' $clear_hint_handler > ];
+      $clear_tag = html_element( 'img', undef, class => 'icon-clear',  border => '0', onClick => "return set_value('$id', '')", src => $clear, extra => $clear_hint_handler );
       }
     else
       {
       my $s = $clear eq 1 ? '&otimes;' : $clear;
-      $clear_tag = qq[ <span class='icon-clear' border='0' onClick='return set_value("$id", "")' $clear_hint_handler >$s</span> ];
+      $clear_tag = html_element( 'span', $s, class => 'icon-clear',  border => '0', onClick => "return set_value('$id', '')", extra => $clear_hint_handler );
       }
     }
 
@@ -608,20 +610,29 @@ sub input
     my $input_id    = $self->create_uniq_id();
     my $datalist_id = $self->create_uniq_id();
     $class .= " search_list";
-    $text  .= "\n\n\n\n\n<input id=$input_id type=hidden    name='$name' value='$key'          form='$form_id'      >";
-    $text  .= "\n<input class='$class' value='$value' list=$datalist_id $options form='$form_id' $args data-input-id=$input_id data-empty-key='$empty_key' onchange='return reactor_datalist_change( this, $resub )'>$clear_tag";
-    $text  .= "\n<datalist id=$datalist_id>";
+
+#    $text  .= "\n\n\n\n\n<input           id=$input_id     type=hidden    name='$name' value='$key'          form='$form_id'      >";
+#    $text  .= "\n<input                             class='$class' value='$value' list=$datalist_id $options form='$form_id' $args data-input-id=$input_id data-empty-key='$empty_key' onchange='return reactor_datalist_change( this, $resub )'>$clear_tag";
+#    $text  .= "\n<datalist id=$datalist_id>";
+
+    $text .= html_element( 'input', undef,           id => $input_id, type => 'hidden', class => $class, name => $name, value => $key,   form => $form_id );
+    $text .= html_element( 'input', undef, %options, id => $input_id, type => 'hidden', class => $class, name => $name, value => $value, form => $form_id, list => $datalist_id, 'data-input-id' => $input_id, 'data-empty-key' => $empty_key, onChange => "return reactor_datalist_change( this, $resub )" ) . $clear_tag;
+    
+    my $datalist_text;
     for my $e ( @$datalist )
       {
       my $k = $e->{ 'KEY'   };
       my $v = $e->{ 'VALUE' };
-      $text .= html_element( 'option', undef, name => $v, value => $v, 'data-key' => $k );
+      $datalist_text .= html_element( 'option', undef, name => $v, value => $v, 'data-key' => $k );
       }
-    $text .= "\n</datalist>\n\n\n\n";
+    
+    $text .= html_element( 'datalist', $datalist_text, id => $datalist_id );
+print STDERR     $text;
     }
   else
     {  
-    $text .= "<input class='$class' name='$name' value='$value' $options form='$form_id' $args>$clear_tag";
+#    $text .= "<input class='$class' name='$name' value='$value' $options form='$form_id' $args>$clear_tag";
+    $text .= html_element( 'input', undef, %options, class => $class, name => $name, value => $value, form => $form_id ) . $clear_tag;
     }
 
   $text .= "\n";

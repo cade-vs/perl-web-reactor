@@ -30,23 +30,11 @@ sub new
 
   my $cfg = $self->get_cfg();
 
-  # FIXME: common directories setup code?
-  if( ! $cfg->{ 'HTML_DIRS' } or @{ $cfg->{ 'HTML_DIRS' } } < 1 )
-    {
-    my $root = $cfg->{ 'APP_ROOT' };
-    my $lang = $cfg->{ 'LANG' };
-    if( $lang )
-      {
-      $cfg->{ 'HTML_DIRS' } = [ "$root/html/$lang", "$root/html/default" ];
-      }
-    else
-      {
-      $cfg->{ 'HTML_DIRS' } = [ "$root/html/default" ];
-      }
-    }
+  $cfg->{ 'HTML_DIRS' } = [ $cfg->{ 'HTML_DIRS' } ] if ! ref( $cfg->{ 'HTML_DIRS' } ) and $cfg->{ 'HTML_DIRS' };
+  $cfg->{ 'HTML_DIRS' } = [ $cfg->{ 'APP_ROOT' } . '/html/' ] if ! $cfg->{ 'HTML_DIRS' } or @{ $cfg->{ 'HTML_DIRS' } } < 1;
+  $cfg->{ 'HTML_DIRS' } = [ grep { -d } @{ $cfg->{ 'HTML_DIRS' } } ];
 
-  my $html_dirs = $cfg->{ 'HTML_DIRS' } || [];
-  @$html_dirs = grep { -d } @$html_dirs;
+  boom "empty HTML_DIRS list or dirs do not exist" unless @{ $cfg->{ 'HTML_DIRS' } } > 0;
 
   return $self;
 }
@@ -90,7 +78,7 @@ sub load_file
     return $self->{ 'FILE_CACHE' }{ $lang }{ $pn }{ $fn };
     }
 
-  my $dirs = [];
+  my $dirs;
 
   if( exists $self->{ 'DIRS_CACHE' }{ $lang }{ $pn } )
     {
@@ -102,21 +90,29 @@ sub load_file
     my $orgs = $cfg->{ 'HTML_DIRS' };
 
     my @pn = grep { $_ } split /\/+/, $pn;
+    
+    $dirs = [];
 
-    for( @$orgs )
-      {
-      my $org = $_;
-      #push @$dirs, $org;
-      for my $pni ( @pn )
+      for( @$orgs )
         {
-        $org .= "/$pni";
-        push @$dirs, $org;
-        }
-      }
+        for my $ln ( ( $lang ? ( $lang ) : () ), 'default' )
+          {
+          my $org = $_ . "/$ln";
+          my @dirs = ( $org );
+          for my $pni ( @pn )
+            {
+            $org .= "/$pni";
+            push @dirs, $org;
+            }
+          push @$dirs, reverse @dirs;
+          }
+        }  
 
-    push @$dirs, @$orgs;
     @$dirs = grep { -d } @$dirs;
-    # print STDERR Dumper( 'PREPROCESSOR EXTENDED LOAD FILE DIRS:', $orgs, $pn, \@pn, $dirs );
+
+    boom "empty HTML_DIRS list or dirs do not exist" unless @$dirs > 0;
+
+#print STDERR Dumper( '>>>>>>>>>>>>>>>> PREPROCESSOR EXTENDED LOAD FILE DIRS:', $orgs, $pn, \@pn, $dirs, $cfg );
 
     $self->{ 'DIRS_CACHE' }{ $lang }{ $pn } = $dirs;
     }

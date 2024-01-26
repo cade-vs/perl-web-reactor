@@ -268,7 +268,7 @@ sub checkbox_multi
   my $hint_handler = $hint ? html_hover_layer( $reo, VALUE => $hint ) : undef;
 
   my $cb_id = $self->create_uniq_id(); # checkbox id
-  my $el_id = $self->create_uniq_id(); # checkbox label element id
+  my $el_id = $opt{ 'ID' } || $self->create_uniq_id(); # checkbox label element id
 
   my $form_id = $self->{ 'FORM_ID' };
   #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";

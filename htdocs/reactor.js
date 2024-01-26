@@ -281,6 +281,11 @@ function reactor_form_checkbox_toggle( el )
    reactor_form_checkbox_set( el, el.checked );
 }
 
+function reactor_form_checkbox_toggle_by_id( el_id )
+{
+   reactor_form_checkbox_toggle( document.getElementById( el_id ) );
+}
+
 function reactor_form_checkbox_set_all( form_id, value )
 {
   var arr = document.getElementById( form_id ).elements;

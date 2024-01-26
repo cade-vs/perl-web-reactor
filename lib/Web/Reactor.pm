@@ -89,11 +89,8 @@ sub new
   data_tools_set_text_io_encoding( $self->{ 'CFG' }{ 'APP_CHARSET' } );
 
   # FIXME: common directories setup code?
-  if( ! $cfg->{ 'LIB_DIRS' } or @{ $cfg->{ 'LIB_DIRS' } } < 1 )
-    {
-    my $root = $cfg->{ 'APP_ROOT' };
-    $cfg->{ 'LIB_DIRS' } = [ "$root/lib" ];
-    }
+  $cfg->{ 'LIB_DIRS' } = [ $cfg->{ 'LIB_DIRS' } ] if ! ref( $cfg->{ 'LIB_DIRS' } ) and $cfg->{ 'LIB_DIRS' };
+  $cfg->{ 'LIB_DIRS' } = [ $cfg->{ 'APP_ROOT' } . '/lib/' ] if ! $cfg->{ 'LIB_DIRS' } or @{ $cfg->{ 'LIB_DIRS' } } < 1;
 
   for my $lib_dir ( @{ $cfg->{ 'LIB_DIRS' } || [] } )
     {
@@ -432,7 +429,7 @@ sub prepare_and_execute
   my $page_name = lc( $input_safe_hr->{ '_PN' } || $input_user_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || 'main' );
   if( $page_name ne '' )
     {
-    if( $page_name =~ /^[a-z_0-9]+$/ )
+    if( $page_name =~ /^[a-z_\-0-9\/]+$/ )
       {
       $page_shr->{ ':PAGE_NAME' } = $page_name;
       }
@@ -779,7 +776,7 @@ sub args_new
   $args{ '_R' } = $self->get_page_session_id();
 
   my $page_shr = $self->get_page_session();
-  $args{ '_PN' } = $page_shr->{ ':PAGE_NAME' };
+  $args{ '_PN' } ||= $page_shr->{ ':PAGE_NAME' };
   if( exists $page_shr->{ ':FRAME_NAME' } )
     {
     # FIXME: TODO: check vframe logic

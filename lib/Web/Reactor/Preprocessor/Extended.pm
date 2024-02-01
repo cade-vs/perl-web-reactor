@@ -32,9 +32,10 @@ sub new
 
   $cfg->{ 'HTML_DIRS' } = [ $cfg->{ 'HTML_DIRS' } ] if ! ref( $cfg->{ 'HTML_DIRS' } ) and $cfg->{ 'HTML_DIRS' };
   $cfg->{ 'HTML_DIRS' } = [ $cfg->{ 'APP_ROOT' } . '/html/' ] if ! $cfg->{ 'HTML_DIRS' } or @{ $cfg->{ 'HTML_DIRS' } } < 1;
+
   $cfg->{ 'HTML_DIRS' } = [ grep { -d } @{ $cfg->{ 'HTML_DIRS' } } ];
 
-  boom "empty HTML_DIRS list or dirs do not exist" unless @{ $cfg->{ 'HTML_DIRS' } } > 0;
+  boom "empty HTML_DIRS list or dirs do not exist (1)" unless @{ $cfg->{ 'HTML_DIRS' } } > 0;
 
   return $self;
 }
@@ -50,7 +51,14 @@ sub load_page
 
   my $pn = lc shift || 'main'; # page name
 
-  return $self->load_file( $pn, 'index' );
+  # sanitize page name
+  $pn =~ s/^\/+//o;
+  $pn =~ s/\/+$//o;
+  $pn =~ s/\/+/\//go;
+
+  my @pn = grep { $_ } split /\/+/, $pn;
+
+  return $self->load_file( $pn, 'page_' . pop( @pn ) ) || $self->load_file( $pn, 'index' );
 }
 
 sub load_file
@@ -93,24 +101,43 @@ sub load_file
     
     $dirs = [];
 
-      for( @$orgs )
+    while( 4 )
+      {
+      for my $org ( @$orgs )
         {
         for my $ln ( ( $lang ? ( $lang ) : () ), 'default' )
           {
-          my $org = $_ . "/$ln";
-          my @dirs = ( $org );
-          for my $pni ( @pn )
-            {
-            $org .= "/$pni";
-            push @dirs, $org;
-            }
-          push @$dirs, reverse @dirs;
+          push @$dirs, "$org/$ln/" . join( '/', @pn );
           }
-        }  
+        }
+      last unless @pn;  
+      pop @pn;  
+      }
+
+=pod
+    for( @$orgs )
+      {
+      for my $ln ( ( $lang ? ( $lang ) : () ), 'default' )
+        {
+        my $org = $_ . "/$ln";
+        my @dirs = ( $org );
+        for my $pni ( @pn )
+          {
+          $org .= "/$pni";
+          push @dirs, $org;
+          }
+        push @$dirs, reverse @dirs;
+        }
+      }  
+=cut
+
+print STDERR Dumper( $dirs );
 
     @$dirs = grep { -d } @$dirs;
 
-    boom "empty HTML_DIRS list or dirs do not exist" unless @$dirs > 0;
+print STDERR Dumper( $dirs );
+
+    boom "empty HTML_DIRS list or dirs do not exist (2)" unless @$dirs > 0;
 
 #print STDERR Dumper( '>>>>>>>>>>>>>>>> PREPROCESSOR EXTENDED LOAD FILE DIRS:', $orgs, $pn, \@pn, $dirs, $cfg );
 

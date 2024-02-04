@@ -49,36 +49,28 @@ sub load_page
 {
   my $self = shift;
 
-  my $pn = lc shift || 'main'; # page name
-
-  # sanitize page name
-  $pn =~ s/^\/+//o;
-  $pn =~ s/\/+$//o;
-  $pn =~ s/\/+/\//go;
-
-  my @pn = grep { $_ } split /\/+/, $pn;
-
-  return $self->load_file( $pn, 'page_' . pop( @pn ) ) || $self->load_file( $pn, 'index' );
+  return $self->load_file( shift, 'index' );
 }
 
 sub load_file
 {
   my $self = shift;
 
-  my $pn = lc shift || 'main'; # page name
-  my $fn = lc shift; # file name
+  my $pn = lc shift || 'main';  # page name (i.e. file path only)
+  my $fn = lc shift || 'index'; # file name (file name only, no path, no ext)
 
   # sanitize page name
-  $pn =~ s/^\/+//o;
-  $pn =~ s/\/+$//o;
-  $pn =~ s/\/+/\//go;
+  $pn =~ s|^\s*/*||o;
+  $pn =~ s|/*\s*$||o;
+  $pn =~ s|\.+||go;
+  $pn =~ s|/+|/|go;
 
-  boom "invalid page name, expected ALPHANUMERIC, got [$pn]" unless $pn =~ /^[a-z_\-0-9\/]+$/;
-  boom "invalid file name, expected ALPHANUMERIC, got [$fn]" unless $fn =~ /^[a-z_\-0-9]+$/;
+  boom "invalid page name, expected ALPHANUMERIC, got [$pn]" unless $pn =~ /^[a-zA-Z_\-0-9\/]+$/o;
+  boom "invalid file name, expected ALPHANUMERIC, got [$fn]" unless $fn =~ /^[a-zA-Z_\-0-9]+$/o;
 
   my $cfg = $self->get_cfg();
 
-  my $lang = $cfg->{ 'LANG' };
+  my $lang = $cfg->{ 'LANG' } || '*';
 
   if( exists $self->{ 'FILE_CACHE' }{ $lang }{ $pn }{ $fn } )
     {
@@ -99,7 +91,7 @@ sub load_file
 
     my @pn = grep { $_ } split /\/+/, $pn;
     
-    $dirs = [];
+    my @dirs_try;
 
     while( 4 )
       {
@@ -107,39 +99,16 @@ sub load_file
         {
         for my $ln ( ( $lang ? ( $lang ) : () ), 'default' )
           {
-          push @$dirs, "$org/$ln/" . join( '/', @pn );
+          push @dirs_try, "$org/$ln/" . join( '/', @pn );
           }
         }
       last unless @pn;  
       pop @pn;  
       }
 
-=pod
-    for( @$orgs )
-      {
-      for my $ln ( ( $lang ? ( $lang ) : () ), 'default' )
-        {
-        my $org = $_ . "/$ln";
-        my @dirs = ( $org );
-        for my $pni ( @pn )
-          {
-          $org .= "/$pni";
-          push @dirs, $org;
-          }
-        push @$dirs, reverse @dirs;
-        }
-      }  
-=cut
+    $dirs = [ grep { -d } @dirs_try ];
 
-print STDERR Dumper( $dirs );
-
-    @$dirs = grep { -d } @$dirs;
-
-print STDERR Dumper( $dirs );
-
-    boom "empty HTML_DIRS list or dirs do not exist (2)" unless @$dirs > 0;
-
-#print STDERR Dumper( '>>>>>>>>>>>>>>>> PREPROCESSOR EXTENDED LOAD FILE DIRS:', $orgs, $pn, \@pn, $dirs, $cfg );
+    boom "empty HTML_DIRS list or dirs do not exist (2) tried dirs [@dirs_try]" unless @$dirs > 0;
 
     $self->{ 'DIRS_CACHE' }{ $lang }{ $pn } = $dirs;
     }

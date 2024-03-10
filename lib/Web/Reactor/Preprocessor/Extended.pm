@@ -164,7 +164,7 @@ sub process
 
   # FIXME: cache here? moje bi ne, zaradi modulite
   $text =~ s/<([\$\&\#]|\$\$)([a-zA-Z_\-0-9]+)(\s*[^>]*)?>/$self->__process_tag( $pn, $1, $2, $3, $opt, $ctx )/ge;
-  $text =~ s/reactor_((new|back|here|none)_)?(href|src)=(["'])?([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"']*)(\4)?/$self->__process_href( $2, $3, $5, $7 )/gie;
+  $text =~ s/reactor_((new|back|here|none)_)?(href|src)=(["'])?([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"'#]*)(#[a-z_0-9\.]+)?(\4)?/$self->__process_href( $2, $3, $5, $7, $8 )/gie;
 
 #print STDERR Dumper( 'PROCESS POST --- ' x 7, $pn, $text );
 
@@ -246,6 +246,7 @@ sub __process_href
   my $attr   = shift; # href or src
   my $script = shift;
   my $data   = shift;
+  my $anchor = shift;
 
   my $data_hr = url2hash( $data );
 
@@ -255,7 +256,7 @@ sub __process_href
 
   my $href = $reo->args_type( $type, %$data_hr );
 
-  return "$attr=$script?_=$href";
+  return "$attr=$script?_=$href$anchor";
 }
 
 ##############################################################################

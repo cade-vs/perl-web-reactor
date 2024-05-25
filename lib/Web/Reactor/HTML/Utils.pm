@@ -24,9 +24,9 @@ our @EXPORT = qw(
                 html_escape
 
                 html_element
-                html_table
 
                 html_ftree
+                html_ctable
 
                 html_hover_layer
                 html_popup_layer
@@ -50,10 +50,7 @@ use Web::Reactor::HTML::Layout;
 
 ##############################################################################
 
-sub html_escape
-{
-  return Data::Tools::str_html_escape( @_ );
-}
+*html_escape = *Data::Tools::str_html_escape;
 
 ##############################################################################
 
@@ -163,6 +160,171 @@ sub html_ftree
 }
 
 sub __html_ftree_branch
+{
+  my $data           = shift;
+  my $ftree_table_id = shift;
+  my $branch_id      = shift;
+  my $level          = shift;
+  my $opt            = shift;
+
+  my $html;
+
+  $html .= "\n";
+
+  for my $row ( @$data )
+    {
+    my $label;
+    my $data;
+
+    my $r_args; # row  args
+    my $c_args; # cell args
+
+    if( ref( $row ) eq 'HASH' )
+      {
+      $label = $row->{ 'LABEL' };
+      $data  = $row->{ 'DATA'  };
+
+      $r_args ||= $row->{ 'ARGS' };
+      $r_args ||= 'class=' . $row->{ 'CLASS' } if $row->{ 'CLASS' };
+      }
+    else
+      {
+      $label = $row;
+      }
+
+    $r_args ||= $opt->{ 'ARGS_TR' };
+    $c_args ||= $opt->{ 'ARGS_TD' };
+ 
+    $ftree_item_id++;
+
+    my $row_id = $branch_id . $ftree_item_id . '.';
+
+    # $label = "($row_id) $label"; # DEBUG
+
+    my $hidden = $level > 0 ? "style='display: none'" : undef;
+    my $pad = $level * 6 + 1;
+    my $cell = html_layout_2lr( '&nbsp;', $label, "$pad=<" );
+
+    if( ref( $data ) eq 'ARRAY' )
+      {
+      my $open_code = qq{ onclick='ftree_click( "$ftree_table_id", "$row_id" )' };
+      $html .= "<tr id=$row_id $open_code $r_args $hidden><td $c_args>$cell</td></tr>";
+      $html .= __html_ftree_branch( $data, $ftree_table_id, $row_id, $level + 1, $opt );
+      }
+    else
+      {
+      $html .= "<tr id=$row_id $hidden $r_args><td $c_args>$cell</td></tr>";
+      }
+
+    $html .= "\n";
+    }
+
+  return $html;
+}
+
+##############################################################################
+
+=pod
+
+collapsable rows table
+
+first level items are always visible, click on cell1 on each row will show
+or hide all nested rows. visually collapsed rows will not be indented by 
+default but can have separate per-level css classes
+
+DEMO:
+
+  my $t = [
+             [
+               'opa',
+               'tralala',
+               'heyo',
+               {
+                 DATA  => [
+                           'next opa',
+                           'next tralala',
+                           'next heyo',
+                          ]
+                 SUB => [
+                           [
+                               'heyo',
+                               {
+                                 DATA  => [
+                                           'next opa',
+                                           'next tralala',
+                                           'next heyo',
+                                          ]
+                                 SUB => [
+                                           [
+                                           ],
+                                        ]         
+                               }
+                           ],
+                        ]         
+               }
+             ],
+          ];
+
+
+  my $t = [
+            [ id, 1, 2, 3, 4, 5 ],
+            [ { id, class etc. }, 1, 2, 3, 4, 5 ],
+          ];
+
+
+          tr: data
+          tr: { id, class, args }, data
+          td: data
+          td: { id, class, args }, data
+
+  print html_ctable( $a, 'ARGS' => 'cellpadding=10 width=100% border=0' );
+
+=cut
+
+sub html_ctable
+{
+  my $data = shift;
+  my $opt  = shift;
+  
+  my $table = [];
+  
+  for my $row ( @$data )
+    {
+    
+    
+    
+    }
+}
+
+
+my $ctable_item_id;
+sub html_ctable2
+{
+  my $data = shift;
+  my %opt  = @_;
+
+  my $t_args;
+  $t_args ||= $opt{ 'ARGS' };
+  $t_args ||= 'class=' . $opt{ 'CLASS' } if $opt{ 'CLASS' };
+
+  $ftree_item_id++;
+
+  my $ftree_table_id = "FTREE_TABLE_$ftree_item_id";
+
+  my $html;
+
+  $html .= "\n";
+  $html .= "<table id=$ftree_table_id $t_args>";
+
+  $html .= __html_ctable_branch2( $data, $ftree_table_id, $ftree_table_id . '.', 0, \%opt );
+
+  $html .= "</table>";
+  $html .= "\n";
+
+  return $html;
+}
+
+sub __html_ctable_branch2
 {
   my $data           = shift;
   my $ftree_table_id = shift;

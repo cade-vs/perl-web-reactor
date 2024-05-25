@@ -202,9 +202,8 @@ sub prepare_and_execute
     $self->log( "warning: invalid user session [$user_sid]" );
     ( $user_sid, $user_shr ) = $self->__create_new_user_session();
     }
-  $self->{ 'SESSIONS' }{ 'SID'  }{ 'USER' } = $user_sid;
-  $self->{ 'SESSIONS' }{ 'DATA' }{ 'USER' }{ $user_sid } = $user_shr;
-
+  $self->__set_session( 'USER', $user_sid, $user_shr );
+  
   if( ( $user_shr->{ ':LOGGED_IN' } and $user_shr->{ ':XTIME' } > 0 and time() > $user_shr->{ ':XTIME' } )
       or
       ( $user_shr->{ ':CLOSED' } ) )
@@ -377,8 +376,7 @@ sub prepare_and_execute
     $self->log( "warning: new page session created [$page_sid]" );
     $page_shr = { ':ID' => $page_sid };
     }
-  $self->{ 'SESSIONS' }{ 'SID'  }{ 'PAGE' } = $page_sid;
-  $self->{ 'SESSIONS' }{ 'DATA' }{ 'PAGE' }{ $page_sid } = $page_shr;
+  $self->__set_session( 'PAGE', $page_sid, $page_shr );
 
 
   my $ref_page_sid = $input_safe_hr->{ '_R' };
@@ -477,8 +475,7 @@ sub __create_new_user_session
 
   $user_sid = $self->ses->create( 'USER' );
   $user_shr = { ':ID' => $user_sid };
-  $self->{ 'SESSIONS' }{ 'SID'  }{ 'USER' } = $user_sid;
-  $self->{ 'SESSIONS' }{ 'DATA' }{ 'USER' }{ $user_sid } = $user_shr;
+  $self->__set_session( 'USER', $user_sid, $user_shr );
 
   my $path = $cfg->{ 'COOKIE_PATH' };
   if( ! $path )
@@ -536,6 +533,22 @@ sub get_cfg
 # usual user visible api
 #
 
+# user hold is data, which is preserved between login sessions, can carry anything
+# user hold is available only after login and only if login has username or other user identification
+
+sub get_user_hold
+{
+  my $self = shift;
+  
+  my $uid = $self->get_user_session()->{ ':USER_IDENT' };
+
+  my $hold = $self->ses->load( 'HOLD', $uid ) || {};
+  
+  $self->{ 'SESSIONS' }{ 'DATA' }{ 'HOLD' }{ $uid } = $hold;
+
+  return $hold;
+}
+
 sub get_user_session
 {
   my $self = shift;
@@ -572,6 +585,7 @@ sub get_page_session
       {
       $page_shr = $self->ses->load( 'PAGE', $page_sid );
       $self->{ 'SESSIONS' }{ 'DATA' }{ 'PAGE' }{ $page_sid } = $page_shr;
+      $self->__update_session_fingerprint( 'PAGE', $page_sid, $page_shr );
       }
     }
 
@@ -724,8 +738,7 @@ sub args
     {
     $link_sid = $self->ses->create( 'LINK', 8 );
     $link_shr = { ':ID' => $link_sid };
-    $self->{ 'SESSIONS' }{ 'DATA' }{ 'LINK' }{ $link_sid } = $link_shr;
-    $self->{ 'SESSIONS' }{ 'SID'  }{ 'LINK' } = $link_sid;
+    $self->__set_session( 'LINK', $link_sid, $link_shr );
     }
   else
     {
@@ -973,13 +986,41 @@ sub res_get_body
 
 ##############################################################################
 
+sub __set_session
+{
+  my $self = shift;
+  
+  my $type = shift;
+  my $sid  = shift;
+  my $hr   = shift;
+
+  boom( "session [$type:$sid] already set" ) if exists $self->{ 'SESSIONS' }{ 'DATA' }{ $type }{ $sid };
+
+  $self->{ 'SESSIONS' }{ 'SID'  }{ $type }         = $sid; # keeps only main, USER, PAGE, etc. session IDs
+  $self->{ 'SESSIONS' }{ 'DATA' }{ $type }{ $sid } = $hr;
+
+  $self->__update_session_fingerprint( $type, $sid, $hr );
+}
+
+sub __update_session_fingerprint
+{
+  my $self = shift;
+  
+  my $type = shift;
+  my $sid  = shift;
+  my $hr   = shift;
+
+  $self->{ 'CACHE' }{ 'SESSION_DATA_SHA1' }{ $type }{ $sid } = sha1_hex( freeze( $hr ) );
+}
+
 sub save
 {
   my $self = shift;
 
   my $mod_cache = $self->{ 'CACHE' }{ 'SESSION_DATA_SHA1' } ||= {};
-  for my $type ( qw( USER PAGE LINK ) )
+  for my $type ( qw( USER PAGE LINK HOLD ) )
     {
+    next unless exists $self->{ 'SESSIONS' }{ 'DATA' }{ $type };
     while( my ( $sid, $shr ) = each %{ $self->{ 'SESSIONS' }{ 'DATA' }{ $type } } )
       {
       boom( "SESSION:DATA:$type:$sid is not hashref" ) unless ref( $shr ) eq 'HASH';
@@ -989,7 +1030,7 @@ sub save
 
       next if $sha1 eq $cache1;
 
-      $self->log_debug( "saving session data [$type:$sid]" );
+      $self->log_debug( "saving session data [$type:$sid] --> $sha1 <> $cache1" );
 
       $mod_cache->{ $type }{ $sid } = $sha1;
 
@@ -1619,11 +1660,19 @@ sub is_logged_in
 sub login
 {
   my $self = shift;
+  my $user_ident = shift; # user identifier, login name, used for mapping of cross-login-session permanent data
+  
+  my $user_ident_s = $user_ident;
+  
+  $user_ident_s =~ s/[^a-z_0-9\-:]/_/gi; # human readable
+  $user_ident   = str_hex( $user_ident );
 
   my $user_shr = $self->get_user_session();
-  $user_shr->{ ':LOGGED_IN'  } = 1;
-  $user_shr->{ ':LTIME'      } = time();
-  $user_shr->{ ':LTIME_STR'  } = scalar localtime();
+  $user_shr->{ ':LOGGED_IN'    } = 1;
+  $user_shr->{ ':LTIME'        } = time();
+  $user_shr->{ ':LTIME_STR'    } = scalar localtime();
+  $user_shr->{ ':USER_IDENT'   } = $user_ident;
+  $user_shr->{ ':USER_IDENT_S' } = $user_ident_s;
   # FIXME: add more login info
 }
 

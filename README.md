@@ -399,6 +399,12 @@ Web::Reactor for its main web interface:
 
     https://github.com/cade-vs/perl-decor
 
+# NOTES
+
+To dump the content of the session files (.wrs files for USER, PAGE, LINK, HOLD):
+
+    perl -MStorable -MData::Dumper -e 'print Dumper( Storable::lock_retrieve(shift));' /path/to/file.wrs
+
 # MAILING LIST
 
     web-reactor@googlegroups.com

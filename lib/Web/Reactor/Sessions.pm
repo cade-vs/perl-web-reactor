@@ -31,7 +31,7 @@ sub create
 {
   my $self = shift;
   my $type = uc shift;
-  my $len  = shift || 97;
+  my $len  = shift || 62; # used to be 97 but 62 is more symmetric ;)
 
   die "Web::Reactor::Sessions::create: invalid type, expected ALPHANUMERIC, got [$type]" unless $type =~ /^[A-Z0-9]+$/;
   die "Web::Reactor::Sessions::create: invalid length, expected len > 0, got [$len]" unless $len > 0;
@@ -198,7 +198,7 @@ sub create_id
   my $self = shift;
   my $cfg  = $self->get_cfg();
  
-  my $len = shift() || $cfg->{ 'SESS_LENGTH'  } || 128;
+  my $len = shift() || $cfg->{ 'SESS_LENGTH'  } || 62; # to be symmetric ;)
   my $let = shift() || $cfg->{ 'SESS_LETTERS' } || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
   return create_random_id( $len, $let );
@@ -215,7 +215,7 @@ sub compose_key_from_id
   my @key;
  
   push @key, $type;
-  push @key, $self->get_user_sid() if $type ne 'USER'; # FIXME: not only! UPDs also! (user permanent data)
+  push @key, $self->get_user_sid() unless $type eq 'USER' or $type eq 'HOLD'; # USER and HOLD data are not tied to current session
   push @key, $id;
  
   return @key;

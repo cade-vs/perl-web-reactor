@@ -70,9 +70,15 @@ DEMO:
               PCCL  => [ 'view-name-h', 'view-value-h' ],
               # set only PCCL and skip this row
               SKIP  => YES,
+              # row will also be skipped if missing DATA, regardless of SKIP
               };
 
   $text .= html_table( \@data, ARGS => 'width=100%' );
+
+
+collapse identifier for rows  
+  
+  CID=id.id.id+
 
 =cut
 
@@ -115,6 +121,8 @@ sub html_table
     my $cols;
     $r_class = $r_class eq $tr1 ? $tr2 : $tr1;
     my $r_args;
+    my $cid;
+    my $display;
 
     $r_class = $trh if $trh and $row_num == 0;
 
@@ -132,13 +140,15 @@ sub html_table
     elsif ( ref( $row ) eq 'HASH' )
       {
       $row      = hash_uc( $row );
-      $cols     = $row->{ 'DATA' };
-      $r_args ||= $row->{ 'ARGS' };
+      $display  = "style='display: none'" if $row->{ '-NODISPLAY' };
+      $cols     = $row->{ 'DATA'   };
+      $cid      = $row->{ 'CID'    };
+      $r_args ||= $row->{ 'ARGS'   };
       $r_args ||= 'class=' . ( $row->{ 'CLASS' } || $r_class );
       $ccl      = $row->{ 'CCL'  } if $row->{ 'CCL'  };
       $pccl     = $row->{ 'PCCL' } if $row->{ 'PCCL' };
 
-      next if $row->{ 'SKIP' };
+      next if $row->{ 'SKIP' } or ! $cols;
       }
     else
       {
@@ -146,11 +156,12 @@ sub html_table
       next;
       }
 
+    $r_args .= qq{ data-cid='$cid' $display } if $cid;
     $text  .= "  <tr $r_args>\n";
 
     $ccl = $pccl if $pccl and ! $ccl; # use permanent cols class list if permanent specified and not local one
 
-    my $col_num = 0;
+    my $cn = 0; # column index number
     for my $cell ( @$cols )
       {
       my $c_class;
@@ -158,7 +169,7 @@ sub html_table
       my $val;
 
       $c_class = $tdh if $tdh and $row_num == 0;
-      $c_class = $ccl->[ $col_num ] if $ccl and $ccl->[ $col_num ];
+      $c_class = $ccl->[ $cn ] if $ccl and $ccl->[ $cn ];
 
       if ( ! ref( $cell ) ) # SCALAR
         {
@@ -179,8 +190,9 @@ sub html_table
         }
 
       $c_args ||= "class='" . $c_class . "'";
+      $c_args .= qq{ onclick='ctable_row_click( this )' data-cid='$cid'} if $cn == 0 and $cid;
       $text .= "    <td $c_args>$val</td>\n";
-      $col_num++;
+      $cn++;
       }
 
     $ccl = undef;
@@ -260,13 +272,13 @@ sub html_layout_hbox_flex
   
   my $text;
   
-  $text .= "<div style='display: flex; border: solid 1px #f00;'>";
+  $text .= "<div style='display: flex;'>";
   
   while( @data )
     {
     my $data = shift @data;
     my $opt  = shift @opt || 1;
-    $text .= "<div style='flex:$opt; border: solid 2px #0f0;'>$data</div>";
+    $text .= "<div style='flex:$opt; padding: 1em'>$data</div>";
     }
   
   $text .= "</div>";

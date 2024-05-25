@@ -122,7 +122,7 @@ function ftree_click( ftree_id, branch_id )
 
   for( var i = 0; i < elems.length; i++ )
     {
-    var el = elems[i];
+    var el    = elems[i];
     var el_id = elems[i].id;
 
     var eia = el_id.split( "." );
@@ -134,6 +134,7 @@ function ftree_click( ftree_id, branch_id )
         if( eia.length == bia.length + 1 )
           {
           html_block_show( el );
+          // el.open = true;
           }
         }
       else
@@ -141,9 +142,61 @@ function ftree_click( ftree_id, branch_id )
         if( eia.length > bia.length )
           {
           html_block_hide( el );
-          el.open = false;
+          // el.open = false;
           }
         }
+      }
+    }
+}
+
+function ctable_row_click( branch_el )
+{
+  var table_el = branch_el.closest( "TABLE" );
+
+  if( branch_el.tagName == 'TD' ) branch_el = branch_el.closest( "TR" );
+
+//  branch_el.open = ! branch_el.open;
+
+  var rows = table_el.getElementsByTagName( 'TR' )
+  var branch_cid = branch_el.dataset.cid;
+  var bia = branch_cid.split( "." );
+
+  for( var i = 0; i < rows.length; i++ )
+    {
+    var row = rows[i];
+    var row_cid = row.dataset.cid;
+    if( ! row_cid ) continue;
+    var ria = row_cid.split( "." );
+
+    if( row_cid.substr( 0, branch_cid.length ) == branch_cid )
+      {
+        if( ria.length == bia.length + 1 )
+          {
+          html_block_toggle( row );
+          }
+        if( ria.length > bia.length + 1 )
+          {
+          html_block_hide( row );
+          }
+        continue;  
+/*
+      if( branch_el.open )
+        {
+        if( ria.length == bia.length + 1 )
+          {
+          html_block_show( row );
+          // row.open = true;
+          }
+        }
+      else
+        {
+        if( ria.length > bia.length )
+          {
+          html_block_hide( row );
+          // row.open = false;
+          }
+        }
+*/        
       }
     }
 }

@@ -1,0 +1,6 @@
+#!/usr/bin/perl
+use strict;
+use Storable;
+use Data::Dumper;
+
+print Dumper( Storable::lock_retrieve(shift));

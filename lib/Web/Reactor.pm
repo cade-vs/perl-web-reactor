@@ -197,12 +197,15 @@ sub prepare_and_execute
 
   # 2. loading user session, setup new session and cookie if needed
   my $user_shr = {}; # user session hash ref
-  if( ! ( $user_sid =~ /^[a-zA-Z0-9]+$/ and $user_shr = $self->ses->load( 'USER', $user_sid ) ) )
+  if( $user_sid =~ /^[a-zA-Z0-9]+$/ and $user_shr = $self->ses->load( 'USER', $user_sid ) )
+    {
+    $self->__set_session( 'USER', $user_sid, $user_shr );
+    }
+  else  
     {
     $self->log( "warning: invalid user session [$user_sid]" );
     ( $user_sid, $user_shr ) = $self->__create_new_user_session();
     }
-  $self->__set_session( 'USER', $user_sid, $user_shr );
   
   if( ( $user_shr->{ ':LOGGED_IN' } and $user_shr->{ ':XTIME' } > 0 and time() > $user_shr->{ ':XTIME' } )
       or

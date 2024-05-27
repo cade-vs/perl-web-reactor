@@ -91,7 +91,6 @@ sub begin
   $self->{ 'FORM_ID'    } = $form_id = $form_id || $self->create_uniq_id();
   $self->{ 'RADIO'      } = {};
   $self->{ 'RET_MAP'    } = {}; # return data mapping (combo, checkbox, etc.)
-  $self->{ 'FORM_STATE' } = { ':ARGS_TYPE' => 'HERE' };
   
   my $options;
   
@@ -101,7 +100,8 @@ sub begin
 
   # FIXME: TODO: debug info inside html text, begin formname end etc.
   
-  $self->state( FORM_NAME => $form_name );
+  $self->state( 'FORM_NAME'  => $form_name ); # TODO: replace with _FO
+  $self->state( ':ARGS_TYPE' => 'HERE'     );
 
   my $reo = $self->get_reo();
 
@@ -121,7 +121,7 @@ sub state
 {
   my $self = shift;
 
-  $self->{ 'FORM_STATE'  } = { %{ $self->{ 'FORM_STATE'  } }, @_ };
+  $self->{ 'FORM_STATE'  } = { %{ $self->{ 'FORM_STATE'  } || {} }, @_ };
   
   return undef;
 }

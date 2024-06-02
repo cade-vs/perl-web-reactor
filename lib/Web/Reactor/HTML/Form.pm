@@ -418,7 +418,7 @@ sub select
   my $text;
   my $form_id = $self->{ 'FORM_ID' };
 
-  $extra .= qq[ onchange='this.form.submit()'] if $opt{ 'RESUBMIT_ON_CHANGE' };
+  $extra .= qq[ onchange='this.form.submit()'] if $opt{ 'SUBMIT_ON_CHANGE' } or $opt{ 'RESUBMIT_ON_CHANGE' }; # TODO: remove 'RESUBMIT...'
   if( $opt{ 'RADIO' } )
     {
     for my $hr ( @$sel_data )

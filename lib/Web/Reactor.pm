@@ -328,7 +328,6 @@ sub prepare_and_execute
       }
     $self->log_debug( "debug: CGI input param [$n] value [$v]" );
     }
-print STDERR ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>. reo in init\n";
   # import uploads
   my $uploads = $plack->uploads();
   for my $n ( keys %$uploads )

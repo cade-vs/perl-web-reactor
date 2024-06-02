@@ -446,12 +446,13 @@ sub html_popup_layer
     %opt = ( VALUE => shift() );
     }
 
-  my $value  = $opt{ 'VALUE'  };
-  my $class  = $opt{ 'CLASS'  } || 'popup-layer';
-  my $delay  = $opt{ 'DELAY'  } || 150;
-  my $type   = $opt{ 'TYPE'   } || 'CLICK';
+  my $value   =    $opt{ 'VALUE'   };
+  my $class   =    $opt{ 'CLASS'   } || 'popup-layer';
+  my $timeout =    $opt{ 'TIMEOUT' } || 200;
+  my $type    =    $opt{ 'TYPE'    } || 'CLICK';
+  my $single  = !! $opt{ 'SINGLE'  } || 0;
 
-  $delay = 0 unless $delay > 0;
+  $timeout = 200 unless $timeout > 0;
 
   my $trigger;
   if( $type eq 'CONTEXT' )  
@@ -460,7 +461,7 @@ sub html_popup_layer
     }
   else # ( $type eq 'CLICK' )  
     {
-    $trigger = qq( onClick="return reactor_popup_mouse_over( this, { click_open: 1 } )" );
+    $trigger = qq( onClick="return reactor_popup_mouse_over( this, { click_open: 1, timeout: $timeout, single: $single } )" );
     }  
 
   my $popup_layer_id_counter = $reo->create_uniq_id();

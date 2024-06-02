@@ -489,7 +489,7 @@ function reactor_popup_mouse_over( el, opt )
 {
   if( ! opt ) opt = {};
 
-  var timeout = opt.timeout > 0 ? opt.timeout : 200;
+  var timeout = opt.timeout > 0 ? opt.timeout : 1000;
   
   var popup_layer = reactor_get_popup_layer( el );
   if( popup_layer.style.display == 'block' )

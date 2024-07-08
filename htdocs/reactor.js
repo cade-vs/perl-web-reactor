@@ -168,7 +168,7 @@ function ctable_row_click( branch_el )
     if( ! row_cid ) continue;
     var ria = row_cid.split( "." );
 
-    if( row_cid.substr( 0, branch_cid.length ) == branch_cid )
+    if( row_cid.substr( 0, branch_cid.length ) == branch_cid && row_cid.substr( branch_cid.length, 1 ) == "." )
       {
         if( ria.length == bia.length + 1 )
           {

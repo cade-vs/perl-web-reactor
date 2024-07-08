@@ -47,9 +47,19 @@ sub call
   # FIXME: move to global error/log reporting
   #print STDERR "reactor::actions::call [$name] action package found [$ap]\n";
 
-  my $cr = \&{ "${ap}::main" }; # call/function reference
 
-  my $data = $cr->( $self->get_reo(), %args );
+  my $data;
+  
+  eval
+    {
+    my $cr = \&{ "${ap}::main" }; # call/function reference
+    $data = $cr->( $self->get_reo(), %args );
+    };
+  if( $@ )  
+    {
+    $reo->log( "error: call native action failed: $ap(%args): $@" );
+    return undef;
+    }
 
   # print STDERR "reactor::actions::call result: $data\n";
 

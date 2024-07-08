@@ -59,7 +59,17 @@ sub call
     return undef;
     }
 
-  my $data = $cr->( $reo, %args );
+  my $data;
+  
+  eval
+    {
+    $data = $cr->( $reo, %args );
+    };
+  if( $@ )  
+    {
+    $reo->log( "error: call alt action failed: $name(%args): $@" );
+    return undef;
+    }
 
   return $data;
 }

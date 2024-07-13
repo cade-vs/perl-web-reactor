@@ -555,6 +555,7 @@ sub input
 
   my %options;
 
+  $options{ 'type'     } = $opt{ 'TYPE' };
   $options{ 'disabled' } = 'disabled' if $opt{ 'DISABLED' };
   $options{ 'size'     } = $size      if $size > 0;
   $options{ 'maxlength'} = $maxl      if $maxl > 0;

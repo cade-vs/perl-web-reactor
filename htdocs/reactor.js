@@ -17,6 +17,11 @@ function get_utime()
   return Math.round((new Date()).getTime() / 1000);
 }
 
+function q( id )
+{
+  return document.getElementById( id );
+}
+
 /*** SHOW/HIDE elements ****************************************************/
 
 function html_element_show( elem )
@@ -45,19 +50,19 @@ function html_element_toggle( elem )
 
 function html_element_show_id( elem_id )
 {
-  var elem = document.getElementById( elem_id );
+  var elem = q( elem_id );
   html_element_show( elem );
 }
 
 function html_element_hide_id( elem_id )
 {
-  var elem = document.getElementById( elem_id );
+  var elem = q( elem_id );
   html_element_hide( elem );
 }
 
 function html_element_toggle_id( elem_id )
 {
-  var elem = document.getElementById( elem_id );
+  var elem = q( elem_id );
   html_element_toggle( elem );
 }
 
@@ -92,19 +97,19 @@ function html_block_toggle( block )
 
 function html_block_show_id( block_id )
 {
-  var block = document.getElementById( block_id );
+  var block = q( block_id );
   html_block_show( block );
 }
 
 function html_block_hide_id( block_id )
 {
-  var block = document.getElementById( block_id );
+  var block = q( block_id );
   html_block_hide( block );
 }
 
 function html_block_toggle_id( block_id )
 {
-  var block = document.getElementById( block_id );
+  var block = q( block_id );
   html_block_toggle( block );
 }
 
@@ -112,8 +117,8 @@ function html_block_toggle_id( block_id )
 
 function ftree_click( ftree_id, branch_id )
 {
-  var root_table = document.getElementById( ftree_id );
-  var branch_tr  = document.getElementById( branch_id );
+  var root_table = q( ftree_id );
+  var branch_tr  = q( branch_id );
 
   branch_tr.open = ! branch_tr.open;
 
@@ -243,7 +248,7 @@ function current_utime( fmt )
 /* used for input html elements with onClick=js:etc... */
 function set_value( id_name, val )
   {
-  var e = document.getElementById( id_name );
+  var e = q( id_name );
   e.value = val;
   return false;
   }
@@ -275,14 +280,14 @@ function reactor_tab_activate_id( tab_id )
   {
   if( ! tab_id ) return;
 
-  var tab = document.getElementById( tab_id );
+  var tab = q( tab_id );
 
   return reactor_tab_activate( tab );
   }
 
 function reactor_tab_activate( tab )
   {
-  var tab_ctrl = document.getElementById( tab.dataset.controllerId );
+  var tab_ctrl = q( tab.dataset.controllerId );
 
   var tabs = tab_ctrl.dataset.tabsList.split( "," );
   var con  = tab_ctrl.dataset.classOn;
@@ -292,12 +297,12 @@ function reactor_tab_activate( tab )
 
   for( z = 0; z < tabs.length; z++ )
     {
-    var t = document.getElementById( tabs[z] );
+    var t = q( tabs[z] );
     t.style.display = "none";
-    document.getElementById( t.dataset.handleId ).className = coff;
+    q( t.dataset.handleId ).className = coff;
     }
 
-  document.getElementById( tab.dataset.handleId ).className = con;
+  q( tab.dataset.handleId ).className = con;
   if( pkey )
     {
     sessionStorage.setItem( 'TABSET_ACTIVE_' + pkey, tab.id );
@@ -315,7 +320,7 @@ function reactor_tab_activate( tab )
 function reactor_form_checkbox_set( el, value )
 {
    var ch_id  = el.dataset.checkboxInputId;
-   var cb     = document.getElementById( ch_id );
+   var cb     = q( ch_id );
    cb.value   = value ? 1 : 0;
    el.checked = value;
 
@@ -336,12 +341,12 @@ function reactor_form_checkbox_toggle( el )
 
 function reactor_form_checkbox_toggle_by_id( el_id )
 {
-   reactor_form_checkbox_toggle( document.getElementById( el_id ) );
+   reactor_form_checkbox_toggle( q( el_id ) );
 }
 
 function reactor_form_checkbox_set_all( form_id, value )
 {
-  var arr = document.getElementById( form_id ).elements;
+  var arr = q( form_id ).elements;
   for( z = 0; z < arr.length; z++ )
     {
     var ch_id = arr[z].dataset.checkboxInputId;
@@ -357,9 +362,9 @@ function reactor_form_checkbox_set_all( form_id, value )
 
 function reactor_form_multi_checkbox_setup_id( el_id )
 {
-  var el     = document.getElementById( el_id );
+  var el     = q( el_id );
   var cb_id  = el.dataset.checkboxInputId;
-  var cb     = document.getElementById( cb_id );
+  var cb     = q( cb_id );
 
   reactor_form_multi_checkbox_set( el, cb, cb.value );
 }
@@ -367,7 +372,7 @@ function reactor_form_multi_checkbox_setup_id( el_id )
 function reactor_form_multi_checkbox_toggle( el )
 {
   var cb_id  = el.dataset.checkboxInputId;
-  var cb     = document.getElementById( cb_id );
+  var cb     = q( cb_id );
 
   reactor_form_multi_checkbox_set( el, cb, (+cb.value) + 1 );
 }
@@ -412,8 +417,8 @@ function reactor_form_multi_checkbox_set( el, cb, new_value )
 function reactor_form_sort_toggle( el, sort_ic_name )
 {
   var cb_id  = el.dataset.checkboxInputId;
-  var cb     = document.getElementById( cb_id );
-  var ic     = document.getElementById( sort_ic_name );
+  var cb     = q( cb_id );
+  var ic     = q( sort_ic_name );
 
   reactor_form_multi_checkbox_set( el, cb, (+cb.value) + 1 );
   
@@ -435,7 +440,7 @@ function reactor_hover_show_delay( el, hl_name, delay, event )
   if( reactor_hover_layer_timeout_id ) 
     clearTimeout( reactor_hover_layer_timeout_id );
 
-  reactor_hover_layer = document.getElementById( hl_name );
+  reactor_hover_layer = q( hl_name );
   reactor_hover_layer_timeout_id = setTimeout( "reactor_hover_activate()", delay );
   reactor_hover_reposition( event );
   el.onmousemove = is_msie ? reactor_hover_reposition_ie : reactor_hover_reposition;
@@ -469,7 +474,7 @@ function reactor_hover_reposition_ie()
 
 function reactor_get_popup_layer( el )
 {
-  return document.getElementById( el.dataset.popupLayerId );
+  return q( el.dataset.popupLayerId );
 }
 
 function reactor_popup_mouse_toggle( el, opt )
@@ -583,6 +588,16 @@ function reactor_popup_hide( el )
   reactor_popup_clear_tos( el );
 }
 
+function reactor_popup_show_by_id( id )
+{
+  reactor_popup_show( q( id ) );    
+}
+
+function reactor_popup_hide_by_id( id )
+{
+  reactor_popup_hide( q( id ) );    
+}
+
 /*-------------------------------------------------------------------*/
 
 function reactor_reposition_div_next_to( div, el )
@@ -665,7 +680,7 @@ function reactor_element_disable_on_click( el, timeout )
 
 function reactor_datalist_change( el, resubmit )
 {
-  var input = document.getElementById( el.dataset.inputId );
+  var input = q( el.dataset.inputId );
 
   var option = el.list.options.namedItem( el.value );
   if( option )
@@ -696,6 +711,142 @@ function reactor_image_click_loop( img )
     else  
       img.src = img.dataset[ "src-0" ];
     }
+}
+
+/***************************************************************************/
+
+function date_is_leap_year( year )
+{
+    if( year %   4 ) return 0;
+    if( year % 100 ) return 1;
+    if( year % 400 ) return 0;
+    return 1;
+};
+
+var __days_in_month = [
+                        [ 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 ],
+                        [ 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 ]
+                      ];
+
+var __nz_months = [ "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"  ];
+
+function date_days_in_month( year, month )
+{
+  return __days_in_month[ date_is_leap_year( year ) ][ month ];
+}
+
+//alert( date_days_in_month( 1900, 2 ) );
+
+function display_cal( dd )
+{
+  var text;
+
+  var di = dd.id;
+
+  var y  = dd.dataset.y;
+  var m  = dd.dataset.m;
+  var d  = dd.dataset.d;
+  dd.dataset.d = 0;
+  var wd = new Date( y, m, 1 ).getDay();
+  if( wd == 0 ) wd = 7; // make it sensible, weeks start Monday :)
+  wd--;
+
+
+  var mm = (+m) + 1; // aaah stupid crappy js
+  if( mm < 10 ) mm = "0" + mm;
+  
+  text = "<span class=nz-nav>" + 
+         "<span onclick='__nz_py( this )' data-div-id='"+di+"'>&nbsp;&lArr;&nbsp;</span>" + 
+         "<span onclick='__nz_pm( this )' data-div-id='"+di+"'>&nbsp;&nbsp;&larr;</span>" +
+         "<span onclick='__nz_td( this )' data-div-id='"+di+"'>&nbsp;&nbsp;&nbsp;&darr;&nbsp;" +
+         __nz_months[ m ] + " " + y + "&nbsp;&nbsp;</span> " +
+         "<span onclick='__nz_nm( this )' data-div-id='"+di+"'>&rarr;&nbsp;&nbsp;</span>" +
+         "<span onclick='__nz_ny( this )' data-div-id='"+di+"'>&nbsp;&rArr;&nbsp;</span>" + 
+         "</span>\n";
+
+  text += "<span class=nz-head> Mon Tue Wed Thu Fri Sat Sun</span>\n";
+
+  for( var i = 0; i < wd; i++ )
+    text += "    ";
+    
+  for( var i = 1; i <= date_days_in_month( y, m ); i++ )
+    {
+    var ds = y + "." + mm + "." + i;
+    if( dd.dataset.fmt == 'DMY' ) ds =  i + "." + mm + "." + y;
+    if( dd.dataset.fmt == 'MDY' ) ds = mm + "." +  i + "." + y;
+    var tm = d > 0 && d == i ? "*" : " "; // today mark
+    text += "<span class=nz-date onclick='__nz_set( this )' data-date='"+ds+"' data-div-id='"+di+"'> " + ( i < 10 ? " " : "" ) + tm + i + "</span>";
+    if( ( wd + i ) % 7 == 0 ) text += "\n";
+    }
+
+  dd.innerHTML = "<pre class=nz-date-picker>" + text + "</pre>";
+}
+
+function __nz_set( el )
+{
+  var dd = q( el.dataset.divId );
+  var te = q( dd.dataset.t );
+  if( te.tagName == "INPUT" )
+    te.value = el.dataset.date;
+  else
+    te.innerHTML = el.dataset.date;
+  if( dd.set_callback ) dd.set_callback();
+  te.focus();
+}
+
+function nz_setup_picker( div_id, target_id, dt, fmt, scb )
+{
+  var y  = dt.getFullYear();
+  var m  = dt.getMonth();
+  var d  = dt.getDate();
+
+  dd = q( div_id );
+  dd.dataset.y   = y;
+  dd.dataset.m   = m;
+  dd.dataset.d   = d;
+  dd.dataset.t   = target_id;
+  dd.dataset.fmt = fmt;
+  dd.set_callback = scb;
+  
+  display_cal( dd );
+}
+
+function __nz_td( el )
+{
+  var dd = q( el.dataset.divId );
+  var dt = new Date( Date.now() );
+  dd.dataset.y = dt.getFullYear();
+  dd.dataset.m = dt.getMonth();
+  dd.dataset.d = dt.getDate();;
+  display_cal( dd );
+}
+
+function __nz_pm( el )
+{
+  var dd = q( el.dataset.divId );
+  if( --dd.dataset.m < 0 ) { dd.dataset.y--; dd.dataset.m = 11; }
+  display_cal( dd );
+}
+
+function __nz_nm( el )
+{
+  var dd = q( el.dataset.divId );
+  if( ++dd.dataset.m > 11 ) { dd.dataset.y++; dd.dataset.m = 1; }
+  display_cal( dd );
+}
+
+function __nz_py( el )
+{
+  var dd = q( el.dataset.divId );
+  --dd.dataset.y;
+  display_cal( dd );
+}
+
+function __nz_ny( el )
+{
+  var dd = q( el.dataset.divId );
+  ++dd.dataset.y;
+  display_cal( dd );
 }
 
 /***EOF*********************************************************************/

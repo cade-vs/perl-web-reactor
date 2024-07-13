@@ -414,7 +414,7 @@ sub html_hover_layer
   my $html;
   my $handle;
 
-  $handle = qq{ onmouseover='reactor_hover_show_delay( this,"$hover_layer_id", $delay, event )' };
+  $handle = qq{ onmouseover='reactor_hover_show_delay( this, "$hover_layer_id", $delay, event )' };
   $html   = qq{ <div class='$class' id="$hover_layer_id">$value</div> };
 
   if ( wantarray )

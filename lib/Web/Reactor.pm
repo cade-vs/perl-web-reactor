@@ -414,7 +414,7 @@ sub prepare_and_execute
     }
 
   # 6. get action from input (USER/CGI) or page session
-  my $action_name = lc( $args->{ '_AN' } || $input_safe_hr->{ '_AN' } || $input_user_hr->{ '_AN' } || $page_shr->{ ':ACTION_NAME' } );
+  my $action_name = lc( $args{ '_AN' } || $input_safe_hr->{ '_AN' } || $input_user_hr->{ '_AN' } || $page_shr->{ ':ACTION_NAME' } );
   if( $action_name =~ /^[a-z_0-9]+$/ )
     {
     $page_shr->{ ':ACTION_NAME' } = $action_name;
@@ -425,7 +425,7 @@ sub prepare_and_execute
     }
 
   # 7. get page from input (USER/CGI) or page session
-  my $page_name = lc( $args->{ '_PN' } || $input_safe_hr->{ '_PN' } || $input_user_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || 'main' );
+  my $page_name = lc( $args{ '_PN' } || $input_safe_hr->{ '_PN' } || $input_user_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || 'main' );
   if( $page_name ne '' )
     {
     if( $page_name =~ /^[a-z_\-0-9\/]+$/ )

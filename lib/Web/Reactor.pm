@@ -343,6 +343,8 @@ sub prepare_and_execute
       next;
       }
     }  
+  # merge forced parameters
+  %$input_user_hr = ( %$input_user_hr, %args ) if $args;
 
   my $safe_input_link_sess = $input_user_hr->{ '_' };
   
@@ -357,6 +359,8 @@ sub prepare_and_execute
 
     # merge safe input if valid
     %$input_safe_hr = ( %$input_safe_hr, %$link_data ) if $link_data;
+    # merge forced parameters
+    %$input_safe_hr = ( %$input_safe_hr, %$args      ) if $args;
     }
   elsif( $safe_input_link_sess ne '' )
     {
@@ -414,7 +418,7 @@ sub prepare_and_execute
     }
 
   # 6. get action from input (USER/CGI) or page session
-  my $action_name = lc( $args{ '_AN' } || $input_safe_hr->{ '_AN' } || $input_user_hr->{ '_AN' } || $page_shr->{ ':ACTION_NAME' } );
+  my $action_name = lc( $input_safe_hr->{ '_AN' } || $input_user_hr->{ '_AN' } || $page_shr->{ ':ACTION_NAME' } );
   if( $action_name =~ /^[a-z_0-9]+$/ )
     {
     $page_shr->{ ':ACTION_NAME' } = $action_name;
@@ -425,7 +429,7 @@ sub prepare_and_execute
     }
 
   # 7. get page from input (USER/CGI) or page session
-  my $page_name = lc( $args{ '_PN' } || $input_safe_hr->{ '_PN' } || $input_user_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || 'main' );
+  my $page_name = lc( $input_safe_hr->{ '_PN' } || $input_user_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || 'main' );
   if( $page_name ne '' )
     {
     if( $page_name =~ /^[a-z_\-0-9\/]+$/ )

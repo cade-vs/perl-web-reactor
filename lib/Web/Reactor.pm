@@ -600,20 +600,14 @@ sub get_http_env
 {
   my $self  = shift;
 
-  # FIXME: TODO: remove or replace with http env from $reo?
-
-  my $user_shr = $self->get_user_session();
-
-  boom "missing HTTP_ENV inside user session" unless exists $user_shr->{ ':HTTP_ENV_HR' };
-
-  return $user_shr->{ ':HTTP_ENV_HR' };
+  return $self->{ 'IN'  }{ 'ENV' };
 }
 
 sub get_client_ip
 {
   my $self  = shift;
 
-  my $env = $self->{ 'IN'  }{ 'ENV' };
+  my $env = $self->get_http_env();
   
   my $client_ip;
   

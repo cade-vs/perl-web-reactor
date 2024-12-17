@@ -59,7 +59,12 @@ our %ENV_ALLOWED_KEYS = {
 
                         };
 
-my @HNS = qw( Abby Ada Alexa Alfie Alia Alice Anna Aria Ava Axel Beau Bran Chanel Cali Calla Carys Cole Cruz Dash Dean Demi Dior Dora Drew Eira Eli Elise Ella Elle Ellie Elsa Emma Enzo Eva Eve Evie Faye Fia Fifi Fox Freya Gabe Gaia Gia Greer Gwen Gogo Gyro Hugo Ilia Ilse Iris Isla Indie Inez Ivan Jace Jack June Jimmy John Kaia Kali Kate Kaya Kent Kim Kitty Knox Lane Lani Leda Lexi Levi Liam Liv Lola Lucia Lucy Luna Lyra Macy Maya Mimi Mia Milo Mina Mira Nash Neo Neve Noel Nola Nora Onyx Orla Owen Pearl Prue Reid Rhea Rhys Rose Rimini Rome Rita Ruby Rumi Runa Ryla Siena Sofia Sage Shea Svea Tate Taya Thera Tori Tova Toto Trudi Trina Uma Una Uno Veda Vidin Vida Vita Wells Willa Wren Xena Xylo Yael Zana Zara Zeev Zeno Zera Zoro );
+my @HNS = qw( Abby Ada Alexa Alfie Alia Alice Anna Aria Ava Axel Beau Bran Chanel Cali Calla Carys Cole Cruz Dash Dean Demi Dior Dora Drew Eira Eli 
+              Elise Ella Elle Ellie Elsa Emma Enzo Eva Eve Evie Faye Fia Fifi Fox Freya Gabe Gaia Gia Greer Gwen Gogo Gyro Hugo Ilia Ilse Iris Isla 
+              Indie Inez Ivan Jace James Joki Juko Juki Jack June Jimmy John Kaia Kali Kate Kaya Kent Kim Kitty Knox Lane Lani Leda Lexi Levi Liam 
+              Liv Lola Lucia Lucy Luna Lyra Macy Maya Mimi Mia Milo Mina Mira Nash Neo Neve Noel Nola Nora Onyx Orla Owen Pearl Prue Reid Rhea Rhys 
+              Rose Rimini Rome Rita Ruby Rumi Runa Ryla Siena Sofia Sage Shea Svea Tate Taya Thera Tori Tinko Tina Tupcho Tova Toto Trudi Trina Uma 
+              Uber Una Uno Viki Vera Voom Veda Vidin Vida Vita Wells Willa Wren Xena Xylo Yael Zezo Zaza Zane Zuki Zooo Zana Zara Zeev Zeno Zera Zoro );
 
 ##############################################################################
 
@@ -78,7 +83,8 @@ sub new
   $self->{ 'IN'  }{ 'ENV'         }   = $env; # including headers
   $self->{ 'IN'  }{ 'ENV'         }{ '_CLIENT_IP' } = $self->get_client_ip();
 
-  $self->log_dumper( "debug: reactor[$self] setup (ENV & CFG): ", $env, $cfg ) if $self->is_debug() > 2;
+  $self->log( "info: *** BEGIN " . ( '*' x 80 ) . "\n\n\n" ) if $self->is_debug();
+  $self->log_dumper( "debug: reactor[$self] setup (ENV & CFG): ", $env, $cfg ) if $self->is_debug();
   
   $self->{ 'PLACK' } = Plack::Request->new( $env );
 
@@ -124,6 +130,7 @@ sub DESTROY
   my $self = shift;
 
   $self->log_debug( "debug: DESTROY: Reactor[$self] destroyed" );
+  $self->log( "info: *** END **" . ( '*' x 80 ) . "\n\n\n" ) if $self->is_debug();
 }
 
 ##############################################################################
@@ -177,7 +184,7 @@ sub run
     $self->log_dumper( "FINAL USER SESSION [$usid]-----------------------------------", $self->get_user_session() ) if $self->is_debug() > 2;
     }
 
-  # $self->log_dumper( 'RUN RESULT:', $res );
+  $self->log_dumper( 'RUN RESULT, CODE, HEADERS, BODY_LENGTH:', $res->[0], $res->[1], length( $res->[2] ) );
   return $res;
 }
 
@@ -451,8 +458,10 @@ sub prepare_and_execute
     $self->log_dumper( "SAFE INPUT-------------------------------------", $self->get_safe_input()   );
     $self->log_dumper( "PAGE SESSION [$psid]-----------------------------------", $self->get_page_session() );
     $self->log_dumper( "REF  SESSION [$rsid]-----------------------------------", $self->get_page_session( 1 ) );
-    # $self->log_dumper( "USER SESSION-----------------------------------", $self->get_user_session() );
+    $self->log_dumper( "USER SESSION-----------------------------------", $self->get_user_session() );
     }
+
+print STDERR "info: DEBUG: >>>>>>>>>>>>> page name [$page_name] action name [$action_name]\n";  
 
   # 8. render output action/page
   if( $action_name )
@@ -1175,6 +1184,14 @@ sub log_debug
   my $msg = join( "\n", @args );
   $msg = "debug: $msg" unless $msg =~ /^debug:/i;
   $self->log( $msg );
+}
+
+sub log_debug2
+{
+  my $self = shift;
+
+  return unless $self->is_debug() > 1;
+  $self->log_debug( @_ );
 }
 
 sub log_stack

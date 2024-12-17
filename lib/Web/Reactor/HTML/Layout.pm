@@ -132,6 +132,13 @@ sub html_table
       $row = [ $row ];
       }
 
+    my $rr0 = ref $row eq 'ARRAY' ? ref $row->[ 0 ] : 0; # row ref at pos 0
+    if( $rr0 )
+      {
+      $row = { CLASS => ${ $row->[ 0 ] }, DATA => [ @{ $row }[ 1 .. @$row - 1 ] ] } if $rr0 eq 'SCALAR';
+      $row = { %{ $row->[ 0 ] }, DATA => [ @{ $row }[ 1 .. @$row - 1 ] ] } if $rr0 eq 'HASH';
+      }
+
     if ( ref( $row ) eq 'ARRAY' )
       {
       $cols  = $row;
@@ -144,7 +151,7 @@ sub html_table
       $cols     = $row->{ 'DATA'   };
       $cid      = $row->{ 'CID'    };
       $r_args ||= $row->{ 'ARGS'   };
-      $r_args ||= 'class=' . ( $row->{ 'CLASS' } || $r_class );
+      $r_args ||= "class='" . ( $row->{ 'CLASS' } || $r_class ) . "'"; # TODO: FIXME: !!! move to html_element
       $ccl      = $row->{ 'CCL'  } if $row->{ 'CCL'  };
       $pccl     = $row->{ 'PCCL' } if $row->{ 'PCCL' };
 

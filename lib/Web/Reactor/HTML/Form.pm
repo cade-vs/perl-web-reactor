@@ -75,7 +75,7 @@ sub begin
 
   $self->{ 'CLASS_MAP' } = $opt{ 'CLASS_MAP' } || {};
 
-  $method    =~ /^(POST|GET)$/  or boom "METHOD can either POST or GET";
+  $method    =~ /^(POST|GET)$/  or boom "METHOD can be either POST or GET";
 
   my $reo = $self->get_reo();
   my $psid = $reo->get_page_session_id();

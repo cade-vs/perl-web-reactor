@@ -138,7 +138,7 @@ sub load_file
 
   my $fdata = file_text_load( $fname );
 
-  $reo->log_debug( "debug: preprocessor load page [$pn] file [$fn] OK [$fname]" );
+  $reo->log_debug2( "debug: preprocessor load page [$pn] file [$fn] OK [$fname]" );
   $self->{ 'FILE_CACHE' }{ $lang }{ $pn }{ $fn } = $fdata;
 
   return $fdata;
@@ -163,7 +163,7 @@ sub process
 #print STDERR Dumper( 'PROCESS PRE --- ' x 7, $pn, $text );
 
   # FIXME: cache here? moje bi ne, zaradi modulite
-  $text =~ s/<([\$\&\#]|\$\$)([a-zA-Z_\-0-9]+)(\s*[^>]*)?>/$self->__process_tag( $pn, $1, $2, $3, $opt, $ctx )/ge;
+  $text =~ s/<([\$\&\#]|\$\$|\&\&)([a-zA-Z_\-0-9]+)(\s*[^>]*)?>/$self->__process_tag( $pn, $1, $2, $3, $opt, $ctx )/ge;
   $text =~ s/reactor_((new|back|here|none)_)?(href|src)=(["'])?([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"'#]*)(#[a-z_0-9\.]+)?(\4)?/$self->__process_href( $2, $3, $5, $7, $8 )/gie;
 
 #print STDERR Dumper( 'PROCESS POST --- ' x 7, $pn, $text );
@@ -214,7 +214,7 @@ sub __process_tag
     {
     $text = $self->load_file( $pn, $tag );
     }
-  elsif( $type eq '&' )
+  elsif( $type eq '&' or $type eq '&&' )
     {
     # FIXME: make args to a function?
     my %args;
@@ -225,7 +225,15 @@ sub __process_tag
       $args{ $k } = $v;
       }
     # FIXME: action calls may return non-text data, however the preprocessor expects text data for now...
-    $text = $reo->act->call( $tag, HTML_ARGS => \%args );
+    
+    # session stack, parnets etc?
+    
+    my $calltext = $reo->act->call( $tag, HTML_ARGS => \%args );
+    if( $type eq '&&' )
+      {
+      $calltext = "<div class vframe>" . $calltext . "</div>";
+      }
+    $text .= $calltext;
     }
   else
     {

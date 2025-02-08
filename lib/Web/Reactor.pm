@@ -139,6 +139,8 @@ sub run
 {
   my $self = shift;
 
+  srand();
+
   my $res;
   eval
     {
@@ -1053,21 +1055,32 @@ sub save
 
 ## FIXME: move most to Data::Tools or separate module
 
-sub __new_crypto_object
+sub __crypto_object
 {
   my $self = shift;
 
-  # NOTE: RTFM says encryptor and decryptor must be different
-
+  return ( $self->{ 'CRYO' }, $self->{ 'CRYO_KEY' }, $self->{ 'CRYO_IVS' } ) if exists $self->{ 'CRYO' }; # crypto object
+  
   my $cfg = $self->get_cfg();
+
+  my $ci = $cfg->{ 'ENCRYPT_CIPHER' } || 'AES';
+
+  my $cryo = $self->{ 'CRYO' } = Crypt::Mode::CBC->new( $ci );
+  
 
   # FIXME: read key from config file only!
   my $key = $cfg->{ 'ENCRYPT_KEY' };
-  boom( "missing ENV:ENCRYPT_KEY" ) unless $key =~ /\S/;
+  boom( "missing key in ENV:ENCRYPT_KEY" ) unless $key =~ /\S/;
+  
+  my $kl = length( $key );
+  my $il = Crypt::Cipher::min_keysize( $ci );
+  my $xl = Crypt::Cipher::max_keysize( $ci );
+  boom( "invalid key size in ENV:ENCRYPT_KEY got [$kl] expected between [$il] and [$xl]" ) unless $kl >= $il and $kl <= $xl;
 
-  my $ci = $cfg->{ 'ENCRYPT_CIPHER' } || 'Twofish2'; # :)
+  $self->{ 'CRYO_KEY' } = $key;
+  $self->{ 'CRYO_IVS' } = Crypt::Cipher::blocksize( $ci ); # iv size
 
-  return Crypt::CBC->new( -key => $key, -cipher => $ci );
+  return ( $self->{ 'CRYO' }, $self->{ 'CRYO_KEY' }, $self->{ 'CRYO_IVS' } );
 }
 
 sub encrypt
@@ -1075,8 +1088,11 @@ sub encrypt
   my $self = shift;
   my $data = shift;
 
-  my $enc = $self->{ 'ENCRYPTOR' } ||= $self->__new_crypto_object();
-  return $enc->encrypt( $data );
+  my ( $cryo, $key, $ivs ) = $self->__crypto_object();
+
+  my $iv = create_random_binary( $ivs );
+
+  return $iv . $cryo->encrypt( $data, $key, $iv );
 }
 
 sub decrypt
@@ -1084,8 +1100,10 @@ sub decrypt
   my $self = shift;
   my $data = shift;
 
-  my $dec = $self->{ 'DECRYPTOR' } ||= $self->__new_crypto_object();
-  return $dec->decrypt( $data );
+  my ( $cryo, $key, $ivs ) = $self->__crypto_object();
+
+  my $iv = substr( $data, 0, $ivs );
+  return $cryo->decrypt( substr( $data, $ivs ), $key, $iv );
 }
 
 sub encrypt_hex

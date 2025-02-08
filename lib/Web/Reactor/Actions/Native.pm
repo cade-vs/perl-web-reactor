@@ -32,6 +32,7 @@ sub call
   my $name = lc shift;
   my %args = @_;
 
+
   die "invalid action name, expected ALPHANUMERIC, got [$name]" unless $name =~ /^[a-z_\-0-9]+$/;
 
   my $ap = $self->__find_act_pkg( $name );
@@ -57,6 +58,7 @@ sub call
     };
   if( $@ )  
     {
+    my $reo = $self->get_reo();
     $reo->log( "error: call native action failed: $ap(%args): $@" );
     return undef;
     }

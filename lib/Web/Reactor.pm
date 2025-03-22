@@ -129,8 +129,7 @@ sub DESTROY
 {
   my $self = shift;
 
-  $self->log_debug( "debug: DESTROY: Reactor[$self] destroyed" );
-  $self->log( "info: *** END **" . ( '*' x 80 ) . "\n\n\n" ) if $self->is_debug();
+  $self->log_debug( "debug: DESTROY: Reactor[$self] destroyed ******* END *******\n\n\n" );
 }
 
 ##############################################################################
@@ -186,7 +185,7 @@ sub run
     $self->log_dumper( "FINAL USER SESSION [$usid]-----------------------------------", $self->get_user_session() ) if $self->is_debug() > 2;
     }
 
-  $self->log_dumper( 'RUN RESULT, CODE, HEADERS, BODY_LENGTH:', $res->[0], $res->[1], length( $res->[2] ) );
+  # $self->log_dumper( 'RUN RESULT, CODE, HEADERS, BODY_LENGTH:', $res->[0], $res->[1], length( $res->[2] ) );
   return $res;
 }
 
@@ -463,7 +462,7 @@ sub prepare_and_execute
     $self->log_dumper( "USER SESSION-----------------------------------", $self->get_user_session() );
     }
 
-print STDERR "info: DEBUG: >>>>>>>>>>>>> page name [$page_name] action name [$action_name]\n";  
+  # print STDERR "info: DEBUG: >>>>>>>>>>>>> page name [$page_name] action name [$action_name]\n";  
 
   # 8. render output action/page
   if( $action_name )
@@ -1741,8 +1740,10 @@ sub set_user_session_expire_time
   my $xtime = shift;
 
 #use Exception::Sink;
+#my $xin = $xtime - time();
 #my $xtt = localtime( $xtime );
-#print STDERR "set_user_session_expire_time($xtime)[$xtt]\n" . Exception::Sink::get_stack_trace();
+#print STDERR "*********************************** set_user_session_expire_time($xtime)[$xtt]\n" . Exception::Sink::get_stack_trace();
+#print STDERR "*********************************** set_user_session_expire_time($xtime)[$xtt] in [$xin] seconds\n";
 
   my $user_shr = $self->get_user_session();
   $user_shr->{ ':XTIME'     } = $xtime; # FIXME: sanity?
@@ -1756,7 +1757,8 @@ sub set_user_session_expire_time_in
   my $seconds = shift;
 
 #use Exception::Sink;
-#print STDERR "set_user_session_expire_time_in($seconds)\n" . Exception::Sink::get_stack_trace();
+#print STDERR "************************************** set_user_session_expire_time_in($seconds)\n" . Exception::Sink::get_stack_trace();
+#print STDERR "************************************** set_user_session_expire_time_in($seconds) seconds\n";
 
   # FIXME: support for more user friendly time periods 10m 60s
   return $self->set_user_session_expire_time( time() + $seconds );

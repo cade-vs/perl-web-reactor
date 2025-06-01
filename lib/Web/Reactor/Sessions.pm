@@ -41,8 +41,10 @@ sub create
   my $id;
   my $t  = time();
   my $to = $cfg->{ 'SESS_CREATE_TIMEOUT' } || 5; # seconds
+  my $c;
   while(4)
     {
+    $c++;
     $id = $self->create_id( $len );
 
     my @key = $self->compose_key_from_id( $type, $id );
@@ -52,7 +54,7 @@ sub create
       {
       $id = undef;
       # FIXME: report error
-      die "Web::Reactor::Sessions::create: cannot create new session: timeout, key[@key]";
+      die "Web::Reactor::Sessions::create: cannot create new session: timeout, after $c tries, key[@key]";
       return undef;
       }
     }

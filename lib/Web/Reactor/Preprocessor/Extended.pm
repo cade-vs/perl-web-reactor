@@ -163,7 +163,7 @@ sub process
 #print STDERR Dumper( 'PROCESS PRE --- ' x 7, $pn, $text );
 
   # FIXME: cache here? moje bi ne, zaradi modulite
-  $text =~ s/<([\$\&\#]|\$\$|\&\&)([a-zA-Z_\-0-9]+)(\s*[^>]*)?>/$self->__process_tag( $pn, $1, $2, $3, $opt, $ctx )/ge;
+  $text =~ s/<([\$\&\#]|\$\$|\&\&)([a-zA-Z_\-0-9]+)(:(a-zA-Z_\-0-9]+))?(\s*[^>]*)?>/$self->__process_tag( $pn, $1, $2, $4, $5, $opt, $ctx )/ge;
   $text =~ s/reactor_((new|back|here|none)_)?(href|src)=(["'])?([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"'#]*)(#[a-z_0-9\.]+)?(\4)?/$self->__process_href( $2, $3, $5, $7, $8 )/gie;
 
 #print STDERR Dumper( 'PROCESS POST --- ' x 7, $pn, $text );
@@ -175,16 +175,18 @@ sub __process_tag
 {
   my $self = shift;
 
-  my $pn   = lc shift; # page name
-  my $type =    shift; # types are: $ variable, & callback, # template file include
-  my $tag  =    shift;
-  my $args =    shift; # the rest of the tag
-  my $opt  =    shift;
-  my $ctx  =    shift;
+  my $pn    = lc shift; # page name
+  my $type  =    shift; # types are: $ variable, & callback, # template file include
+  my $tag   =    shift;
+  my $tagid =    shift;
+  my $args  =    shift; # the rest of the tag
+  my $opt   =    shift;
+  my $ctx   =    shift;
 
-#print STDERR "DEBUG: PROCESS PAGE TAG ----------------------- [$pn] [$type] [$tag]\n";
+#print STDERR "DEBUG: PROCESS PAGE TAG ----------------------- [$pn] [$type] [$tag]:[$tagid]\n";
 
 #print STDERR Dumper( 'PROCESS ARGS --- ' x 7, ( $pn, $type, $tag, $args, $opt, $ctx ) );
+  $self->tagid_push( $tagid );
 
   $ctx = { %$opt };
   $ctx->{ 'PATH' } .= ", $type$tag";
@@ -243,6 +245,8 @@ sub __process_tag
 # print STDERR Dumper( 'PROCESS TEXT --- ' x 7, ( $pn, $text, $opt, $ctx ) );
   $text = $self->process( $pn, $text, $opt, $ctx );
 
+  $self->tagid_pop();
+
   return $text;
 }
 
@@ -265,6 +269,34 @@ sub __process_href
   my $href = $reo->args_type( $type, %$data_hr );
 
   return "$attr=$script?_=$href$anchor";
+}
+
+#-----------------------------------------------------------------------------
+
+
+# tag id stack management
+
+sub tagid_push
+{
+  my $self  = shift;
+  my $tagid = shift;
+  
+  push @{ $self->{ 'TAG_ID_STACK' } }, $tagid;
+}
+
+sub tagid_pop
+{
+  my $self  = shift;
+
+  return pop @{ $self->{ 'TAG_ID_STACK' } };
+}
+
+sub tagid_peek
+{
+  my $self  = shift;
+
+  return undef unless exists $self->{ 'TAG_ID_STACK' };
+  return $self->{ 'TAG_ID_STACK' }->[-1];
 }
 
 ##############################################################################

@@ -55,7 +55,7 @@ sub create
       {
       $id = undef;
       # FIXME: report error
-      die "Web::Reactor::Sessions::create: cannot create new session: timeout, after $c tries, key[@key]";
+      die "Web::Reactor::Sessions::create: cannot create new session: timeout, after $c tries, key[@key], " . $self->_storage_debug_info();
       return undef;
       }
     }
@@ -183,6 +183,13 @@ sub _storage_save   { die "Web::Reactor::Sessions::*::_storage_save() is not imp
 # returns:
 #       1 if exists, undef if not
 sub _storage_exists { die "Web::Reactor::Sessions::*::_storage_exists() is not implemented!"; }
+
+# return information about storage configuration, i.e. file path for Filesystem, etc.
+# args:
+#       none
+# returns:
+#       information text 
+sub _storage_debug_info { die "Web::Reactor::Sessions::*::_storage_debug_info() is not implemented!"; }
 
 ##############################################################################
 ##

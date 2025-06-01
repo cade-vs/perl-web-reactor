@@ -115,6 +115,22 @@ sub _storage_exists
   return -e $fn ? 1 : 0;
 }
 
+# return information about storage configuration, i.e. file path for Filesystem, etc.
+# args:
+#       none
+# returns:
+#       information text 
+sub _storage_debug_info 
+{ 
+  my $self = shift;
+  
+  my $cfg = $self->get_cfg();
+  
+  my $vd = $cfg->{ 'SESS_VAR_DIR' };
+  
+  return "Web::Reactor::Sess::Filesystem: session directory: $vd";
+}
+
 ##############################################################################
 ##
 ##  helpers

@@ -41,7 +41,7 @@ sub create
   my $id;
   my $t  = time();
   my $to = $cfg->{ 'SESS_CREATE_TIMEOUT'       } ||    5; # seconds
-  my $tc = $cfg->{ 'SESS_CREATE_TIMEOUT_COUNT' } || 4096; # seconds
+  my $tc = $cfg->{ 'SESS_CREATE_TIMEOUT_COUNT' } || 4001; # seconds
   my $c;
   while(4)
     {
@@ -51,7 +51,7 @@ sub create
     my @key = $self->compose_key_from_id( $type, $id );
     last if $self->_storage_create( @key );
 
-    if ( $c > $tc or time() - $t > $to )
+    if ( $c >= $tc or time() - $t > $to )
       {
       $id = undef;
       # FIXME: report error

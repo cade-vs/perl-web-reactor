@@ -40,7 +40,7 @@ sub create
 
   my $id;
   my $t  = time();
-  my $to = $cfg->{ 'SESS_CREATE_TIMEOUT' } || 5; # seconds
+  my $to = $cfg->{ 'SESS_CREATE_TIMEOUT' } || 2; # seconds
   my $c;
   while(4)
     {

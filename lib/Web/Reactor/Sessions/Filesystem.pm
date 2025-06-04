@@ -51,7 +51,7 @@ sub _storage_create
     }
   else
     {
-    return 0;
+    return $!{EEXIST} ? 0 : undef;
     }  
 }
 
@@ -128,7 +128,7 @@ sub _storage_debug_info
   
   my $vd = $cfg->{ 'SESS_VAR_DIR' };
   
-  return "Web::Reactor::Sess::Filesystem: session directory: $vd";
+  return "Web::Reactor::Sess::Filesystem: session directory: [$vd]";
 }
 
 ##############################################################################

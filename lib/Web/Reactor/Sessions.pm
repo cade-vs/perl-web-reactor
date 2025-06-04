@@ -41,7 +41,7 @@ sub create
   my $id;
   my $t  = time();
   my $to = $cfg->{ 'SESS_CREATE_TIMEOUT'       } ||    5; # seconds
-  my $tc = $cfg->{ 'SESS_CREATE_TIMEOUT_COUNT' } || 4001; # seconds
+  my $tc = $cfg->{ 'SESS_CREATE_TIMEOUT_COUNT' } || 1023; # count, should not be reached anyway
   my $c;
   while(4)
     {
@@ -49,7 +49,10 @@ sub create
     $id = $self->create_id( $len );
 
     my @key = $self->compose_key_from_id( $type, $id );
-    last if $self->_storage_create( @key );
+    my $rc = $self->_storage_create( @key );
+    last if $rc;
+
+    die "Web::Reactor::Sessions::create: cannot create new session, system error, key[@key], " . $self->_storage_debug_info() unless defined $rc;
 
     if ( $c >= $tc or time() - $t > $to )
       {

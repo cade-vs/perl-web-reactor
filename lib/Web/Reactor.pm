@@ -129,7 +129,7 @@ sub DESTROY
 {
   my $self = shift;
 
-  $self->log_debug( "debug: DESTROY: Reactor[$self] destroyed ******* END *******\n\n\n" );
+  $self->log_debug( "debug: DESTROY: Reactor[$self] destroyed ******* END *******\n\n\n\n\n\n+++\n\n\n\n\n\n" );
 }
 
 ##############################################################################
@@ -207,7 +207,7 @@ sub prepare_and_execute
 
   # 2. loading user session, setup new session and cookie if needed
   my $user_shr = {}; # user session hash ref
-  unless( $user_sid =~ /^[a-zA-Z0-9]+$/ and $user_shr = $self->ses->load( 'USER', $user_sid ) )
+  unless( $user_sid =~ /^[a-zA-Z0-9_]+$/ and $user_shr = $self->ses->load( 'USER', $user_sid ) )
     {
     $self->log( "warning: invalid user session [$user_sid]" );
     ( $user_sid, $user_shr ) = $self->__create_new_user_session();
@@ -357,7 +357,7 @@ sub prepare_and_execute
   my $safe_input_link_sess = $input_user_hr->{ '_' };
   
   # parse link session: link-sid.link-key
-  if( $safe_input_link_sess =~ /^([a-zA-Z0-9]+)\.([a-zA-Z0-9]+)$/ )
+  if( $safe_input_link_sess =~ /^([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)$/ )
     {
     my ( $link_sid, $link_key ) = ( $1, $2 );
 
@@ -378,13 +378,13 @@ sub prepare_and_execute
   # 4. loading page session
   my $page_sid = $input_safe_hr->{ '_P' };
   my $page_shr = {}; # user session hash ref
-  if( ! ( $page_sid =~ /^[a-zA-Z0-9]+$/ and $page_shr = $self->ses->load( 'PAGE', $page_sid ) ) )
+  if( ! ( $page_sid =~ /^[a-zA-Z0-9_]+$/ and $page_shr = $self->ses->load( 'PAGE', $page_sid ) ) )
     {
     $self->log( "warning: invalid page session [$page_sid]" );
     $page_sid = $self->ses->create( 'PAGE', 8 );
     if( $self->is_debug() )
       {
-      $page_sid = @HNS[rand(@HNS)] . $page_sid;
+      $page_sid = @HNS[rand(@HNS)] . '_' . $page_sid;
       }
     $self->log( "warning: new page session created [$page_sid]" );
     $page_shr = { ':ID' => $page_sid };
@@ -393,21 +393,31 @@ sub prepare_and_execute
 
 
   my $ref_page_sid = $input_safe_hr->{ '_R' };
-  if( $ref_page_sid =~ /^[a-zA-Z0-9]+$/ )
+  if( $ref_page_sid =~ /^[a-zA-Z0-9_]+$/ )
     {
     $page_shr->{ ':REF_PAGE_SID' } = $ref_page_sid;
     }
 
-  # 5. remap form input data, post to safe input
-  my $form_name = $input_safe_hr->{ 'FORM_NAME' }; # FIXME: replace with _FO
-  if( $form_name and exists $page_shr->{ ':FORM_DEF' }{ $form_name } )
+  # 5. remap form input names and data, post to safe input
+  my $form_id = $input_safe_hr->{ 'FORM_ID' }; # FIXME: replace with _FRI
+  if( $form_id and exists $page_shr->{ ':FORM_DEF' }{ $form_id } )
     {
-    my $rm = $page_shr->{ ':FORM_DEF' }{ $form_name }{ 'RET_MAP' };
+    my $rmn = $page_shr->{ ':FORM_DEF' }{ $form_id }{ 'RET_MAP' }{ 'NAME' }; # return map names
+    my $rmd = $page_shr->{ ':FORM_DEF' }{ $form_id }{ 'RET_MAP' }{ 'DATA' }; # return map data
 
-    for my $k ( keys %$rm )
+    # remap names
+    for my $n ( keys %$rmn )
+      {
+      next unless exists $input_user_hr->{ $n };
+      $input_user_hr->{ $rmn->{ $n } } = $input_user_hr->{ $n };
+      delete $input_user_hr->{ $n };
+      }
+
+    # remap data
+    for my $k ( keys %$rmd )
       {
       next unless exists $input_user_hr->{ $k };
-      $input_safe_hr->{ $k } = $rm->{ $k }{ $input_user_hr->{ $k } };
+      $input_safe_hr->{ $k } = $rmd->{ $k }{ $input_user_hr->{ $k } };
       delete $input_user_hr->{ $k };
       }
     }
@@ -415,7 +425,7 @@ sub prepare_and_execute
   my $frame_name = $input_safe_hr->{ '_FR' };
   if( $frame_name ne '' )
     {
-    if( $frame_name =~ /^[a-zA-Z_0-9]+$/ )
+    if( $frame_name =~ /^[a-zA-Z_0-9_]+$/ )
       {
       $page_shr->{ ':FRAME_NAME' } = $frame_name;
       }
@@ -427,7 +437,7 @@ sub prepare_and_execute
 
   # 6. get action from input (USER/CGI) or page session
   my $action_name = lc( $input_safe_hr->{ '_AN' } || $input_user_hr->{ '_AN' } || $page_shr->{ ':ACTION_NAME' } );
-  if( $action_name =~ /^[a-z_0-9]+$/ )
+  if( $action_name =~ /^[a-z0-9_]+$/ )
     {
     $page_shr->{ ':ACTION_NAME' } = $action_name;
     }
@@ -440,7 +450,7 @@ sub prepare_and_execute
   my $page_name = lc( $input_safe_hr->{ '_PN' } || $input_user_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || 'main' );
   if( $page_name ne '' )
     {
-    if( $page_name =~ /^[a-z_\-0-9\/]+$/ )
+    if( $page_name =~ /^[a-z0-9_\-\/]+$/ )
       {
       $page_shr->{ ':PAGE_NAME' } = $page_name;
       }
@@ -1696,7 +1706,7 @@ sub login
   
   my $user_ident_s = $user_ident;
   
-  $user_ident_s =~ s/[^a-z_0-9\-:]/_/gi; # human readable
+  $user_ident_s =~ s/[^a-z0-9_\-:]/_/gi; # human readable
   $user_ident   = str_hex( $user_ident );
 
   my $user_shr = $self->get_user_session();
@@ -1905,7 +1915,7 @@ sub create_uniq_id
   my $case = shift;
 
   my $nid;
-  my $limit = 128;
+  my $limit = 137;
   while( $limit-- )
     {
     my $nid = create_random_id( 8 );
@@ -1914,7 +1924,7 @@ sub create_uniq_id
     next if $self->{ 'CREATE_UNIQ_ID' }{ $nid }++;
     my $psid = $self->get_page_session_id();
     $self->{ 'CREATE_UNIQ_ID' }{ ':COUNT' }++;
-    return $psid . $nid;
+    return $psid . '.' . $nid;
     }
   boom "cannot create new uniq html id";  
   return undef;

@@ -183,7 +183,7 @@ sub _key_to_fn
   while( @key > 0 )
     {
     my $c = shift @key;
-    boom "invalid key component needs ALPHANUMERIC, got [$c]" unless $c =~ /^[A-Za-z0-9]+$/;
+    boom "invalid key component needs ALPHANUMERIC, got [$c]" unless $c =~ /^[A-Za-z0-9_]+$/;
     $r .= '/' . $self->_split_dir_components( $c, 2, 2 );
     }
 

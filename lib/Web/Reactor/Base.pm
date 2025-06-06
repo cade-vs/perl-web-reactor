@@ -63,7 +63,7 @@ sub __set_reo
     }
   else
     {
-    boom "missing REO reactor object";
+    boom "Web::Reactor object required! missing or wrong class!";
     }
   
   return 1;  
@@ -73,7 +73,7 @@ sub get_reo
 {
   my $self = shift;
 
-  return $self->{ 'REO_REACTOR' } or boom "missing REO object reference";
+  return $self->{ 'REO_REACTOR' } or boom "missing Web::Reactor object";
 }
 
 sub get_cfg

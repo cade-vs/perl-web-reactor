@@ -161,11 +161,14 @@ sub end
 
   my $form_name = $self->{ 'FORM_NAME' };
   my $form_id   = $self->{ 'FORM_ID'   };
-  $page_session->{ ':FORM_DEF' }{ $form_id }{ 'RET_MAP' } = $self->{ 'RET_MAP' };
+
+  my $link_shr = $reo->get_link_session();
+  $link_shr->{ 'FORM_RET_MAP' }{ $form_id } = $self->{ 'RET_MAP' };
 
   my $state_keeper = $reo->args_type( $self->{ 'FORM_STATE'  }{ ':ARGS_TYPE' }, %{ $self->{ 'FORM_STATE'  } } );
 
-  $text .= "<input type=hidden name='_' value='$state_keeper' form='$form_id'>";
+##### REMOVE #####  #$text .= "<input type=hidden name='_' value='$state_keeper' form='$form_id'>";
+  $text .= html_element( 'INPUT', undef, form => $form_id, type => 'hidden', name => '_', value => $state_keeper );
 
   $text .= "\n";
   return $text;

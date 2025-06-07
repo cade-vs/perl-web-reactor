@@ -182,7 +182,12 @@ sub run
     delete $rs->{ 'BUTTON_REDIRECT' } unless $self->is_debug() > 2;
     $self->log_dumper( "FINAL PAGE SESSION [$psid]-----------------------------------", $ps );
     $self->log_dumper( "FINAL REF  SESSION [$rsid]-----------------------------------", $rs );
-    $self->log_dumper( "FINAL USER SESSION [$usid]-----------------------------------", $self->get_user_session() ) if $self->is_debug() > 2;
+    if( $self->is_debug() > 2 )
+      {
+      $self->log_dumper( "FINAL USER SESSION [$usid]-----------------------------------", $self->get_user_session() );
+      my ( $ls, $lsid ) = $self->get_link_session();
+      $self->log_dumper( "FINAL LINK SESSION  [$lsid]-----------------------------------", $ls );
+      }
     }
 
   # $self->log_dumper( 'RUN RESULT, CODE, HEADERS, BODY_LENGTH:', $res->[0], $res->[1], length( $res->[2] ) );
@@ -356,14 +361,16 @@ sub prepare_and_execute
 
   my $safe_input_link_sess = $input_user_hr->{ '_' };
   
+my $link_session_hr; # FIXME!!!!!!!!!!!!!!!!!!!!!  
   # parse link session: link-sid.link-key
   if( $safe_input_link_sess =~ /^([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)$/ )
     {
     my ( $link_sid, $link_key ) = ( $1, $2 );
 
-    my $link_session_hr = $self->ses->load( 'LINK', $link_sid );
+####### my >!!!!!!!!!!!!!!!!!!!!!
+    $link_session_hr = $self->ses->load( 'LINK', $link_sid );
 
-    my $link_data = $link_session_hr->{ $link_key };
+    my $link_data = $link_session_hr->{ 'ARGS' }{ $link_key };
 
     # merge safe input if valid
     %$input_safe_hr = ( %$input_safe_hr, %$link_data ) if $link_data;
@@ -400,10 +407,10 @@ sub prepare_and_execute
 
   # 5. remap form input names and data, post to safe input
   my $form_id = $input_safe_hr->{ 'FORM_ID' }; # FIXME: replace with _FRI
-  if( $form_id and exists $page_shr->{ ':FORM_DEF' }{ $form_id } )
+  if( $form_id and exists $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id } )
     {
-    my $rmn = $page_shr->{ ':FORM_DEF' }{ $form_id }{ 'RET_MAP' }{ 'NAME' }; # return map names
-    my $rmd = $page_shr->{ ':FORM_DEF' }{ $form_id }{ 'RET_MAP' }{ 'DATA' }; # return map data
+    my $rmn = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'NAME' }; # return map names
+    my $rmd = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'DATA' }; # return map data
 
     # remap names
     for my $n ( keys %$rmn )
@@ -470,6 +477,7 @@ sub prepare_and_execute
     $self->log_dumper( "PAGE SESSION [$psid]-----------------------------------", $self->get_page_session() );
     $self->log_dumper( "REF  SESSION [$rsid]-----------------------------------", $self->get_page_session( 1 ) );
     $self->log_dumper( "USER SESSION-----------------------------------", $self->get_user_session() );
+    $self->log_dumper( "LINK SESSION (INCOMING) [$safe_input_link_sess]-----------------------------------", $link_session_hr ) if $self->is_debug() > 2;
     }
 
   # print STDERR "info: DEBUG: >>>>>>>>>>>>> page name [$page_name] action name [$action_name]\n";  
@@ -616,6 +624,50 @@ sub get_page_session
   return $page_shr;
 }
 
+sub get_link_session
+{
+  my $self  = shift;
+
+  my $link_sid;
+  my $link_shr;
+
+  if( ! $self->{ 'SESSIONS' }{ 'SID'  }{ 'LINK' } )
+    {
+    $link_sid = $self->ses->create( 'LINK', 8 );
+    $link_shr = { ':ID' => $link_sid };
+    $self->__set_session( 'LINK', $link_sid, $link_shr );
+    }
+  else
+    {
+    $link_sid = $self->{ 'SESSIONS' }{ 'SID'  }{ 'LINK' };
+    $link_shr = $self->{ 'SESSIONS' }{ 'DATA' }{ 'LINK' }{ $link_sid };
+    }
+
+  return wantarray ? ( $link_shr, $link_sid ) : $link_shr;
+}
+
+sub new_link_session_key
+{
+  my $self = shift;
+  my $type = shift;
+  my $len  = shift || 8;
+
+  # FRM is FORM RETURN MAP
+  boom( "cannot create LINK key: type must be ARGS" ) unless $type eq 'ARGS';
+
+  my $link_shr = $self->get_link_session();
+
+  my $link_key;
+  while(4)
+    {
+    $link_key = $self->ses->create_id( $len );
+    last if ! exists $link_shr->{ $type }{ $link_key };
+    }
+  boom( "cannot create LINK key" ) unless $link_key;
+
+  return wantarray ? ( $link_key, $link_shr->{ $type }{ $link_key } ) : $link_key;
+}
+
 sub get_http_env
 {
   my $self  = shift;
@@ -749,30 +801,10 @@ sub args
 
   hash_uc_ipl( \%args );
 
-  my $link_sid;
-  my $link_shr;
+  my ( $link_shr, $link_sid ) = $self->get_link_session();
+  my $link_key = $self->new_link_session_key( 'ARGS' );
 
-  if( ! $self->{ 'SESSIONS' }{ 'SID'  }{ 'LINK' } )
-    {
-    $link_sid = $self->ses->create( 'LINK', 8 );
-    $link_shr = { ':ID' => $link_sid };
-    $self->__set_session( 'LINK', $link_sid, $link_shr );
-    }
-  else
-    {
-    $link_sid = $self->{ 'SESSIONS' }{ 'SID'  }{ 'LINK' };
-    $link_shr = $self->{ 'SESSIONS' }{ 'DATA' }{ 'LINK' }{ $link_sid };
-    }
-
-  my $link_key;
-  while(4)
-    {
-    $link_key = $self->ses->create_id( 8 ); # FIXME: length param env
-    last if ! exists $link_shr->{ $link_key };
-    }
-  boom( "cannot create LINK key" ) unless $link_key;
-
-  $link_shr->{ $link_key } = \%args;
+  $link_shr->{ 'ARGS' }{ $link_key } = \%args;
 
   return $link_sid . '.' . $link_key;
 }

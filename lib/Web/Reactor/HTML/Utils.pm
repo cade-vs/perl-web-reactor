@@ -35,6 +35,8 @@ our @EXPORT = qw(
 
                 html_tabs_table
                 
+                html_debug
+                
                 html_check_tag_name
                 html_check_tag_name_boom
                 
@@ -44,6 +46,7 @@ our @EXPORT = qw(
                 );
 use strict;
 use Exception::Sink;
+use Data::Dumper;
 use Data::Tools;
 use Web::Reactor::HTML::Tab;
 use Web::Reactor::HTML::Layout;
@@ -659,6 +662,14 @@ sub html_tabs_table
 
 
   return $text;
+}
+
+##############################################################################
+
+sub html_debug
+{
+  # TODO: pass colors for background, border...
+  return "<div style='text-align: left; border: dotted 1px #A00'><xmp>" . Dumper( @_ ) . "</xmp></div>";
 }
 
 ##############################################################################

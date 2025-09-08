@@ -1022,7 +1022,7 @@ sub res_set_body
 {
   my $self = shift;
   my $body = shift;
-  
+
   return $self->{ 'OUT' }{ 'BODY' } = $body;
 }
 
@@ -1030,7 +1030,7 @@ sub res_get_body
 {
   my $self = shift;
   my $body = shift;
-  
+
   return $self->{ 'OUT' }{ 'BODY' };
 }
 

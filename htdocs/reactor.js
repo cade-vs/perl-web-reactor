@@ -685,8 +685,8 @@ function reactor_datalist_change( el, resubmit )
   var option = el.list.options.namedItem( el.value );
   if( option )
     {
-    var datalist_key = option.dataset.key;
-    input.value = datalist_key;
+    input.value = option.dataset.key;
+    el.value    = option.value;
     }
   else
     {

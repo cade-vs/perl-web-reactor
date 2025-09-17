@@ -559,7 +559,6 @@ sub input
   my $id    =    $opt{ 'ID'      };
   my $class =    $opt{ 'CLASS'   } || $self->{ 'CLASS_MAP' }{ 'INPUT' } || 'line';
   my $value =    $opt{ 'VALUE'   } || "";
-  my $key   =    $opt{ 'KEY'     };
   # FIXME: default data?
   my $size  =    $opt{ 'SIZE'    } || $opt{ 'LEN' } || $opt{ 'WIDTH' };
   my $maxl  =    $opt{ 'MAXLEN'  } || $opt{ 'MAX' };
@@ -573,7 +572,8 @@ sub input
 
   my $clear =    $opt{ 'DISABLED' } ? undef : $opt{ 'CLEAR'   };
   
-  my $datalist = $opt{ 'DATALIST' }; # array ref with 'key' & 'value' hash
+  my $datalist    = $opt{ 'DATALIST'              }; # array ref with 'key', 'value' and 'label' hash
+  my $datalist_sk = $opt{ 'DATALIST_SELECTED_KEY' }; # key of the selected item
 
   __check_ident( $name, $id );
 
@@ -606,7 +606,7 @@ sub input
     $self->__ret_map_data( $name, $value => $ret );
     }
 
-$name = $self->__ret_map_name( $name );  # FIXME: TODO: check if works?
+  my $name_hidden = $self->__ret_map_name( $name );  # FIXME: TODO: check if works?
 
 
   my $clear_tag;
@@ -634,7 +634,7 @@ $name = $self->__ret_map_name( $name );  # FIXME: TODO: check if works?
     {
     my $resub = $opt{ 'RESUBMIT_ON_CHANGE' } ? 1 : 0;
     
-    my $empty_key   = str_html_escape( $opt{ 'EMPTY_KEY' } );
+    my $empty_key   = $opt{ 'EMPTY_KEY' };
     my $input_id    = $self->create_uniq_id();
     my $datalist_id = $self->create_uniq_id();
     $class .= " search_list";
@@ -643,18 +643,36 @@ $name = $self->__ret_map_name( $name );  # FIXME: TODO: check if works?
 #    $text  .= "\n<input                             class='$class' value='$value' list=$datalist_id $options form='$form_id' $args data-input-id=$input_id data-empty-key='$empty_key' onchange='return reactor_datalist_change( this, $resub )'>$clear_tag";
 #    $text  .= "\n<datalist id=$datalist_id>";
 
-    $text .= html_element( 'input', undef,           id => $input_id, type => 'hidden', class => $class, name => $name, value => $key,   form => $form_id );
-    $text .= html_element( 'input', undef, %options, id => $input_id,                   class => $class,                value => $value, form => $form_id, list => $datalist_id, 'data-input-id' => $input_id, 'data-empty-key' => $empty_key, onChange => "return reactor_datalist_change( this, $resub )" ) . $clear_tag;
-    
+    my $datalist_key;
+    my $datalist_label;
+
     my $datalist_text;
     for my $e ( @$datalist )
       {
-      my $k = $e->{ 'KEY'   };
-      my $v = $e->{ 'VALUE' };
-      $datalist_text .= html_element( 'option', undef, name => $v, value => $v, 'data-key' => $k );
+      my $k = $e->{ 'KEY'   }; # html-visible key, which is returned
+      my $v = $e->{ 'VALUE' }; # actual value, if key is given or generated, return map is used key => value
+      my $l = $e->{ 'LABEL' }; # html-visible text label
+
+      $k = $self->create_uniq_id() if $k eq '*';
+
+      if( $k ne '' )
+        {
+        $self->__ret_map_data( $name, $k => $v );
+        }
+      else
+        {
+        $k = $v;
+        }  
+
+      ( $datalist_key, $datalist_label ) = ( $k, $l ) if $v eq $datalist_sk;
+      $datalist_text .= html_element( 'option', undef, name => $l, value => $l, 'data-key' => $k );
       }
     
-    $text .= html_element( 'datalist', $datalist_text, id => $datalist_id );
+    $datalist_text = html_element( 'datalist', $datalist_text, id => $datalist_id );
+    
+    $text .= html_element( 'input', undef,           id => $input_id, type => 'hidden', class => $class, name => $name_hidden, value => $datalist_key,   form => $form_id );
+    $text .= html_element( 'input', undef, %options, id => $input_id,                   class => $class,                       value => $datalist_label, form => $form_id, list => $datalist_id, 'data-input-id' => $input_id, 'data-empty-key' => $empty_key, onChange => "return reactor_datalist_change( this, $resub )" ) . $clear_tag;
+    $text .= $datalist_text;
     }
   else
     {  

@@ -412,6 +412,25 @@ my $link_session_hr; # FIXME!!!!!!!!!!!!!!!!!!!!!
     my $rmn = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'NAME' }; # return map names
     my $rmd = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'DATA' }; # return map data
 
+    for my $n ( keys %$input_user_hr )
+      {
+      my $nn = $n;
+      if( exists $rmn->{ $n } )
+        {
+        $nn = $rmn->{ $n };
+#print STDERR ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> NAME $n -> $nn\n";
+        $input_user_hr->{ $nn } = $input_user_hr->{ $n };
+        delete $input_user_hr->{ $n };
+        }
+      if( exists $rmd->{ $nn } )
+        {
+        $input_safe_hr->{ $nn } = $rmd->{ $nn }{ $input_user_hr->{ $nn } };
+#print STDERR ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> NAME $nn => $input_safe_hr->{ $nn }\n\n";
+        delete $input_user_hr->{ $nn };
+        }
+      }
+
+=pod
     # remap names
     for my $n ( keys %$rmn )
       {
@@ -427,6 +446,8 @@ my $link_session_hr; # FIXME!!!!!!!!!!!!!!!!!!!!!
       $input_safe_hr->{ $k } = $rmd->{ $k }{ $input_user_hr->{ $k } };
       delete $input_user_hr->{ $k };
       }
+=cut
+
     }
 
   my $frame_name = $input_safe_hr->{ '_FR' };

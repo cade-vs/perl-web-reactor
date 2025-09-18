@@ -428,7 +428,9 @@ sub select
 
   my $text;
 
-  $at{ 'onChange' } = 'this.form.submit()' if $opt{ 'SUBMIT_ON_CHANGE' };
+  # TODO: FIXME: cleanup this mess!
+  $at{ 'onChange' } = 'this.form.submit()'       if $opt{ 'SUBMIT_ON_CHANGE' } and $opt{ 'SUBMIT_ON_CHANGE' }  > 0;
+  $at{ 'onChange' } = $opt{ 'SUBMIT_ON_CHANGE' } if $opt{ 'SUBMIT_ON_CHANGE' } and $opt{ 'SUBMIT_ON_CHANGE' } == 0;
 
 =pod
   if( $opt{ 'RADIO' } )

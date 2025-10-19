@@ -229,7 +229,8 @@ sub __process_tag
     # FIXME: action calls may return non-text data, however the preprocessor expects text data for now...
     
     # session stack, parnets etc?
-    
+
+#print STDERR ">>> $reo->act->call( $tag, HTML_ARGS => \%args )\n";    
     my $calltext = $reo->act->call( $tag, HTML_ARGS => \%args );
     if( $type eq '&&' )
       {
@@ -243,6 +244,7 @@ sub __process_tag
     }
 
 # print STDERR Dumper( 'PROCESS TEXT --- ' x 7, ( $pn, $text, $opt, $ctx ) );
+#print STDERR ">>> $self->process( $pn, $text, $opt, $ctx )\n";    
   $text = $self->process( $pn, $text, $opt, $ctx );
 
   $self->tagid_pop();

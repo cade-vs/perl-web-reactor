@@ -623,7 +623,7 @@ sub input
       }
     else
       {
-      my $s = $clear eq 1 ? '&otimes;' : $clear;
+      my $s = $clear eq 1 ? '&times;' : $clear;
       $clear_tag = html_element( 'span', $s, class => 'icon-clear',  border => '0', onClick => "return set_value('$id', '')", extra => $clear_hint_handler );
       }
     }

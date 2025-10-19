@@ -377,6 +377,11 @@ function reactor_form_multi_checkbox_toggle( el )
   reactor_form_multi_checkbox_set( el, cb, (+cb.value) + 1 );
 }
 
+function reactor_form_multi_checkbox_toggle_by_id( id )
+{
+  reactor_form_multi_checkbox_toggle( q( id ) );
+}
+
 function reactor_form_multi_checkbox_set( el, cb, new_value )
 {
   var stages = el.dataset.stages;

@@ -34,6 +34,10 @@ our @EXPORT = qw(
 
                 html_layout_2lr
                 html_layout_2lr_flex
+                
+                
+                html_hbox
+                html_vbox
 
                 );
 
@@ -374,13 +378,16 @@ sub html_layout_2lr_flex
   my $rd = shift; # right data
   my $fm = shift || '<=>'; # format: '[<>]nn%=nn%[<>]'
 
-  return "<div style='display: flex;'><div style='flex: 99; text-align: left;'>$ld</div><div style='flex: 1; text-align: right; white-space: nowrap;'>$rd</div></div>";
+  return "<div style='display: flex;'><div style='flex: 99; text-align: left; align-content: center;'>$ld</div><div style='flex: 1; text-align: right; white-space: nowrap; align-content: center;'>$rd</div></div>";
   
-  my $la; # left  align
-  my $ra; # right align
-  my $lw; # left  width
-  my $rw; # right width
-  my $nw; # no-wrap
+  my $la;  # left  align
+  my $ra;  # right align
+  my $lw;  # left  width
+  my $rw;  # right width
+  my $nw;  # no-wrap
+  my $acl; # left  content-align
+  my $acr; # right content-align
+  
   if( $fm =~ /^([<>]?)((\d+)%?)?=(=)?((\d+)%?)?([<>]?)$/ )
     {
     $la = $1;
@@ -394,19 +401,100 @@ sub html_layout_2lr_flex
     boom "invalid format [$fm]";
     }  
   
-  $la = { '<' => 'align=left', '>' => 'align=right' }->{ $la };
-  $ra = { '<' => 'align=left', '>' => 'align=right' }->{ $ra };
+  $acl = "align-content: center";
+  $acr = "align-content: center";
+  
+  $la = { '<' => 'text-align: left', '>' => 'text-align: right' }->{ $la };
+  $ra = { '<' => 'text-align: left', '>' => 'text-align: right' }->{ $ra };
 
   $lw = $rw = 50 if $lw == 0 and $rw == 0;
   $lw = int( 100 - $rw ) if $lw == 0 and $rw > 0;
   $rw = int( 100 - $lw ) if $rw == 0 and $lw > 0;
   
-  $lw = "width=$lw%";
-  $rw = "width=$rw%";
+  $lw = "flex: $lw";
+  $rw = "flex: $rw";
 
-  $nw = "style='white-space: nowrap'" if $nw;
+  $nw = "white-space: nowrap" if $nw;
 
-  return "<table width=100% cellspacing=0 cellpadding=0 border=0 $nw><tr><td $la $lw>$ld</td><td $ra $rw>$rd</td></tr></table>";
+  return "<div style='display: flex;'><div style='$lw;$la;$acl;$nw'>$ld</div><div style='$rw;$ra;$acr;$nw'>$rd</div></div>";
+}
+
+##############################################################################
+
+my %__HTML_BOX_ALIGN = (
+                       '>' => 'text-align: right; ',
+                       '<' => 'text-align: left; ',
+                       '|' => 'text-align: center; ',
+                       );
+
+my %__HTML_BOX_FMT_CACHE;
+
+sub __html_box_fmt_parse
+{
+  my $fmt = shift;
+  my @fmt;
+
+  return $__HTML_BOX_FMT_CACHE{ $fmt } if exists $__HTML_BOX_FMT_CACHE{ $fmt };
+
+#print "[$fmt]\n";
+  for my $f ( split /[,;]/, $fmt )
+    {
+#print "    [$f]\n";
+    my $arg;
+    $arg .= "class='$1' "            if $f =~ /^([^:]+):/;
+
+    my $wid = 1;
+    $wid  = 1000                    if $f =~ /=/;
+
+    my $sty;
+    $sty .= "white-space: nowrap; " if $f =~ /n/i;
+    $sty .= "white-space:   wrap; " if $f =~ /w/i;
+    $sty .= "white-space:    pre; " if $f =~ /p/i;
+    $sty .= $__HTML_BOX_ALIGN{ $1 } if $f =~ /([<>\|])/;
+
+    $sty .= "align-content: center; ";
+    
+    my $rep = 1;
+    $rep = $1 if $f =~ /x(\d+)/;
+    
+    my $div = "$arg style='flex: $wid; $sty'";
+#print "    {$div}\n\n";
+    push @fmt, $div for 1 .. $rep;
+    }
+  
+  $__HTML_BOX_FMT_CACHE{ $fmt } = \@fmt; # FIXME: TODO: avoid overfill
+  return \@fmt;
+}
+
+sub __html_hbox
+{
+  my $dir = shift;
+  my $fmt = shift;
+ 
+  $fmt = __html_box_fmt_parse( $fmt );
+  
+  my $text;
+  
+  $text .= "<div style='display: flex; flex-direction: $dir; align-content: center; '>\n";
+  my $c;
+  for my $d ( @_ )
+    {
+    $text .= "<div $fmt->[$c]>$d</div>\n";
+    $c++;
+    }
+  $text .= "</div>\n";
+  
+  return $text;
+}
+
+sub html_hbox
+{
+  return __html_hbox( 'row', @_ );
+}
+
+sub html_vbox
+{
+  return __html_hbox( 'column', @_ );
 }
 
 ### EOF ######################################################################

@@ -279,9 +279,9 @@ sub prepare_and_execute
 
   my $params = $plack->parameters(); # input parameters, GET + POST
   my %params; # preprocessed parameters
-  my @params; # list of parameter names
 
   # check valid params names and preprocess multiple values
+  # import plain parameters from GET/POST request
   for my $n ( keys %$params )
     {
     if( $n !~ /^[A-Za-z0-9\-\_\.\:]+$/o )
@@ -293,37 +293,14 @@ sub prepare_and_execute
     $n = uc $n;
     if( @v > 1 )
       {
-      $n = '@' . $n;
-      $params{ $n } = \@v;
-      }
-    else
-      {
-      $params{ $n } = $v[0];
-      }  
-    push @params, $n;
-    }
-
-  # import plain parameters from GET/POST request
-  for my $n ( @params )
-    {
-    my $v = $params->{ $n };
-    if( $n =~ /^\@/ )
-      {
-      next unless ref( $v ) eq 'ARRAY';
-      for( my $vi = 0; $vi < @$v; $vi++ )    
+      for( my $vi = 0; $vi < @v; $vi++ )    
         {
         # ignore the whole array if any value is invalid
-        next     if $self->__input_cgi_skip_invalid_value( $n, $v->[$vi] );
-        $v->[$vi] = $self->__input_cgi_make_safe_value( $n, decode( $incoming_charset, $v->[$vi] ) );
+        next     if $self->__input_cgi_skip_invalid_value( $n, $v[$vi] );
+        $v[$vi] = $self->__input_cgi_make_safe_value( $n, decode( $incoming_charset, $v[$vi] ) );
         }
-      $input_user_hr->{ $n } = $v;
+      $input_user_hr->{ '@' . $n } = \@v;
       }
-    elsif( ref( $v ) )
-      {
-      # incoming object instance, not expected, remove
-      $v = undef;
-      next;
-      }  
     elsif ( $n =~ /BUTTON:([a-z0-9_\-]+)(:(.+?))?(\.[XY])?$/oi )
       {
       # regular button BUTTON:CANCEL
@@ -334,17 +311,23 @@ sub prepare_and_execute
     elsif( $n eq '_BTN' )
       {
       # simulated button, i.e. hidden input with 'BUTTON_NAME:BUTTON_ID'
-      my ( $b, $i ) = split /:/, $v, 2;
+      my ( $b, $i ) = split /:/, $v[0], 2;
       $input_user_hr->{ 'BUTTON'    } = uc $b;
       $input_user_hr->{ 'BUTTON_ID' } =    $i;
       }
     else
       {
-      next                  if $self->__input_cgi_skip_invalid_value( $n, $v );
-      $input_user_hr->{ $n } = $self->__input_cgi_make_safe_value( $n, decode( $incoming_charset, $v ) );
+      next                  if $self->__input_cgi_skip_invalid_value( $n, $v[0] );
+      $input_user_hr->{ $n } = $self->__input_cgi_make_safe_value( $n, decode( $incoming_charset, $v[0] ) );
       }
-    $self->log_debug( "debug: CGI/input param [$n] value [$v]" );
+    $self->log_debug( "debug: CGI/input param [$n] value [$v[0]] array [@v]" );
     }
+
+print STDERR Dumper( '++++++++++++++++++++++++++++++++', $params, $input_user_hr );
+
+
+
+
 
   # import uploads
   my $uploads = $plack->uploads();
@@ -354,6 +337,7 @@ sub prepare_and_execute
     $input_user_hr->{ "#$n" } =  @u; # count of the uploaded files
     $input_user_hr->{ "^$n" } = \@u; # holds all uploads, could be empty
     }  
+
 
   # merge forced parameters
   %$input_user_hr = ( %$input_user_hr, %args ) if $args;

@@ -93,7 +93,7 @@ sub html_element
 #use Data::Dumper;
 #print STDERR Dumper( "\n"x10, \@_, $tag, $txt, \%atr, $html, "\n"x100 );
   
-  return $html . "\n";
+  return $html;
 }
 
 ##############################################################################

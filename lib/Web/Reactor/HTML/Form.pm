@@ -102,7 +102,7 @@ sub begin
 #### REMOVE ###  ### $text .= "<input style='display: none;' name='__avoidiebug__' form='$form_id'>"; # stupid IE bugs
   if( $default_button )
     {
-    $text .= html_element( 'INPUT', undef, form => $id, type => 'image', name => 'BUTTON:$default_button', src => 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQI12NgYGBgAAAABQABXvMqOgAAAABJRU5ErkJggg==', border => 0, height => 0, width => 0, style => 'display: none;', onDblClick => 'return false;' );
+    $text .= html_element( 'INPUT', undef, form => $id, type => 'image', name => "BUTTON:$default_button", src => 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQI12NgYGBgAAAABQABXvMqOgAAAABJRU5ErkJggg==', border => 0, height => 0, width => 0, style => 'display: none;', onDblClick => 'return false;' );
 #### REMOVE ###      $text .= "<input style='display: none;' type='image' name='BUTTON:$default_button' src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQI12NgYGBgAAAABQABXvMqOgAAAABJRU5ErkJggg==' border=0 height=0 width=0 onDblClick='return false;' form='$form_id'>"
     }
   return $text;
@@ -278,7 +278,6 @@ sub checkbox_multi
   my $form_id = $self->{ 'FORM_ID' };
   #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
   #$text .= "<input type='checkbox' name='$name' value='1' $options>";
-  $text .= "\n";
   ### $text .= qq[<         input type='hidden' name='$name' id='$cb_id' value='$value' form='$form_id' $args>];
   $text .= html_element( "input", undef, type => 'hidden', name => $name, id => $cb_id, value => $value, form => $form_id, extra => $args );
   #$text .= qq[<span class='$current_class' id='$el_id' data-stages='$stages' data-checkbox-input-id='$cb_id' onclick='reactor_form_multi_checkbox_toggle(this)' $hint_handler $options>$label</span>];

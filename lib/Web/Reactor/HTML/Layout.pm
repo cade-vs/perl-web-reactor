@@ -194,6 +194,19 @@ sub html_table
         $c_args .= " class='" . $cell->{ 'CLASS' } . "'" if $cell->{ 'CLASS' };
         $c_args .= " width='" . $cell->{ 'WIDTH' } . "'" if $cell->{ 'WIDTH' };
         }
+      elsif( ref( $cell ) eq 'ARRAY' )
+        {
+        my $fmt;
+        
+        $fmt = $cell->[ 0 ];
+        $val = $cell->[ 1 ];
+        
+        
+        #$val     = $cell->{ 'DATA' };
+        #$c_args  = $cell->{ 'ARGS' };
+        #$c_args .= " class='" . $cell->{ 'CLASS' } . "'" if $cell->{ 'CLASS' };
+        #$c_args .= " width='" . $cell->{ 'WIDTH' } . "'" if $cell->{ 'WIDTH' };
+        }
       else
         {
         # FIXME: carp croak boom :)

@@ -277,30 +277,31 @@ sub prepare_and_execute
 
   my $plack = $self->{ 'PLACK' };
 
-  # input parameters, GET + POST
-  my $params = $plack->parameters();
+  my $params = $plack->parameters(); # input parameters, GET + POST
+  my %params; # preprocessed parameters
+  my @params; # list of parameter names
 
-  for my $param_name ( keys %$params )
+  # check valid params names and preprocess multiple values
+  for my $n ( keys %$params )
     {
-    if( $param_name !~ /^[A-Za-z0-9\-\_\.\:]+$/o )
+    if( $n !~ /^[A-Za-z0-9\-\_\.\:]+$/o )
       {
-      $self->log( "error: invalid CGI/input parameter name: [$param_name]" );
-      delete $params->{ $param_name };
+      $self->log( "error: invalid CGI/input parameter name: [$n]" );
       next;
       }
-    my @vals = $params->get_all( $param_name );
-    next unless @vals > 1;
-    $params->{ '@' . $param_name } = \@vals;
+    my @v = $params->get_all( $n );
+    $n = uc $n;
+    if( @v > 1 )
+      {
+      $n = '@' . $n;
+      $params{ $n } = \@v;
+      }
+    else
+      {
+      $params{ $n } = $v[0];
+      }  
+    push @params, $n;
     }
-
-  hash_uc_ipl( $params );
-  my @params = keys %$params;
-
-  my $check_and_make_safe_value = sub
-    {
-    my ( $n, $v ) = @_;
-    return $self->__input_cgi_make_safe_value( $n, decode( $incoming_charset, $v ) );
-    };
 
   # import plain parameters from GET/POST request
   for my $n ( @params )
@@ -312,14 +313,15 @@ sub prepare_and_execute
       for( my $vi = 0; $vi < @$v; $vi++ )    
         {
         # ignore the whole array if any value is invalid
-        next if $self->__input_cgi_skip_invalid_value( $n, $v->[$vi] );
-        $v->[$vi] = $check_and_make_safe_value->( $n, $v->[$vi] );
+        next     if $self->__input_cgi_skip_invalid_value( $n, $v->[$vi] );
+        $v->[$vi] = $self->__input_cgi_make_safe_value( $n, decode( $incoming_charset, $v->[$vi] ) );
         }
       $input_user_hr->{ $n } = $v;
       }
     elsif( ref( $v ) )
       {
-      # nothing really, invalid data, should be handled earlier
+      # incoming object instance, not expected, remove
+      $v = undef;
       next;
       }  
     elsif ( $n =~ /BUTTON:([a-z0-9_\-]+)(:(.+?))?(\.[XY])?$/oi )
@@ -329,39 +331,37 @@ sub prepare_and_execute
       $input_user_hr->{ 'BUTTON'    } = uc $1;
       $input_user_hr->{ 'BUTTON_ID' } =    $3;
       }
-    elsif( $n eq '_BUTTON_NAME' )
+    elsif( $n eq '_BTN' )
       {
-      my ( undef, $b, $i ) = split /:/, $v, 3;
+      # simulated button, i.e. hidden input with 'BUTTON_NAME:BUTTON_ID'
+      my ( $b, $i ) = split /:/, $v, 2;
       $input_user_hr->{ 'BUTTON'    } = uc $b;
       $input_user_hr->{ 'BUTTON_ID' } =    $i;
       }
     else
       {
-      my $v = decode( $incoming_charset, $v );
-      next if $self->__input_cgi_skip_invalid_value( $n, $v );
-      $input_user_hr->{ $n } = $check_and_make_safe_value->( $n, $v );
+      next                  if $self->__input_cgi_skip_invalid_value( $n, $v );
+      $input_user_hr->{ $n } = $self->__input_cgi_make_safe_value( $n, decode( $incoming_charset, $v ) );
       }
-    $self->log_debug( "debug: CGI input param [$n] value [$v]" );
+    $self->log_debug( "debug: CGI/input param [$n] value [$v]" );
     }
+
   # import uploads
   my $uploads = $plack->uploads();
   for my $n ( keys %$uploads )
     {
     my @u = $uploads->get_all( $n );
-    $input_user_hr->{ "$n" } = @u; # count of the uploaded files
-    if( @u > 0 )
-      {
-      $input_user_hr->{ "$n:UPLOADS" } = \@u;   # holds all uploads, even if there is just 1
-      $input_user_hr->{ "$n:UPLOAD"  } = $u[0]; # holds first or single upload
-      next;
-      }
+    $input_user_hr->{ "#$n" } =  @u; # count of the uploaded files
+    $input_user_hr->{ "^$n" } = \@u; # holds all uploads, could be empty
     }  
+
   # merge forced parameters
   %$input_user_hr = ( %$input_user_hr, %args ) if $args;
 
   my $safe_input_link_sess = $input_user_hr->{ '_' };
   
-my $link_session_hr; # FIXME!!!!!!!!!!!!!!!!!!!!!  
+  my $link_session_hr; # FIXME!!!!!!!!!!!!!!!!!!!!!  
+  
   # parse link session: link-sid.link-key
   if( $safe_input_link_sess =~ /^([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)$/ )
     {
@@ -379,7 +379,7 @@ my $link_session_hr; # FIXME!!!!!!!!!!!!!!!!!!!!!
     }
   elsif( $safe_input_link_sess ne '' )
     {
-    $self->log( "warning: invalid safe input link session.key [$safe_input_link_sess]" );
+    $self->log( "warning: invalid safe input link session.key [$safe_input_link_sess] ignored" );
     }
 
   # 4. loading page session

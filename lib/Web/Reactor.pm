@@ -323,12 +323,6 @@ sub prepare_and_execute
     $self->log_debug( "debug: CGI/input param [$n] value [$v[0]] array [@v]" );
     }
 
-print STDERR Dumper( '++++++++++++++++++++++++++++++++', $params, $input_user_hr );
-
-
-
-
-
   # import uploads
   my $uploads = $plack->uploads();
   for my $n ( keys %$uploads )
@@ -337,7 +331,6 @@ print STDERR Dumper( '++++++++++++++++++++++++++++++++', $params, $input_user_hr
     $input_user_hr->{ "#$n" } =  @u; # count of the uploaded files
     $input_user_hr->{ "^$n" } = \@u; # holds all uploads, could be empty
     }  
-
 
   # merge forced parameters
   %$input_user_hr = ( %$input_user_hr, %args ) if $args;
@@ -367,27 +360,20 @@ print STDERR Dumper( '++++++++++++++++++++++++++++++++', $params, $input_user_hr
     }
 
   # 4. loading page session
-  my $page_sid = $input_safe_hr->{ '_P' };
-  my $page_shr = {}; # user session hash ref
-  if( ! ( $page_sid =~ /^[a-zA-Z0-9_]+$/ and $page_shr = $self->ses->load( 'PAGE', $page_sid ) ) )
+  my $page_sid = __input_sid_check( $input_safe_hr->{ '_P' } );
+  my $page_shr = $self->ses->load( 'PAGE', $page_sid ); # user session hash ref
+  if( ! $page_shr )
     {
-    $self->log( "warning: invalid page session [$page_sid]" );
+    $self->log_debug( "warning: invalid page session [$page_sid]" ) if $page_sid;
     $page_sid = $self->ses->create( 'PAGE', 8 );
-    if( $self->is_debug() )
-      {
-      $page_sid = @HNS[rand(@HNS)] . '_' . $page_sid;
-      }
-    $self->log( "warning: new page session created [$page_sid]" );
+    $page_sid = @HNS[rand(@HNS)] . '_' . $page_sid if $self->is_debug();
+    $self->log( "status: new page session created [$page_sid]" );
     $page_shr = { ':ID' => $page_sid };
     }
   $self->__set_session( 'PAGE', $page_sid, $page_shr );
 
-
-  my $ref_page_sid = $input_safe_hr->{ '_R' };
-  if( $ref_page_sid =~ /^[a-zA-Z0-9_]+$/ )
-    {
-    $page_shr->{ ':REF_PAGE_SID' } = $ref_page_sid;
-    }
+  $page_shr->{ ':REF_PAGE_SID' } = __input_sid_check( $input_safe_hr->{ '_R' } );
+  $page_shr->{ ':TOP_PAGE_SID' } = __input_sid_check( $input_safe_hr->{ '_T' } );
 
   # 5. remap form input names and data, post to safe input
   my $form_id = $input_safe_hr->{ 'FORM_ID' }; # FIXME: replace with _FRI
@@ -432,19 +418,6 @@ print STDERR Dumper( '++++++++++++++++++++++++++++++++', $params, $input_user_hr
       }
 =cut
 
-    }
-
-  my $frame_name = $input_safe_hr->{ '_FR' };
-  if( $frame_name ne '' )
-    {
-    if( $frame_name =~ /^[a-zA-Z_0-9_]+$/ )
-      {
-      $page_shr->{ ':FRAME_NAME' } = $frame_name;
-      }
-    else
-      {
-      $self->log( "error: invalid frame name [$frame_name]" );
-      }
     }
 
   # 6. get action from input (USER/CGI) or page session
@@ -497,6 +470,12 @@ print STDERR Dumper( '++++++++++++++++++++++++++++++++', $params, $input_user_hr
     $self->render( PAGE => $page_name );
     }
 }
+
+sub __input_sid_check
+{
+  return $_[0] =~ /^[a-zA-Z0-9_]+$/ ? $_[0] : undef;
+}
+
 
 sub __create_new_user_session
 {
@@ -713,6 +692,16 @@ sub get_ref_page_session_id
   return $shr->{ ':REF_PAGE_SID' };
 }
 
+sub get_top_page_session_id
+{
+  my $self  = shift;
+  my $level = shift;
+
+  my $shr = $self->get_page_session( $level ) || {};
+
+  return $shr->{ ':TOP_PAGE_SID' };
+}
+
 sub get_safe_input
 {
   my $self  = shift;
@@ -767,15 +756,6 @@ sub get_input_form_name
   my $form_name = $input_safe_hr->{ 'FORM_NAME' }; # FIXME: replace with _FN
 
   return $form_name;
-}
-
-sub get_page_frame
-{
-  my $self  = shift;
-
-  my $page_shr  = $self->get_page_session();
-
-  return exists $page_shr->{ ':FRAME_NAME' } ? $page_shr->{ ':FRAME_NAME' } : undef;
 }
 
 sub get_lang
@@ -845,11 +825,17 @@ sub args_new
 
   my $page_shr = $self->get_page_session();
   $args{ '_PN' } ||= $page_shr->{ ':PAGE_NAME' };
-  if( exists $page_shr->{ ':FRAME_NAME' } )
-    {
-    # FIXME: TODO: check vframe logic
-    $args{ '_FR' } = $page_shr->{ ':FRAME_NAME' };
-    }
+
+  return $self->args( %args );
+}
+
+# new page session inside a vsFrame
+sub args_new_fr
+{
+  my $self = shift;
+  my %args = @_;
+
+  $args{ '_T' } = $self->get_page_session_id(); # top session (browser window one)
 
   return $self->args( %args );
 }
@@ -870,10 +856,11 @@ sub args_type
 
   my $type = lc shift;
 
-  return $self->args_new( @_ )  if $type eq 'new';
-  return $self->args_here( @_ ) if $type eq 'here';
-  return $self->args_back( @_ ) if $type eq 'back';
-  return $self->args( @_ )      if $type eq 'none';
+  return $self->args_new( @_ )     if $type eq 'new';
+  return $self->args_new_fr( @_ )  if $type eq 'new_fr';
+  return $self->args_here( @_ )    if $type eq 'here';
+  return $self->args_back( @_ )    if $type eq 'back';
+  return $self->args( @_ )         if $type eq 'none';
   boom( "unknown or not supported TYPE [$type]" );
 }
 
@@ -1960,6 +1947,7 @@ sub create_uniq_id
     $nid = lc $nid if $case == 2;
     next if $self->{ 'CREATE_UNIQ_ID' }{ $nid }++;
     my $psid = $self->get_page_session_id();
+    # my $tsid = $self->get_top_page_session_id();
     $self->{ 'CREATE_UNIQ_ID' }{ ':COUNT' }++;
     return $psid . '.' . $nid;
     }

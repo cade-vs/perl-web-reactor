@@ -633,7 +633,7 @@ sub input
   
   if( $datalist )
     {
-    my $resub = $opt{ 'RESUBMIT_ON_CHANGE' } ? 1 : 0;
+    my $resub = $opt{ 'SUBMIT_ON_CHANGE' } ? 1 : 0;
     
     my $empty_key   = $opt{ 'EMPTY_KEY' };
     my $input_id    = $self->create_uniq_id();

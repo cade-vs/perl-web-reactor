@@ -31,7 +31,7 @@ sub create
 {
   my $self = shift;
   my $type = uc shift;
-  my $len  = shift || 61;
+  my $len  = shift || 73; # 21st prime :)
 
   die "Web::Reactor::Sessions::create: invalid type, expected ALPHANUMERIC, got [$type]" unless $type =~ /^[A-Z0-9]+$/;
   die "Web::Reactor::Sessions::create: invalid length, expected len > 0, got [$len]" unless $len > 0;
@@ -78,7 +78,7 @@ sub load
   my $type = shift;
   my $id   = shift;
 
-  return 0 unless $id;
+  return undef unless $id;
 
   my @key = $self->compose_key_from_id( $type, $id );
 
@@ -211,7 +211,7 @@ sub create_id
   my $self = shift;
   my $cfg  = $self->get_cfg();
  
-  my $len = shift() || $cfg->{ 'SESS_LENGTH'  } || 62; # to be symmetric ;)
+  my $len = shift() || $cfg->{ 'SESS_LENGTH'  } || 73; # 21st prime :)
   my $let = shift() || $cfg->{ 'SESS_LETTERS' } || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
   return create_random_id( $len, $let );

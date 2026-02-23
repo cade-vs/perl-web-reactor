@@ -83,8 +83,8 @@ sub new
   $self->{ 'IN'  }{ 'ENV'         }   = $env; # including headers
   $self->{ 'IN'  }{ 'ENV'         }{ '_CLIENT_IP' } = $self->get_client_ip();
 
-  $self->log( "info: *** BEGIN " . ( '*' x 80 ) . "\n\n\n" ) if $self->is_debug();
-  $self->log_dumper( "debug: reactor[$self] setup (ENV & CFG): ", $env, $cfg ) if $self->is_debug();
+  $self->log_debug( "\n\n\n\n\ninfo: *** BEGIN *** $self ***" . ( '*' x 64 ) ) if $self->is_debug();
+  $self->log_dumper( "debug: reactor[$self] setup (ENV & CFG): ", $env, $cfg ) if $self->is_debug() > 3;
   
   $self->{ 'PLACK' } = Plack::Request->new( $env );
 
@@ -129,7 +129,7 @@ sub DESTROY
 {
   my $self = shift;
 
-  $self->log_debug( "debug: DESTROY: Reactor[$self] destroyed ******* END *******\n\n\n\n\n\n+++\n\n\n\n\n\n" );
+  $self->log_debug( "info: *** END *** $self ***" . ( '*' x 64 ) . "\n\n\n\n\n" ) if $self->is_debug();
 }
 
 ##############################################################################
@@ -170,21 +170,15 @@ sub run
     {
     my $psid = $self->get_page_session_id( 0 ) || 'empty';
     my $rsid = $self->get_page_session_id( 1 ) || 'empty';
-    my $usid = $self->get_user_session_id() || 'empty';
+    my $usid = $self->get_user_session_id(   ) || 'empty';
+    $self->log_dumper( "USER INPUT-------------------------------------", $self->get_user_input()   );
+    $self->log_dumper( "SAFE INPUT-------------------------------------", $self->get_safe_input()   );
+    $self->log_dumper( "PAGE SESSION [$psid]-----------------------------------", $self->get_page_session() );
+    $self->log_dumper( "REF  SESSION [$rsid]-----------------------------------", $self->get_page_session( 1 ) );
 
-    $self->log_dumper( "DEBUG LEVEL ----------------------------------", $self->is_debug() );
-    $self->log_dumper( "USER INPUT -----------------------------------", $self->get_user_input() );
-    $self->log_dumper( "SAFE INPUT -----------------------------------", $self->get_safe_input() );
-
-    my $ps = dclone( $self->get_page_session( 0 ) || {} );
-    delete $ps->{ 'BUTTON_REDIRECT' } unless $self->is_debug() > 2;
-    my $rs = dclone( $self->get_page_session( 1 ) || {} );
-    delete $rs->{ 'BUTTON_REDIRECT' } unless $self->is_debug() > 2;
-    $self->log_dumper( "FINAL PAGE SESSION [$psid]-----------------------------------", $ps );
-    $self->log_dumper( "FINAL REF  SESSION [$rsid]-----------------------------------", $rs );
     if( $self->is_debug() > 2 )
       {
-      $self->log_dumper( "FINAL USER SESSION [$usid]-----------------------------------", $self->get_user_session() );
+      $self->log_dumper( "USER SESSION [$usid]---------------------------", $self->get_user_session() );
       my ( $ls, $lsid ) = $self->get_link_session();
       $self->log_dumper( "FINAL LINK SESSION  [$lsid]-----------------------------------", $ls );
       }
@@ -372,8 +366,8 @@ sub prepare_and_execute
     }
   $self->__set_session( 'PAGE', $page_sid, $page_shr );
 
-  $page_shr->{ ':REF_PAGE_SID' } = __input_sid_check( $input_safe_hr->{ '_R' } );
-  $page_shr->{ ':TOP_PAGE_SID' } = __input_sid_check( $input_safe_hr->{ '_T' } );
+  $page_shr->{ ':REF_PAGE_SID' } = __input_sid_check( $input_safe_hr->{ '_R' } || $page_shr->{ ':REF_PAGE_SID' } );
+  $page_shr->{ ':TOP_PAGE_SID' } = __input_sid_check( $input_safe_hr->{ '_T' } || $page_shr->{ ':TOP_PAGE_SID' } );
 
   # 5. remap form input names and data, post to safe input
   my $form_id = $input_safe_hr->{ 'FORM_ID' }; # FIXME: replace with _FRI
@@ -444,21 +438,6 @@ sub prepare_and_execute
       $self->log( "error: invalid page name [$page_name]" );
       }
     }
-
-  # pre-8. print debug status...
-  if( $self->is_debug() )
-    {
-    my $psid = $self->get_page_session_id( 0 ) || 'empty';
-    my $rsid = $self->get_page_session_id( 1 ) || 'empty';
-    $self->log_dumper( "USER INPUT-------------------------------------", $self->get_user_input()   );
-    $self->log_dumper( "SAFE INPUT-------------------------------------", $self->get_safe_input()   );
-    $self->log_dumper( "PAGE SESSION [$psid]-----------------------------------", $self->get_page_session() );
-    $self->log_dumper( "REF  SESSION [$rsid]-----------------------------------", $self->get_page_session( 1 ) );
-    $self->log_dumper( "USER SESSION-----------------------------------", $self->get_user_session() );
-    $self->log_dumper( "LINK SESSION (INCOMING) [$safe_input_link_sess]-----------------------------------", $link_session_hr ) if $self->is_debug() > 2;
-    }
-
-  # print STDERR "info: DEBUG: >>>>>>>>>>>>> page name [$page_name] action name [$action_name]\n";  
 
   # 8. render output action/page
   if( $action_name )

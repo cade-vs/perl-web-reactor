@@ -82,6 +82,8 @@ sub _storage_load
     return undef;
     }
 
+#print STDERR Dumper( "******* _storage_load [$fn] *******", $in_data );
+
   return $in_data;
 }
 
@@ -97,6 +99,8 @@ sub _storage_save
   my $out_data = shift;
   
   my $fn = $self->_key_to_fn( {}, @_ );
+
+#print STDERR Dumper( "******* _storage_save [$fn] *******", $out_data );
 
   return lock_store( $out_data, $fn );
 }

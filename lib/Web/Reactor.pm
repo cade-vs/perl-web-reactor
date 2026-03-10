@@ -312,7 +312,17 @@ sub prepare_and_execute
     else
       {
       next                  if $self->__input_cgi_skip_invalid_value( $n, $v[0] );
-      $input_user_hr->{ $n } = $self->__input_cgi_make_safe_value( $n, decode( $incoming_charset, $v[0] ) );
+      my $out;
+      if( $n =~ /^(F:)?PASSWORD/ )
+        {
+        # TODO: move it to overload function
+        $out = $self->rsa_pub_encrypt( $v[0] );
+        }
+      else
+        {
+        $out = $self->__input_cgi_make_safe_value( $n, decode( $incoming_charset, $v[0] ) );
+        }  
+      $input_user_hr->{ $n } = $out;
       }
     $self->log_debug( "debug: CGI/input param [$n] value [$v[0]] array [@v]" );
     }
@@ -1064,6 +1074,16 @@ sub save
 ##
 ##  CRYPTO api :)
 ##
+
+sub rsa_pub_encrypt
+{
+  my $self = shift;
+  
+  require Crypt::PK::RSA;
+  my $pub_key = $self->get_cfg()->{ 'RSA_PUB_KEY' }; # file name or if reference, the actual pem data
+  my $pub = Crypt::PK::RSA->new( $pub_key );
+  return encode_base64( $pub->encrypt( $_[0], 'oaep', 'SHA256' ) );
+}
 
 ## FIXME: move most to Data::Tools or separate module
 

@@ -316,7 +316,7 @@ sub prepare_and_execute
       if( $n =~ /^(F:)?PASSWORD/ )
         {
         # TODO: move it to overload function
-        $out = $self->rsa_pub_encrypt( $v[0] );
+        $out = $self->rsa_pub_encrypt( $v[0] ) if $v[0] ne '';
         }
       else
         {
@@ -1862,7 +1862,7 @@ sub load_trans
   my $trans_file = $cfg->{ 'TRANS_FILE' };
 
   my @tf;
-  if( $trans_file )
+  if( -e $trans_file )
     {
     # quick select single translation file, if specified
     @tf = ( $trans_file );

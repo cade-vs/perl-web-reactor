@@ -263,6 +263,8 @@ sub prepare_and_execute
   my $app_charset = uc $cfg->{ 'APP_CHARSET' } || 'UTF-8';
   my $incoming_charset = $app_charset;
 
+  my $no_pass_encrypt = $cfg->{ 'NO_PASS_ENCRYPT' };
+
   if( uc( $self->get_http_env->{ 'HTTP_X_REQUESTED_WITH' } ) eq 'XMLHTTPREQUEST' )
     {
     # TODO: it can be different, but nobody seems to use it, should be fixed eventually
@@ -313,7 +315,7 @@ sub prepare_and_execute
       {
       next                  if $self->__input_cgi_skip_invalid_value( $n, $v[0] );
       my $out;
-      if( $n =~ /^(F:)?PASSWORD/ )
+      if( ! $no_pass_encrypt and $n =~ /^(F:)?PASSWORD/ )
         {
         # TODO: move it to overload function
         $out = $self->rsa_pub_encrypt( $v[0] ) if $v[0] ne '';
@@ -1075,14 +1077,25 @@ sub save
 ##  CRYPTO api :)
 ##
 
-sub rsa_pub_encrypt
+sub __rsa_object
 {
   my $self = shift;
+  
+  return $self->{ 'RSAO' } if exists $self->{ 'RSAO' };
   
   require Crypt::PK::RSA;
   my $pub_key = $self->get_cfg()->{ 'RSA_PUB_KEY' }; # file name or if reference, the actual pem data
   my $pub = Crypt::PK::RSA->new( $pub_key );
-  return encode_base64( $pub->encrypt( $_[0], 'oaep', 'SHA256' ) );
+  $self->{ 'RSAO' } = $pub;
+  
+  return $pub;
+}
+
+sub rsa_pub_encrypt
+{
+  my $self = shift;
+  
+  return encode_base64( $self->__rsa_object()->encrypt( $_[0], 'oaep', 'SHA256' ) );
 }
 
 ## FIXME: move most to Data::Tools or separate module

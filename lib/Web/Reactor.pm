@@ -438,7 +438,7 @@ sub prepare_and_execute
     }
 
   # 7. get page from input (USER/CGI) or page session
-  my $page_name = lc( $input_safe_hr->{ '_PN' } || $input_user_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || 'main' );
+  my $page_name = lc( $input_safe_hr->{ '_PN' } || $input_user_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || {$self->get_page_session( 1 )||{}}->{ ':PAGE_NAME' } || 'main' );
   if( $page_name ne '' )
     {
     if( $page_name =~ /^[a-z0-9_\-\/]+$/ )

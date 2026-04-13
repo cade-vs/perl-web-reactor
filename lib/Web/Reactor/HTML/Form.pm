@@ -266,7 +266,8 @@ sub checkbox_multi
   my $labels_spans;
   for my $s ( 0 .. $stages - 1 )
     {
-    $labels_spans .= html_element( 'span', $labels->[$s], style => "display: none" );
+    my $display = $value == $s ? 'inline' : 'none';
+    $labels_spans .= html_element( 'span', $labels->[$s], style => "display: $display" );
     }
 
   my $reo = $self->get_reo();
@@ -276,15 +277,12 @@ sub checkbox_multi
   my $el_id = $opt{ 'ID' } || $self->create_uniq_id(); # checkbox label element id
 
   my $form_id = $self->{ 'FORM_ID' };
-  #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
-  #$text .= "<input type='checkbox' name='$name' value='1' $options>";
-  ### $text .= qq[<         input type='hidden' name='$name' id='$cb_id' value='$value' form='$form_id' $args>];
   $text .= html_element( "input", undef, type => 'hidden', name => $name, id => $cb_id, value => $value, form => $form_id, extra => $args );
-  #$text .= qq[<span class='$current_class' id='$el_id' data-stages='$stages' data-checkbox-input-id='$cb_id' onclick='reactor_form_multi_checkbox_toggle(this)' $hint_handler $options>$label</span>];
   $text .= html_element( "span", $labels_spans, id => $el_id, 'data-stages' => $stages, 'data-checkbox-input-id' => $cb_id, onclick => 'reactor_form_multi_checkbox_toggle(this)', extra => $hint_handler );
-  ### $text .= qq[<script>reactor_form_multi_checkbox_setup_id( '$el_id' )</script>];
-  $text .= html_element( "script", "reactor_form_multi_checkbox_setup_id( '$el_id' )" );
+#  $text .= html_element( "script", "reactor_form_multi_checkbox_setup_id( '$el_id' )" );
   $text .= "\n";
+
+print STDERR $text;
 
   return $text;
 }
@@ -427,7 +425,7 @@ sub select
 
   my $text;
 
-  # TODO: FIXME: cleanup this mess!
+  # TODO: FIXME: FIXME: FIXME: FIXME: FIXME: cleanup this mess!
   $at{ 'onChange' } = 'this.form.submit()'       if $opt{ 'SUBMIT_ON_CHANGE' } and $opt{ 'SUBMIT_ON_CHANGE' }  > 0;
   $at{ 'onChange' } = $opt{ 'SUBMIT_ON_CHANGE' } if $opt{ 'SUBMIT_ON_CHANGE' } and $opt{ 'SUBMIT_ON_CHANGE' } == 0;
 
@@ -633,7 +631,10 @@ sub input
   
   if( $datalist )
     {
-    my $resub = $opt{ 'SUBMIT_ON_CHANGE' } ? 1 : 0;
+    my $on_change;
+    # TODO: FIXME: FIXME: FIXME: FIXME: FIXME: cleanup this mess!
+    $on_change = 'this.form.submit()'       if $opt{ 'SUBMIT_ON_CHANGE' } and $opt{ 'SUBMIT_ON_CHANGE' }  > 0;
+    $on_change = $opt{ 'SUBMIT_ON_CHANGE' } if $opt{ 'SUBMIT_ON_CHANGE' } and $opt{ 'SUBMIT_ON_CHANGE' } == 0;
     
     my $empty_key   = $opt{ 'EMPTY_KEY' };
     my $input_id    = $self->create_uniq_id();
@@ -672,7 +673,7 @@ sub input
     $datalist_text = html_element( 'datalist', $datalist_text, id => $datalist_id );
     
     $text .= html_element( 'input', undef,           id => $input_id, type => 'hidden', class => $class, name => $name_hidden, value => $datalist_key,   form => $form_id );
-    $text .= html_element( 'input', undef, %options, id => $input_id,                   class => $class,                       value => $datalist_label, form => $form_id, list => $datalist_id, 'data-input-id' => $input_id, 'data-empty-key' => $empty_key, onChange => "return reactor_datalist_change( this, $resub )" ) . $clear_tag;
+    $text .= html_element( 'input', undef, %options, id => $input_id,                   class => $class,                       value => $datalist_label, form => $form_id, list => $datalist_id, 'data-input-id' => $input_id, 'data-empty-key' => $empty_key, onChange => "reactor_datalist_change( this, 0 ); $on_change; return" ) . $clear_tag;
     $text .= $datalist_text;
     }
   else

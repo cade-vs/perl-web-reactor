@@ -4,7 +4,7 @@
 ##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
 ##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##  http://cade.noxrun.com
-##  
+##
 ##  LICENSE: GPLv2
 ##  https://github.com/cade-vs/perl-web-reactor
 ##
@@ -59,11 +59,11 @@ our %ENV_ALLOWED_KEYS = {
 
                         };
 
-my @HNS = qw( Abby Ada Alexa Alfie Alia Alice Anna Aria Ava Axel Beau Bran Chanel Cali Calla Carys Cole Cruz Dash Dean Demi Dior Dora Drew Eira Eli 
-              Elise Ella Elle Ellie Elsa Emma Enzo Eva Eve Evie Faye Fia Fifi Fox Freya Gabe Gaia Gia Greer Gwen Gogo Gyro Hugo Ilia Ilse Iris Isla 
-              Indie Inez Ivan Jace James Joki Juko Juki Jack June Jimmy John Kaia Kali Kate Kaya Kent Kim Kitty Knox Lane Lani Leda Lexi Levi Liam 
-              Liv Lola Lucia Lucy Luna Lyra Macy Maya Mimi Mia Milo Mina Mira Nash Neo Neve Noel Nola Nora Onyx Orla Owen Pearl Prue Reid Rhea Rhys 
-              Rose Rimini Rome Rita Ruby Rumi Runa Ryla Siena Sofia Sage Shea Svea Tate Taya Thera Tori Tinko Tina Tupcho Tova Toto Trudi Trina Uma 
+my @HNS = qw( Abby Ada Alexa Alfie Alia Alice Anna Aria Ava Axel Beau Bran Chanel Cali Calla Carys Cole Cruz Dash Dean Demi Dior Dora Drew Eira Eli
+              Elise Ella Elle Ellie Elsa Emma Enzo Eva Eve Evie Faye Fia Fifi Fox Freya Gabe Gaia Gia Greer Gwen Gogo Gyro Hugo Ilia Ilse Iris Isla
+              Indie Inez Ivan Jace James Joki Juko Juki Jack June Jimmy John Kaia Kali Kate Kaya Kent Kim Kitty Knox Lane Lani Leda Lexi Levi Liam
+              Liv Lola Lucia Lucy Luna Lyra Macy Maya Mimi Mia Milo Mina Mira Nash Neo Neve Noel Nola Nora Onyx Orla Owen Pearl Prue Reid Rhea Rhys
+              Rose Rimini Rome Rita Ruby Rumi Runa Ryla Siena Sofia Sage Shea Svea Tate Taya Thera Tori Tinko Tina Tupcho Tova Toto Trudi Trina Uma
               Uber Una Uno Viki Vera Voom Veda Vidin Vida Vita Wells Willa Wren Xena Xylo Yael Zezo Zaza Zane Zuki Zooo Zana Zara Zeev Zeno Zera Zoro );
 
 ##############################################################################
@@ -85,13 +85,13 @@ sub new
 
   $self->log_debug( "\n\n\n\n\ninfo: *** BEGIN *** $self ***" . ( '*' x 64 ) ) if $self->is_debug();
   $self->log_dumper( "debug: reactor[$self] setup (ENV & CFG): ", $env, $cfg ) if $self->is_debug() > 3;
-  
+
   $self->{ 'PLACK' } = Plack::Request->new( $env );
 
   # FIXME: verify %env content! Data::Validate::Struct
   boom "fatal: configuration: request scheme [HTTP] does not match cookies security policy! either enable HTTPS scheme or set DISABLE_SECURE_COOKIES=1"
       if $self->get_request_scheme() eq 'http' and ! $cfg->{ 'DISABLE_SECURE_COOKIES' };
-  
+
   data_tools_set_text_io_encoding( $self->{ 'CFG' }{ 'APP_CHARSET' } );
 
   # FIXME: common directories setup code?
@@ -162,7 +162,7 @@ sub run
     {
     $self->log( "error: unknown or empty result or exception" );
     $res = [ 200, [ 'content-type' => 'text/plain' ], [ 'system is currently unavailable' ] ];
-    }  
+    }
 
   $self->save();
 
@@ -212,7 +212,7 @@ sub prepare_and_execute
     ( $user_sid, $user_shr ) = $self->__create_new_user_session();
     }
   $self->__set_session( 'USER', $user_sid, $user_shr );
-  
+
   if( ( $user_shr->{ ':LOGGED_IN' } and $user_shr->{ ':XTIME' } > 0 and time() > $user_shr->{ ':XTIME' } )
       or
       ( $user_shr->{ ':CLOSED' } ) )
@@ -289,7 +289,7 @@ sub prepare_and_execute
     $n = uc $n;
     if( @v > 1 )
       {
-      for( my $vi = 0; $vi < @v; $vi++ )    
+      for( my $vi = 0; $vi < @v; $vi++ )
         {
         # ignore the whole array if any value is invalid
         next     if $self->__input_cgi_skip_invalid_value( $n, $v[$vi] );
@@ -323,7 +323,7 @@ sub prepare_and_execute
       else
         {
         $out = $self->__input_cgi_make_safe_value( $n, decode( $incoming_charset, $v[0] ) );
-        }  
+        }
       $input_user_hr->{ $n } = $out;
       }
     $self->log_debug( "debug: CGI/input param [$n] value [$v[0]] array [@v]" );
@@ -336,15 +336,15 @@ sub prepare_and_execute
     my @u = $uploads->get_all( $n );
     $input_user_hr->{ "#$n" } =  @u; # count of the uploaded files
     $input_user_hr->{ "^$n" } = \@u; # holds all uploads, could be empty
-    }  
+    }
 
   # merge forced parameters
   %$input_user_hr = ( %$input_user_hr, %args ) if $args;
 
   my $safe_input_link_sess = $input_user_hr->{ '_' };
-  
-  my $link_session_hr; # FIXME!!!!!!!!!!!!!!!!!!!!!  
-  
+
+  my $link_session_hr; # FIXME!!!!!!!!!!!!!!!!!!!!!
+
   # parse link session: link-sid.link-key
   if( $safe_input_link_sess =~ /^([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)$/ )
     {
@@ -394,14 +394,12 @@ sub prepare_and_execute
       if( exists $rmn->{ $n } )
         {
         $nn = $rmn->{ $n };
-#print STDERR ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> NAME $n -> $nn\n";
         $input_user_hr->{ $nn } = $input_user_hr->{ $n };
         delete $input_user_hr->{ $n };
         }
       if( exists $rmd->{ $nn } )
         {
         $input_safe_hr->{ $nn } = $rmd->{ $nn }{ $input_user_hr->{ $nn } };
-#print STDERR ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> NAME $nn => $input_safe_hr->{ $nn }\n\n";
         delete $input_user_hr->{ $nn };
         }
       }
@@ -438,7 +436,7 @@ sub prepare_and_execute
     }
 
   # 7. get page from input (USER/CGI) or page session
-  my $page_name = lc( $input_safe_hr->{ '_PN' } || $input_user_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || {$self->get_page_session( 1 )||{}}->{ ':PAGE_NAME' } || 'main' );
+  my $page_name = lc( $input_safe_hr->{ '_PN' } || $input_user_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || { $self->get_page_session( 1 ) || {} }->{ ':PAGE_NAME' } || 'main' );
   if( $page_name ne '' )
     {
     if( $page_name =~ /^[a-z0-9_\-\/]+$/ )
@@ -490,7 +488,7 @@ sub __create_new_user_session
     $path = $self->get_request_uri();
     $path =~ s/^([^\?]*\/)([^\?\/]*)(\?.*)?$/$1/; # remove args: ?...
     }
-  $path ||= '/';  
+  $path ||= '/';
 
   my $secure_cookie = $cfg->{ 'DISABLE_SECURE_COOKIES' } ? 0 : 1;
   $self->res_set_cookie( $cookie_name, value => $user_sid, path => $path, httponly => 1, secure => $secure_cookie, samesite => 'lax' );
@@ -514,16 +512,16 @@ sub __create_new_user_session
 sub get_postdata_fh
 {
   my $self = shift;
-  
+
   return $self->{ 'PLACK' }->body();
 }
 
 sub get_postdata_body
 {
   my $self = shift;
-  
+
   my $fh = $self->get_postdata_fh();
-  
+
   local $/ = undef;
   return <$fh>;
 }
@@ -531,7 +529,7 @@ sub get_postdata_body
 sub get_cfg
 {
   my $self = shift;
-  
+
   return $self->{ 'CFG' };
 }
 
@@ -546,11 +544,11 @@ sub get_cfg
 sub get_user_hold
 {
   my $self = shift;
-  
+
   my $uid = $self->get_user_session()->{ ':USER_IDENT' };
 
   my $hold = $self->ses->load( 'HOLD', $uid ) || {};
-  
+
   $self->{ 'SESSIONS' }{ 'DATA' }{ 'HOLD' }{ $uid } = $hold;
 
   return $hold;
@@ -655,11 +653,11 @@ sub get_client_ip
   my $self  = shift;
 
   my $env = $self->get_http_env();
-  
+
   my $client_ip;
-  
+
   $client_ip ||= $env->{ $_ } for qw( HTTP_CF_CONNECTING_IP HTTP_X_REAL_IP REMOTE_ADDR );
-  
+
   return $client_ip;
 }
 
@@ -860,21 +858,21 @@ sub args_type
 sub get_request_scheme
 {
   my $self   = shift;
-  
+
   return $self->{ 'IN' }{ 'ENV' }{ 'REQUEST_SCHEME' };
 }
 
 sub get_request_uri
 {
   my $self   = shift;
-  
+
   return $self->{ 'IN' }{ 'ENV' }{ 'REQUEST_URI' };
 }
 
 sub get_request_method
 {
   my $self   = shift;
-  
+
   return $self->{ 'IN' }{ 'ENV' }{ 'REQUEST_METHOD' };
 }
 
@@ -897,7 +895,7 @@ sub get_cookies
 {
   my $self = shift;
   return $self->{ 'IN' }{ 'COOKIES' } ||= crush_cookie( $self->get_header( 'http_cookie' ) );;
-}  
+}
 
 sub get_cookie
 {
@@ -915,14 +913,14 @@ sub res_set_status
 {
   my $self   = shift;
   my $status = shift;
-  
+
   return $self->{ 'OUT' }{ 'STATUS' } = $status;
 }
 
 sub res_get_status
 {
   my $self   = shift;
-  
+
   return $self->{ 'OUT' }{ 'STATUS' };
 }
 
@@ -1022,7 +1020,7 @@ sub res_get_body
 sub __set_session
 {
   my $self = shift;
-  
+
   my $type = shift;
   my $sid  = shift;
   my $hr   = shift;
@@ -1038,7 +1036,7 @@ sub __set_session
 sub __update_session_fingerprint
 {
   my $self = shift;
-  
+
   my $type = shift;
   my $sid  = shift;
   my $hr   = shift;
@@ -1080,21 +1078,21 @@ sub save
 sub __rsa_object
 {
   my $self = shift;
-  
+
   return $self->{ 'RSAO' } if exists $self->{ 'RSAO' };
-  
+
   require Crypt::PK::RSA;
   my $pub_key = $self->get_cfg()->{ 'RSA_PUB_KEY' }; # file name or if reference, the actual pem data
   my $pub = Crypt::PK::RSA->new( $pub_key );
   $self->{ 'RSAO' } = $pub;
-  
+
   return $pub;
 }
 
 sub rsa_pub_encrypt
 {
   my $self = shift;
-  
+
   return encode_base64( $self->__rsa_object()->encrypt( $_[0], 'oaep', 'SHA256' ) );
 }
 
@@ -1105,18 +1103,18 @@ sub __crypto_object
   my $self = shift;
 
   return ( $self->{ 'CRYO' }, $self->{ 'CRYO_KEY' }, $self->{ 'CRYO_IVS' } ) if exists $self->{ 'CRYO' }; # crypto object
-  
+
   my $cfg = $self->get_cfg();
 
   my $ci = $cfg->{ 'ENCRYPT_CIPHER' } || 'AES';
 
   my $cryo = $self->{ 'CRYO' } = Crypt::Mode::CBC->new( $ci );
-  
+
 
   # FIXME: read key from config file only!
   my $key = $cfg->{ 'ENCRYPT_KEY' };
   boom( "missing key in ENV:ENCRYPT_KEY" ) unless $key =~ /\S/;
-  
+
   my $kl = length( $key );
   my $il = Crypt::Cipher::min_keysize( $ci );
   my $xl = Crypt::Cipher::max_keysize( $ci );
@@ -1490,13 +1488,13 @@ sub render
     my $tr = $self->{ 'TRANS' }{ $self->get_cfg->{ 'LANG' } } || {};
     $page_data =~ s/\<~([^\<\>]*)\>/$tr->{ $1 } || $1/ge;
     $page_data =~ s/\[~([^\[\]]*)\]/$tr->{ $1 } || $1/ge;
-    
+
     $self->res_set_body( encode( $app_charset, $page_data ) );
     }
   else
     {
     $self->res_set_body( $page_data );
-    }  
+    }
 
   sink 'RENDER';
 }
@@ -1651,7 +1649,7 @@ sub __param
     {
     my $p = uc shift;
     if( $save > 0 )
-      {  
+      {
       if( exists $input_hr->{ $p } )
         {
         $ps->{ $save_key }{ $p } = $input_hr->{ $p };
@@ -1739,9 +1737,9 @@ sub login
 {
   my $self = shift;
   my $user_ident = shift; # user identifier, login name, used for mapping of cross-login-session permanent data
-  
+
   my $user_ident_s = $user_ident;
-  
+
   $user_ident_s =~ s/[^a-z0-9_\-:]/_/gi; # human readable
   $user_ident   = str_hex( $user_ident );
 
@@ -1881,13 +1879,13 @@ sub load_trans
     @tf = ( $trans_file );
     }
   else
-    {  
+    {
     for my $dir ( @$trans_dirs )
       {
       push @tf, glob( "$dir/$lang/*.tr" );
       push @tf, glob( "$dir/$lang/text/*.tr" );
       }
-    }  
+    }
 
   for my $tf ( @tf )
     {
@@ -1963,7 +1961,7 @@ sub create_uniq_id
     $self->{ 'CREATE_UNIQ_ID' }{ ':COUNT' }++;
     return $psid . '.' . $nid;
     }
-  boom "cannot create new uniq html id";  
+  boom "cannot create new uniq html id";
   return undef;
 }
 

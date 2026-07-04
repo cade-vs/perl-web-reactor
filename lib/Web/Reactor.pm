@@ -1455,7 +1455,21 @@ sub render
   # preparing headers --------------------------------------------------------
   # FIXME: charset
   $self->res_set_headers( 'content-type'        => $page_type );
-  $self->res_set_headers( 'content-disposition' => "$disp_type; filename=$file_name" ) if $file_name;
+  if( $file_name )
+    {
+    # sanitize + RFC 6266 encode: strip CR/LF/controls (header injection),
+    # escape/quote the ASCII form, add RFC 5987 filename* for non-ASCII names
+    ( my $fn_ascii = $file_name ) =~ s/[\x00-\x1f\x7f]//g;   # strip control chars incl CR/LF/NUL
+    $fn_ascii =~ s/(["\\])/\\$1/g;                           # escape quote and backslash
+    $fn_ascii =~ s/[^\x20-\x7e]/_/g;                         # replace remaining non-ASCII
+    my $cd = qq{$disp_type; filename="$fn_ascii"};
+    if( $file_name =~ /[^\x20-\x7e]/ )
+      {
+      ( my $fn_utf8 = encode( 'UTF-8', $file_name ) ) =~ s/([^A-Za-z0-9_.~-])/sprintf '%%%02X', ord $1/ge;
+      $cd .= "; filename*=UTF-8''$fn_utf8";
+      }
+    $self->res_set_headers( 'content-disposition' => $cd );
+    }
 
   # handling Content Security Policy (CSP) -- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
   my $http_csp = $self->get_cfg->{ 'HTTP_CSP' }; # || " default-src 'self' ";

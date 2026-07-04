@@ -12,6 +12,7 @@
 package Web::Reactor::Sessions;
 use strict;
 use Exception::Sink;
+use Crypt::PRNG;
 use Data::Tools 1.24;
 
 use parent 'Web::Reactor::Base'; 
@@ -214,7 +215,7 @@ sub create_id
   my $len = shift() || $cfg->{ 'SESS_LENGTH'  } || 73; # 21st prime :)
   my $let = shift() || $cfg->{ 'SESS_LETTERS' } || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
-  return create_random_id( $len, $let );
+  return Crypt::PRNG::random_string_from( $let, $len );
 };
 
 sub compose_key_from_id

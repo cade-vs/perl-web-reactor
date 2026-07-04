@@ -1133,7 +1133,8 @@ sub encrypt
 
   my ( $cryo, $key, $ivs ) = $self->__crypto_object();
 
-  my $iv = create_random_binary( $ivs );
+  require Crypt::PRNG;
+  my $iv = Crypt::PRNG::random_bytes( $ivs );
 
   return $iv . $cryo->encrypt( $data, $key, $iv );
 }

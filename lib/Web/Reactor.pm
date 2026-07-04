@@ -55,9 +55,9 @@ our @HTTP_VARS_SAVE  = qw(
                            HTTP_X_REAL_IP
                          );
 
-our %ENV_ALLOWED_KEYS = {
+our %ENV_ALLOWED_KEYS = (
 
-                        };
+                        );
 
 my @HNS = qw( Abby Ada Alexa Alfie Alia Alice Anna Aria Ava Axel Beau Bran Chanel Cali Calla Carys Cole Cruz Dash Dean Demi Dior Dora Drew Eira Eli
               Elise Ella Elle Ellie Elsa Emma Enzo Eva Eve Evie Faye Fia Fifi Fox Freya Gabe Gaia Gia Greer Gwen Gogo Gyro Hugo Ilia Ilse Iris Isla
@@ -358,7 +358,7 @@ sub prepare_and_execute
     # merge safe input if valid
     %$input_safe_hr = ( %$input_safe_hr, %$link_data ) if $link_data;
     # merge forced parameters
-    %$input_safe_hr = ( %$input_safe_hr, %$args      ) if $args;
+    %$input_safe_hr = ( %$input_safe_hr, %args       ) if $args;
     }
   elsif( $safe_input_link_sess ne '' )
     {
@@ -372,7 +372,7 @@ sub prepare_and_execute
     {
     $self->log_debug( "warning: invalid page session [$page_sid]" ) if $page_sid;
     $page_sid = $self->ses->create( 'PAGE', 8 );
-    $page_sid = @HNS[rand(@HNS)] . '_' . $page_sid if $self->is_debug();
+    $page_sid = $HNS[rand(@HNS)] . '_' . $page_sid if $self->is_debug();
     $self->log( "status: new page session created [$page_sid]" );
     $page_shr = { ':ID' => $page_sid };
     }
@@ -1976,20 +1976,20 @@ Web::Reactor perl-based web application machinery.
 
 =head1 SYNOPSIS
 
-Startup CGI script example:
+Startup CGI script example (LEGACY):
 
   #!/usr/bin/perl
   use strict;
-  use lib '/opt/perl/reactor/lib'; # if Reactor is custom location installed
+  use lib '/opt/perl/reactor/lib';
   use Web::Reactor;
 
   my %cfg = (
             'APP_NAME'     => 'demo',
-            'APP_ROOT'     => '/opt/reactor/demo/',
+            'APP_ROOT'     =>   '/opt/reactor/demo/',
             'LIB_DIRS'     => [ '/opt/reactor/demo/lib/'  ],
-            'ACTIONS_SETS' => [ 'demo', 'Base', 'Core' ],
             'HTML_DIRS'    => [ '/opt/reactor/demo/html/' ],
-            'SESS_VAR_DIR' => '/opt/reactor/demo/var/sess/',
+            'SESS_VAR_DIR' =>   '/opt/reactor/demo/var/sess/',
+            'ACTIONS_SETS' => [ 'demo', 'Base', 'Core' ],
             'DEBUG'        => 4,
             );
 
@@ -1999,6 +1999,34 @@ Startup CGI script example:
     print STDERR "REACTOR CGI EXCEPTION: $@";
     print "content-type: text/html\n\nsystem is temporary unavailable";
     }
+
+Startup PLACK/PSGI script example (RECOMMENDED):
+
+  #!/usr/bin/perl
+  # app.psgi
+  use strict;
+  use Web::Reactor;
+
+  my %cfg = (
+            'APP_NAME'     => 'demo',
+            'APP_ROOT'     => '/opt/reactor/demo/',
+            'LIB_DIRS'     => [ '/opt/reactor/demo/lib/'  ],
+            'ACTIONS_SETS' => [ 'demo', 'Base', 'Core' ],
+            'HTML_DIRS'    => [ '/opt/reactor/demo/html/' ],
+            'SESS_VAR_DIR' => '/opt/reactor/demo/var/sess/',
+            'DEBUG'        => 0,
+            );
+
+  my $app = sub {
+    my $env = shift;
+    my $reactor = new Web::Reactor( $env, \%cfg );
+    return $reactor->run();
+  };
+
+  return $app;
+
+Run with: plackup -p 5000 app.psgi
+Or with reverse proxy (nginx): plackup --server Starman -p 5000 app.psgi
 
 =head1 INTRODUCTION
 
@@ -2015,6 +2043,68 @@ functionality like:
 
 Web::Reactor can be extended, though it was not supposed to. There are 4 main
 parts of it which can be extended. See section EXTENDING below for details.
+
+=head1 SECURITY FEATURES
+
+Web::Reactor includes several built-in security features:
+
+=head2 HTTPS Enforcement
+
+By default, Web::Reactor requires HTTPS for secure cookie handling. This prevents
+downgrade attacks. To disable (NOT RECOMMENDED for production):
+
+  'DISABLE_SECURE_COOKIES' => 1
+
+=head2 Secure Cookie Flags
+
+All session cookies are set with:
+
+  - httponly: Prevents JavaScript access (XSS protection)
+  - secure: Only sent over HTTPS (unless DISABLE_SECURE_COOKIES=1)
+  - samesite=lax: CSRF protection (cookies not sent on cross-site requests)
+
+=head2 Session Hijacking Prevention
+
+Session validity is checked on each request:
+
+  - Client IP address is tracked and validated
+  - User-Agent is tracked and validated
+
+If either changes, the session is invalidated and a new one created. This
+protects against session fixation and hijacking attacks.
+
+=head2 Session Expiration
+
+User sessions can expire after a configurable timeout (default: 600 seconds):
+
+  'USER_SESSION_EXPIRE' => 600,  # 10 minutes
+
+=head2 Input Validation
+
+All input parameters are validated:
+
+  - Parameter names: alphanumeric, dash, underscore, dot, colon
+  - Page names: lowercase alphanumeric, dash, underscore, slash
+  - Action names: lowercase alphanumeric, underscore
+  - Session IDs: alphanumeric, underscore
+
+Invalid input is logged and silently ignored.
+
+=head2 Data Encryption (Optional)
+
+Web::Reactor can encrypt sensitive data using AES-CBC encryption.
+See CRYPTOGRAPHY section below.
+
+=head2 Password Encryption (Optional)
+
+Password fields can be encrypted with RSA before sending to server.
+Configure with RSA_PUB_KEY file path or PEM data.
+
+=head2 Content Security Policy (Optional)
+
+Set HTTP_CSP config to add Content-Security-Policy header:
+
+  'HTTP_CSP' => "default-src 'self'; script-src 'self' 'unsafe-inline'",
 
 =head1 EXAMPLES
 
@@ -2037,7 +2127,7 @@ Action module example:
   package Reactor::Actions::demo::test;
   use strict;
   use Data::Dumper;
-  use Web::Reactor::HTML::FormEngine;
+  use Web::Reactor::HTML::Form;
 
   sub main
   {
@@ -2129,7 +2219,7 @@ standard or user-added library directories:
 Asterisk will be replaced with the name of the used "action sets" give in config
 hash:
 
-       'ACTIONS_SETS' => [ 'demo', 'Base', 'Core' ],
+  'ACTIONS_SETS' => [ 'demo', 'Base', 'Core' ],
 
 So the result list in this example will be:
 
@@ -2146,18 +2236,18 @@ Another way to call a module is directly from another module code with:
 
 The package file will look like this:
 
-   package Web/Reactor/Actions/demo/test_action;
-   use strict;
+  package Web/Reactor/Actions/demo/test_action;
+  use strict;
 
-   sub main
-   {
-     my $reo  = shift; # Web::Reactor object/instance
-     my %args = @_; # all args passed to the action
+  sub main
+  {
+    my $reo  = shift; # Web::Reactor object/instance
+    my %args = @_; # all args passed to the action
 
-     my $html_args = $args{ 'HTML_ARGS' }; # all
-     ...
-     return $result_data; # usually html text
-   }
+    my $html_args = $args{ 'HTML_ARGS' }; # all
+    ...
+    return $result_data; # usually html text
+  }
 
 $html_args is hashref with all args give inside the html code if this action
 is called from a html text. If you look the example above:
@@ -2173,8 +2263,6 @@ The $html_args will look like this:
                'flag2' => 1,
                };
 
-
-
 =head1 HTTP PARAMETERS NAMES
 
 Web::Reactor uses underscore and one or two letters for its system http/html
@@ -2184,6 +2272,7 @@ parameters. Some of the system params are:
   _AN  -- action name (points to action package name, restricted to alphanumeric)
   _P   -- page session
   _R   -- referer (caller) page session
+  _T   -- top-level page session (browser window)
 
 Usually those names should not be directly used or visible inside actions code.
 More details about how those params are used can be found below.
@@ -2191,7 +2280,7 @@ More details about how those params are used can be found below.
 =head1 USER SESSIONS
 
 WR creates unique session for each connected user. The session is kept by a cookie.
-Usually WR needs justthis cookie to handle all user/server interaction. Inside
+Usually WR needs just this cookie to handle all user/server interaction. Inside
 WR action code, user session is represented as a hash reference. It may hold
 arbitrary data. "System" or WR-specific data inside user session has colon as
 prefix:
@@ -2202,7 +2291,7 @@ prefix:
   # prints in http log the create time in human friendly form
 
 All data saved inside user session is automatically saved. When needed it can
-be explicitly with:
+be explicitly saved with:
 
   $reo->save();
   # saves all modified context to disk or other storage
@@ -2229,79 +2318,303 @@ session id (_P):
 Not always page session are needed. For example, when forward to the caller is
 needed, you just need to:
 
-   $reo->forward_back();
-   # this is equivalent to
-   my $ref_page_sid = $reo->get_ref_page_session_id();
-   $reo->forward( _P => $ref_page_sid );
+  $reo->forward_back();
+  # this is equivalent to
+  my $ref_page_sid = $reo->get_ref_page_session_id();
+  $reo->forward( _P => $ref_page_sid );
 
 Each page instance knows the caller page session and can give control back to.
 However it may pass more data when returning back to the caller:
 
-   $reo->forward_back( MORE_DATA => 'is here', OPTIONS_LIST => \@list );
+  $reo->forward_back( MORE_DATA => 'is here', OPTIONS_LIST => \@list );
 
 When new page instance has to be called (created):
 
-
-   $reo->forward_new( _PN => 'some_page_name' );
+  $reo->forward_new( _PN => 'some_page_name' );
 
 =head1 CONFIG ENTRIES
 
-Upon creation, Web:Reactor instance gets hash with config entries/keys:
+Upon creation, Web::Reactor instance gets hash with config entries/keys.
 
-  * APP_NAME      -- alphanumeric application name (plus underscore)
-  * APP_ROOT      -- application root dir, used for app components search
-  * LIB_DIRS      -- directories from which actions and other libs are loaded
-  * ACTIONS_SETS  -- list of action "sets", appended to ACTIONS_DIRS
-  * HTML_DIRS     -- html file inlude directories
-  * SESS_VAR_DIR  -- used by filesystem session handling to store sess data
-  * DEBUG         -- positive number, enables debugging with verbosity level
+=head2 Required Config Entries
 
-Some entries may be omitted and default values are:
+  APP_NAME      -- alphanumeric application name (plus underscore)
 
-  * LIB_DIRS      -- [ "$APP_ROOT/lib"  ]
-  * ACTIONS_SETS  -- [ $APP_NAME, 'Base', 'Core' ]
-  * HTML_DIRS     -- [ "$APP_ROOT/html" ]
-  * SESS_VAR_DIR  -- [ "$APP_ROOT/var"  ]
-  * DEBUG         -- 0
+=head2 Optional Config Entries (with defaults)
+
+  APP_ROOT                  -- Application root directory (default: current dir)
+  APP_CHARSET               -- Character encoding (default: UTF-8)
+  LIB_DIRS                  -- Lib directories (default: ["$APP_ROOT/lib"])
+  ACTIONS_SETS              -- Action sets (default: [$APP_NAME, 'Base', 'Core'])
+  HTML_DIRS                 -- HTML template dirs (default: ["$APP_ROOT/html"])
+  SESS_VAR_DIR              -- Session storage dir (default: "$APP_ROOT/var")
+  DEBUG                     -- Debug level 0-4 (default: 0)
+  COOKIE_NAME               -- Session cookie name (default: "${APP_NAME}_cookie")
+  COOKIE_PATH               -- Cookie path (default: derived from REQUEST_URI)
+  USER_SESSION_EXPIRE       -- Session timeout in seconds (default: 600)
+  LANG                      -- Language code for translations (default: none)
+
+=head2 Security Config Entries
+
+  DISABLE_SECURE_COOKIES    -- Disable HTTPS enforcement (default: 0, NOT RECOMMENDED)
+  ENCRYPT_CIPHER            -- Encryption cipher (default: 'AES')
+  ENCRYPT_KEY               -- Encryption key (required if using encryption)
+  RSA_PUB_KEY               -- RSA public key for password encryption (optional)
+  HTTP_CSP                  -- Content-Security-Policy header (optional)
+  NO_PASS_ENCRYPT           -- Disable password encryption (default: 0)
+
+=head2 Extension Config Entries
+
+  REO_SES_CLASS             -- Session storage class (default: Web::Reactor::Sessions::Filesystem)
+  REO_PRE_CLASS             -- Preprocessor class (default: Web::Reactor::Preprocessor::Native)
+  REO_ACT_CLASS             -- Actions class (default: Web::Reactor::Actions::Native)
+
+=head2 Translation Config Entries
+
+  TRANS_DIRS                -- Directories with .tr translation files (array ref)
+  TRANS_FILE                -- Specific translation file to load (string)
 
 =head1 API FUNCTIONS
 
-  # TODO: input
-  # TODO: sessions
-  # TODO: arguments, constructing links
-  # TODO: forwarding
-  # TODO: html, forms, session keeping
+This section covers the most commonly used API functions. For comprehensive
+documentation, see the method source code and examples in the demo/ directory.
+
+=head2 Input Data Functions
+
+  get_user_input()        -- Get all user (unsafe) input from request
+  get_safe_input()        -- Get safe input from hidden form fields
+  param( @names )         -- Get and cache safe input parameters
+  param_unsafe( @names )  -- Get unsafe user input
+  param_peek( @names )    -- Get safe input without caching
+  param_save( @names )    -- Get, cache, and save to page session
+  get_input_button()      -- Get which form button was clicked
+  get_input_button_id()   -- Get form button ID if applicable
+
+=head2 Session Functions
+
+  get_user_session()                  -- Get current user session hashref
+  get_user_session_id()               -- Get current user session ID
+  get_user_session_expire_time()      -- Get expiration timestamp
+  get_user_session_expire_time_in()   -- Get remaining time in seconds
+  set_user_session_expire_time( $ts ) -- Set expiration timestamp
+  set_user_session_expire_time_in( $s ) -- Set expiration in seconds
+
+  get_page_session( $level )          -- Get current page session hashref
+  get_page_session_id( $level )       -- Get current page session ID
+  get_ref_page_session_id( $level )   -- Get caller page session ID
+  get_top_page_session_id( $level )   -- Get top-level page session ID
+
+  get_user_hold()                     -- Get persistent user data (requires login)
+
+=head2 Argument/Link Construction Functions
+
+  args( %data )           -- Create link with safe data (current page)
+  args_new( %data )       -- Create link for new page with referer
+  args_here( %data )      -- Create link staying on same page
+  args_back( %data )      -- Create link returning to caller
+  args_back_back( %data ) -- Create link returning to caller's caller
+
+=head2 Forwarding Functions
+
+  forward( %data )        -- Forward with safe data (full args)
+  forward_new( %data )    -- Forward to new page
+  forward_here( %data )   -- Forward staying on same page
+  forward_back( %data )   -- Forward returning to caller
+  forward_url( $url )     -- Forward to absolute URL (302 redirect)
+
+=head2 HTML and Form Functions
+
+  html_content( %vars )   -- Set HTML template variables
+  new_form( %opt )        -- Create new form object
+  render( PAGE => $name ) -- Render page template
+  render( ACTION => $name ) -- Call and render action
+  render_page( $name )    -- Render page (shortcut)
+  render_action( $name )  -- Render action (shortcut)
+
+=head2 Login/Logout Functions
+
+  is_logged_in()          -- Check if user is logged in
+  login( $user_ident )    -- Mark user as logged in
+  logout()                -- Log out current user
+  need_login()            -- Require login, forward to login page
+
+=head2 Encryption Functions
+
+  encrypt( $data )        -- Encrypt data (binary output)
+  decrypt( $encrypted )   -- Decrypt binary data
+  encrypt_hex( $data )    -- Encrypt with hex encoding
+  decrypt_hex( $hex )     -- Decrypt hex-encoded data
+  encrypt_base64u( $data ) -- Encrypt with base64url encoding
+  decrypt_base64u( $b64 ) -- Decrypt base64url-encoded data
+  crypto_freeze_base64u( $ref ) -- Serialize and encrypt with base64url
+  crypto_thaw_base64u( $b64 )   -- Decrypt and deserialize from base64url
+
+=head1 CRYPTOGRAPHY API
+
+Web::Reactor provides AES-CBC encryption for sensitive data. This is used
+internally to hide form data and page session IDs in URLs.
+
+=head2 Configuration
+
+To enable encryption, set two config parameters:
+
+  my %cfg = (
+            'ENCRYPT_CIPHER' => 'AES',  # cipher (default)
+            'ENCRYPT_KEY'    => 'your-secret-key-here',  # required
+            );
+
+The key must be between min and max key size for the chosen cipher:
+
+  - AES: 16, 24, or 32 bytes (128, 192, or 256 bits)
+
+=head2 Encryption Methods
+
+=head3 Binary Encryption/Decryption
+
+  my $encrypted = $reo->encrypt( $data );
+  my $decrypted = $reo->decrypt( $encrypted );
+
+The encrypted data includes a random IV (initialization vector) prepended
+to the ciphertext.
+
+=head3 Hexadecimal Encoding
+
+  my $hex_encrypted = $reo->encrypt_hex( $data );
+  my $decrypted     = $reo->decrypt_hex( $hex_encrypted );
+
+Useful for URLs and database storage.
+
+=head3 Base64URL Encoding
+
+  my $b64u_encrypted = $reo->encrypt_base64u( $data );
+  my $decrypted      = $reo->decrypt_base64u( $b64u_encrypted );
+
+URL-safe base64 encoding, no padding.
+
+=head3 Serialization with Encryption
+
+  my $b64u_data = $reo->crypto_freeze_base64u( { key => 'value' } );
+  my $hashref   = $reo->crypto_thaw_base64u( $b64u_data );
+
+Automatically serializes/deserializes data structures with encryption.
+
+=head3 Hexadecimal Serialization
+
+  my $hex_data = $reo->crypto_freeze_hex( { key => 'value' } );
+  my $hashref  = $reo->crypto_thaw_hex( $hex_data );
+
+Same as above but with hexadecimal encoding.
+
+=head2 Implementation Details
+
+  Algorithm:  AES (Advanced Encryption Standard)
+  Mode:       CBC (Cipher Block Chaining)
+  IV:         Random, generated per encryption, prepended to ciphertext
+  Padding:    PKCS#7 (handled by Crypt::Mode::CBC)
+  Key:        User-provided, validated against cipher key size requirements
+
+=head2 Example: Hiding Form Data
+
+  my $form_data = {
+                  'account_id' => $account_id,
+                  'action'     => 'transfer',
+                  'amount'     => $amount,
+                  };
+  my $encrypted_link = $reo->args(
+                                  '_SAFE_DATA' =>
+                                    $reo->crypto_freeze_base64u( $form_data ),
+                                  );
+  $html .= "<a href='?_=$encrypted_link'>Process Transfer</a>";
+
+  # On next request:
+  my $safe_input = $reo->get_safe_input();
+  my $form_data = $reo->crypto_thaw_base64u( $safe_input->{ '_SAFE_DATA' } );
+
+=head2 Security Considerations
+
+  - Keep ENCRYPT_KEY secret and secure
+  - Rotate encryption keys periodically
+  - Use different keys for different environments (dev, staging, production)
+  - Key should be at least 32 bytes (256 bits) for AES
+  - Do NOT hardcode keys in source code, use environment variables or config files
 
 =head1 DEPLOYMENT, DIRECTORIES, FILESYSTEM STRUCTURE
 
-  # TODO: install, cpan, manual, github, custom locations
-  # TODO: sessions dir, custom storage/session handling
+=head2 Session Storage Directory
+
+Create and protect the session directory:
+
+  mkdir -p /var/reactor/sessions
+  chmod 0700 /var/reactor/sessions
+  chown www-data:www-data /var/reactor/sessions
+
+Session files are stored in Storable binary format with .wrs extension.
+
+=head2 Installation
+
+Install via CPAN:
+
+  cpanm Web::Reactor
+
+Or from GitHub:
+
+  git clone git://github.com/cade-vs/perl-web-reactor.git
+  cd perl-web-reactor
+  perl Makefile.PL
+  make test
+  make install
+
+=head2 Custom Installation
+
+For development or custom locations:
+
+  perl Makefile.PL PREFIX=/opt/perl/reactor
+  make test
+  make install
+
+Then use in code:
+
+  use lib '/opt/perl/reactor/lib';
+  use Web::Reactor;
 
 =head1 EXTENDING
 
 Web::Reactor is designed to allow extending or replacing the 4 main parts:
 
-    * Session storage (data store on filesystem, database, remote or vmem)
+=head2 Session Storage
 
-      base module:    Web::Reactor::Sessions
-      current in use: Web::Reactor::Sessions::Filesystem
+  Base module:    Web::Reactor::Sessions
+  Current in use: Web::Reactor::Sessions::Filesystem
 
-    * HTML creation/expansion/preprocessing
+Extend by subclassing Web::Reactor::Sessions to use different storage backends
+(database, remote servers, memory, etc.)
 
-      base module:    Web::Reactor::Preprocessor
-      current in use: Web::Reactor::Preprocessor::Native
+=head2 HTML Preprocessing
 
-    * Actions/modules execution (can be skipped if custom HTML prep used)
+  Base module:    Web::Reactor::Preprocessor
+  Current in use: Web::Reactor::Preprocessor::Native
 
-      base module:    Web::Reactor::Actions
-      current in use: Web::Reactor::Actions::Native
+Extend by subclassing Web::Reactor::Preprocessor to customize HTML processing,
+template syntax, or add new markup handlers.
 
-    * Main Web::Reactor modules, which controlls all the functionality.
+=head2 Actions Execution
 
-      base module:    Web::Reactor
-      current in use: Web::Reactor
+  Base module:    Web::Reactor::Actions
+  Current in use: Web::Reactor::Actions::Native
 
-Except main module (Web::Reactor) is is expected that base modules are
+Extend by subclassing Web::Reactor::Actions to customize action loading,
+execution, or error handling.
+
+=head2 Main Module
+
+  Base module:    Web::Reactor
+  Current in use: Web::Reactor
+
+The main module handles all logic and is not recommended for modification.
+However, the reactor instance is passed to all actions and modules, so you
+can add application-specific methods by extending in your application code.
+
+Except main module (Web::Reactor) is expected that base modules are
 subclassed for extension. Inside each of them there are notes on what must
 be extended and usage hints.
 
@@ -2309,70 +2622,200 @@ Current implementations of the modules, shipped with Web::Reactor, can also
 be extended and/or modified. However it is suggested checking base modules
 first.
 
-Main module (Web::Reactor) handles all of the logic. It is not expected to
-be modified since it is designed to handle tightly all the parts. However,
-there are few things which can be modified but it is recommended to contact
-authors for an advice first. On the other hand, the main module instance is
-always passed as argument to all other modules/actions so it is good idea
-to add specific functionality which will be readily available everywhere.
+=head1 SECURITY BEST PRACTICES
+
+When deploying Web::Reactor applications:
+
+=head2 Configuration Security
+
+1. Set ENCRYPT_KEY to a strong, random value (at least 32 bytes)
+
+   Use: openssl rand -base64 32
+
+2. Store sensitive config (keys, passwords) in environment variables,
+   not in source code or version control
+
+3. Ensure SESS_VAR_DIR has restrictive permissions:
+
+   mkdir -p /var/reactor/sessions
+   chmod 0700 /var/reactor/sessions
+   chown www-data:www-data /var/reactor/sessions
+
+4. Disable HTTPS only in development/testing:
+
+   PRODUCTION: DISABLE_SECURE_COOKIES not set or = 0
+   DEVELOPMENT: Set DISABLE_SECURE_COOKIES=1 if testing without HTTPS
+
+=head2 Session Security
+
+1. Set USER_SESSION_EXPIRE to reasonable timeout (default 600 = 10 min)
+
+   Shorter for high-security apps (e.g., banking), longer for low-security
+
+2. Session hijacking detection is automatic (IP + User-Agent checking)
+
+   Sessions are invalidated if either changes
+
+3. Session data is stored on filesystem in Storable format
+
+   Ensure proper file permissions (0700) on session directory
+
+=head2 Deployment
+
+1. Use HTTPS in production (enforced by default)
+
+2. Use Plack with a production server:
+
+   NOT RECOMMENDED: plackup (single process, no reload protection)
+
+   RECOMMENDED:
+     - Starman (multi-worker, production-ready)
+       plackup --server Starman --workers 4 app.psgi
+
+     - Use reverse proxy (nginx/Apache) with:
+       * X-Real-IP header passing
+       * X-Forwarded-Proto HTTPS enforcement
+       * gzip compression
+
+3. Set Content-Security-Policy to restrict resource loading:
+
+   'HTTP_CSP' => "default-src 'self'",
+
+4. Enable form CSRF protection via page sessions (automatic)
+
+   All forms must include session ID (_P parameter)
+
+5. Log security events:
+
+   Set DEBUG => 1+ to see:
+   * Invalid input attempts
+   * Session hijacking attempts
+   * Expired sessions
+   * Invalid page/action names
+
+=head2 Input Validation
+
+1. User input is never automatically trusted
+
+2. Always use get_safe_input() for form data, not get_user_input()
+
+3. Implement application-level validation in action modules:
+
+   if ( $reo->param('amount') < 0 ) {
+     $reo->log("error: negative amount not allowed");
+     return $reo->render( PAGE => 'error_invalid' );
+   }
+
+4. HTML escape all output in templates to prevent XSS
+
+=head2 Password Security
+
+1. Use RSA encryption for password fields (optional):
+
+   'RSA_PUB_KEY' => '/path/to/public.key'
+
+   Passwords are encrypted in browser before sending to server
+
+2. Never log passwords (application responsibility)
+
+3. Use bcrypt/argon2 for password hashing (application responsibility)
+
+=head2 Monitoring and Logging
+
+1. Monitor application logs for:
+
+   * Invalid input attempts
+   * Session errors
+   * Encryption/decryption failures
+   * Unusual IP changes
+   * High frequency of requests
+
+2. Set DEBUG level appropriately:
+
+   0 = no debug (production)
+   1 = basic info
+   2 = detailed info
+   3 = very detailed
+   4 = maximum debug (development only)
+
+3. Implement rate limiting at application level (not provided by framework)
 
 =head1 PROJECT STATUS
 
 Web::Reactor is stable and it is used in many production sites including
 banks, insurance, travel and other smaller companies.
 
-API is frozen but it could be extended
+API is frozen but it could be extended.
 
 If you are interested in the project or have some notes etc, contact me at:
 
   Vladi Belperchinov-Shabanski "Cade"
   <cade@noxrun.com>
-  <cade@cpan.org>
-  <shabanski@gmail.com>
 
 further contact info, mailing list and github repository is listed below.
 
-=head1 FIXME: TODO:
+=head1 TODO:
 
-  * config examples
-  * pages example
-  * actions example
-  * API description (input data, safe data, sessions, forwarding, actions, html)
-  * ...
+The following items are planned for future releases:
+
+  * Migrate from Storable to JSON for session storage
+  * Add more config validation at startup
+  * Implement built-in rate limiting
+  * Add more comprehensive error pages
+  * Support HTTP/2 Server Push
+  * Enhanced debugging with request/response profiling
+  * More comprehensive test suite
+  * Performance optimizations
+
+See GitHub issues for details: https://github.com/cade-vs/perl-web-reactor/issues
 
 =head1 REQUIRED ADDITIONAL MODULES
 
-Reactor uses mostly perl core modules but it needs few others:
+Web::Reactor requires the following Perl modules:
 
-    * CGI
-    * Scalar::Util
-    * Hash::Util
-    * Data::Dumper (for debugging)
-    * Exception::Sink
-    * Data::Tools
+=head2 Core Modules (included with Perl)
 
-All modules are available with the perl package or from CPAN.
+  * Scalar::Util
+  * Hash::Util
+  * Data::Dumper (for debugging)
+  * Encode
+  * MIME::Base64
+  * Digest::SHA
 
-Additionally, several are available and from github:
+=head2 CPAN Modules (required)
 
-    * Exception::Sink
+  * Plack 1.0000+          -- PSGI web framework
+  * Cookie::Baker 0.001+   -- Cookie handling
+  * Data::Tools 1.24+      -- Data manipulation utilities
+  * Exception::Sink 0.01+  -- Exception handling
+  * Crypt::Cipher          -- Base class for encryption ciphers
+  * Crypt::Mode::CBC       -- AES encryption in CBC mode
+  * Crypt::PK::RSA         -- RSA encryption (for password fields)
+
+=head2 GitHub Repositories
+
+  * Exception::Sink
     https://github.com/cade-vs/perl-exception-sink
 
-    * Data::Tools
+  * Data::Tools
     https://github.com/cade-vs/perl-data-tools
+
+=head2 Perl Version
+
+  Minimum: Perl 5.10.0
+  Tested:  Perl 5.20, 5.24, 5.28, 5.32, 5.36
 
 =head1 DEMO APPLICATION
 
-Documentation will be improved. Meanwhile you can check 'demo'
-directory inside distribution tarball or inside the github repository. This is
-fully functional (however stupid :)) application. It shows how data is processed,
-calling pages/views, inspecting page (calling views) stack, html forms automation,
-forwarding.
+Documentation will be improved. Meanwhile you can check 'demo' directory inside
+distribution tarball or inside the github repository. This is fully functional
+(however simple) application. It shows how data is processed, calling pages/views,
+inspecting page (calling views) stack, html forms automation, forwarding.
 
 Additionally you may check DECOR information systems infrastructure, which uses
 Web::Reactor for its main web interface:
 
-    https://github.com/cade-vs/perl-decor
+  https://github.com/cade-vs/perl-decor
 
 =head1 MAILING LIST
 
@@ -2393,8 +2836,6 @@ Web::Reactor for its main web interface:
   http://cade.noxrun.com
 
   https://github.com/cade-vs
-
-=head2 EOF
 
 =cut
 

@@ -476,23 +476,24 @@ sub __create_new_user_session
 
   my $cfg = $self->get_cfg();
 
-  # FIXME: move to function
-  my $app_name = $cfg->{ 'APP_NAME' } or boom( "missing APP_NAME" );
-  my $cookie_name = lc( $cfg->{ 'COOKIE_NAME' } || "$app_name\_cookie" );
+# ROTATION REMOVED #   # FIXME: move to function
+# ROTATION REMOVED #   my $app_name = $cfg->{ 'APP_NAME' } or boom( "missing APP_NAME" );
+# ROTATION REMOVED #   my $cookie_name = lc( $cfg->{ 'COOKIE_NAME' } || "$app_name\_cookie" );
 
   $user_sid = $self->ses->create( 'USER' );
   $user_shr = { ':ID' => $user_sid };
 
-  my $path = $cfg->{ 'COOKIE_PATH' };
-  if( ! $path )
-    {
-    $path = $self->get_request_uri();
-    $path =~ s/^([^\?]*\/)([^\?\/]*)(\?.*)?$/$1/; # remove args: ?...
-    }
-  $path ||= '/';
-
-  my $secure_cookie = $cfg->{ 'DISABLE_SECURE_COOKIES' } ? 0 : 1;
-  $self->res_set_cookie( $cookie_name, value => $user_sid, path => $path, httponly => 1, secure => $secure_cookie, samesite => 'lax' );
+# ROTATION REMOVED #   my $path = $cfg->{ 'COOKIE_PATH' };
+# ROTATION REMOVED #   if( ! $path )
+# ROTATION REMOVED #     {
+# ROTATION REMOVED #     $path = $self->get_request_uri();
+# ROTATION REMOVED #     $path =~ s/^([^\?]*\/)([^\?\/]*)(\?.*)?$/$1/; # remove args: ?...
+# ROTATION REMOVED #     }
+# ROTATION REMOVED #   $path ||= '/';
+# ROTATION REMOVED #
+# ROTATION REMOVED #   my $secure_cookie = $cfg->{ 'DISABLE_SECURE_COOKIES' } ? 0 : 1;
+# ROTATION REMOVED #   $self->res_set_cookie( $cookie_name, value => $user_sid, path => $path, httponly => 1, secure => $secure_cookie, samesite => 'lax' );
+  $self->__set_user_session_cookie( $user_sid ); # FIXME: CHECK ROTATION
   $self->log( "debug: creating new user session [$user_sid]" );
 
   my $user_session_expire = $cfg->{ 'USER_SESSION_EXPIRE' } || 600; # 10 minutes
@@ -507,6 +508,64 @@ sub __create_new_user_session
   $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $self->{ 'IN' }{ 'ENV' }{ $_ } } @HTTP_VARS_SAVE  };
 
   return ( $user_sid, $user_shr );
+}
+
+# FIXME: CHECK ROTATION
+# (re)issue the user session cookie bound to the given session id
+sub __set_user_session_cookie
+{
+  my $self     = shift;
+  my $user_sid = shift;
+
+  my $cfg = $self->get_cfg();
+
+  my $app_name    = $cfg->{ 'APP_NAME' } or boom( "missing APP_NAME" );
+  my $cookie_name = lc( $cfg->{ 'COOKIE_NAME' } || "$app_name\_cookie" );
+
+  my $path = $cfg->{ 'COOKIE_PATH' };
+  if( ! $path )
+    {
+    $path = $self->get_request_uri();
+    $path =~ s/^([^\?]*\/)([^\?\/]*)(\?.*)?$/$1/; # remove args: ?...
+    }
+  $path ||= '/';
+
+  my $secure_cookie = $cfg->{ 'DISABLE_SECURE_COOKIES' } ? 0 : 1;
+  $self->res_set_cookie( $cookie_name, value => $user_sid, path => $path, httponly => 1, secure => $secure_cookie, samesite => 'lax' );
+}
+
+# FIXME: CHECK ROTATION
+# rotate the user session id, migrating current (anonymous) session data to a
+# fresh id. used on privilege change (login) to prevent session fixation.
+# note: PAGE/LINK sessions are namespaced under the user id, so the pre-login
+# page back-stack is intentionally not carried across the rotation.
+sub __rotate_user_session_id
+{
+  my $self = shift;
+
+  my $old_sid  = $self->get_user_session_id();
+  my $user_shr = $self->get_user_session();
+
+  # allocate a fresh, unpredictable session id for the elevated session
+  my $new_sid = $self->ses->create( 'USER' );
+
+  # re-key the current in-memory user session data under the new id (data kept)
+  delete $self->{ 'SESSIONS' }{ 'DATA'              }{ 'USER' }{ $old_sid };
+  delete $self->{ 'CACHE'    }{ 'SESSION_DATA_SHA1' }{ 'USER' }{ $old_sid };
+  $user_shr->{ ':ID' } = $new_sid;
+  $self->{ 'SESSIONS' }{ 'SID'  }{ 'USER' }             = $new_sid;
+  $self->{ 'SESSIONS' }{ 'DATA' }{ 'USER' }{ $new_sid } = $user_shr;
+  $self->__update_session_fingerprint( 'USER', $new_sid, $user_shr );
+
+  # reissue the cookie bound to the new id
+  $self->__set_user_session_cookie( $new_sid );
+
+  # invalidate the old session in storage so a fixed pre-login cookie is useless
+  $self->ses->save( 'USER', $old_sid, { ':ID' => $old_sid, ':CLOSED' => 1, ':ETIME' => time(), ':ETIME_STR' => scalar localtime() } );
+
+  $self->log( "status: rotated user session id on login [$old_sid] -> [$new_sid]" );
+
+  return $new_sid;
 }
 
 
@@ -1752,6 +1811,11 @@ sub login
 {
   my $self = shift;
   my $user_ident = shift; # user identifier, login name, used for mapping of cross-login-session permanent data
+
+  # FIXME: CHECK ROTATION
+  # rotate session id on privilege elevation to defeat session fixation;
+  # anonymous user-session data is preserved (re-keyed under the new id)
+  $self->__rotate_user_session_id();
 
   my $user_ident_s = $user_ident;
 

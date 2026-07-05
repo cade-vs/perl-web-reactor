@@ -216,6 +216,9 @@ sub checkbox
   my $value = $opt{ 'VALUE' } ? 1 : 0;
   my $args  = $opt{ 'ARGS'  };
 
+die "error: Form.pm: EXTRA used but it is removed, content is [$opt{ 'EXTRA' }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'EXTRA' };
+die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'ARGS'   };
+
   __check_ident( $name );
 
   my $options;
@@ -251,10 +254,12 @@ sub checkbox_multi
   my $name   = $opt{ 'NAME'   };
   my $class  = $opt{ 'CLASS'  } || $self->{ 'CLASS_MAP' }{ 'CHECKBOX' } || 'checkbox';
   my $value  = $opt{ 'VALUE'  };
-  my $args   = $opt{ 'ARGS'   };
   my $stages = $opt{ 'STAGES' } || 2;
   my $labels = $opt{ 'LABELS' } || [ 'x', '&radic;' ];
   my $hint   = $opt{ 'HINT'   };
+
+die "error: Form.pm: EXTRA used but it is removed, content is [$opt{ 'EXTRA' }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'EXTRA' };
+die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'ARGS'   };
 
   __check_ident( $name );
 
@@ -277,8 +282,8 @@ sub checkbox_multi
   my $el_id = $opt{ 'ID' } || $self->create_uniq_id(); # checkbox label element id
 
   my $form_id = $self->{ 'FORM_ID' };
-  $text .= html_element( "input", undef, type => 'hidden', name => $name, id => $cb_id, value => $value, form => $form_id, extra => $args );
-  $text .= html_element( "span", $labels_spans, id => $el_id, 'data-stages' => $stages, 'data-checkbox-input-id' => $cb_id, onclick => 'reactor_form_multi_checkbox_toggle(this)', extra => $hint_handler );
+  $text .= html_element( "input", undef, type => 'hidden', name => $name, id => $cb_id, value => $value, form => $form_id );
+  $text .= html_element( "span", $labels_spans, id => $el_id, 'data-stages' => $stages, 'data-checkbox-input-id' => $cb_id, onclick => 'reactor_form_multi_checkbox_toggle(this)', onmouseover => $hint_handler );
 #  $text .= html_element( "script", "reactor_form_multi_checkbox_setup_id( '$el_id' )" );
   $text .= "\n";
 
@@ -310,7 +315,9 @@ sub radio
   my $on    = $opt{ 'ON'    }; # active?
   my $ret   = $opt{ 'RET'   }; # map return value!
   my $key   = $opt{ 'KEY'   };
-  my $extra = $opt{ 'EXTRA' };
+
+die "error: Form.pm: EXTRA used but it is removed, content is [$opt{ 'EXTRA' }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'EXTRA' };
+die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'ARGS'   };
 
   __check_ident( $name );
 
@@ -320,7 +327,7 @@ sub radio
 
   my $form_id = $self->{ 'FORM_ID' };
   my $checked = $on ? 'checked' : undef;
-  $text .= "<input type='radio' $checked name='$name' value='$val' form='$form_id' $extra>";
+  $text .= "<input type='radio' $checked name='$name' value='$val' form='$form_id' >";
 
   $self->__ret_map_data( $name, $val => $ret ) if defined $ret;
 
@@ -516,31 +523,30 @@ sub textarea
   my $cols  =    $opt{ 'COLS'  } ||  5;
   my $maxl  =    $opt{ 'MAXLEN'  } || $opt{ 'MAX' };
   my $geo   =    $opt{ 'GEOMETRY' }  || $opt{ 'GEO' };
-  my $args  =    $opt{ 'ARGS'    };
+
+die "error: Form.pm: EXTRA used but it is removed, content is [$opt{ 'EXTRA' }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'EXTRA' };
+die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'ARGS'   };
 
   __check_ident( $name, $id );
 
   ( $cols, $rows ) = ( $1, $2 ) if $geo =~ /(\d+)[\*\/\\](\d+)/i;
 
 
-  my $options;
+  my %options;
 
-  $options .= "disabled='disabled' " if $opt{ 'DISABLED' };
-  $options .= "maxlength='$maxl' "   if $maxl > 0;
-  $options .= "id='$id' "            if $id ne '';
-  $options .= "readonly='readonly' " if $opt{ 'READONLY' } || $opt{ 'RO' };
-  $options .= "required='required' " if $opt{ 'REQUIRED' } || $opt{ 'REQ' };
-  $options .= "onFocus=\"this.value=''\" " if $opt{ 'FOCUS_AUTO_CLEAR' };
-
-  my $extra = $opt{ 'EXTRA' };
-  $options .= " $extra ";
+  $options{ 'id'        } = $id             if $id ne '';
+  $options{ 'disabled'  } = 'disabled'      if $opt{ 'DISABLED' };
+  $options{ 'maxlength' } = $maxl           if $maxl > 0;
+  $options{ 'readonly'  } = 'readonly'      if $opt{ 'READONLY' } || $opt{ 'RO' };
+  $options{ 'required'  } = 'required'      if $opt{ 'REQUIRED' } || $opt{ 'REQ' };
+  $options{ 'onFocus'   } = "this.value=''" if $opt{ 'FOCUS_AUTO_CLEAR' };
 
   $data = str_html_escape( $data );
 
   my $text;
   my $form_id = $self->{ 'FORM_ID' };
 
-  $text .= "<textarea class='$class' name='$name' rows='$rows' cols='$cols' $options form='$form_id' $args>$data</textarea>";
+  $text .= html_element( 'textarea', $data, %options, class => $class, name => $name, rows => $rows, cols => $cols, form => $form_id );
 
   $text .= "\n";
   return $text;
@@ -595,8 +601,8 @@ sub input
 
   $options{ 'onFocus'  } = "this.value=''" if $opt{ 'FOCUS_AUTO_CLEAR' };
 
-  my $extra = $opt{ 'EXTRA' };
-  $options{ 'extra' } = $extra if $extra;
+die "error: Form.pm: EXTRA used but it is removed, content is [$opt{ 'EXTRA' }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'EXTRA' };
+die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'ARGS'   };
 
   if( $hid and defined $ret )
     {
@@ -616,12 +622,12 @@ sub input
 
     if( $clear =~ /^[a-z_\-0-9\/]+\.(png|jpg|jpeg|gif|svg)$/ )
       {
-      $clear_tag = html_element( 'img', undef, class => 'icon-clear',  border => '0', onClick => "return set_value('$id', '')", src => $clear, extra => $clear_hint_handler );
+      $clear_tag = html_element( 'img', undef, class => 'icon-clear',  border => '0', onClick => "return set_value('$id', '')", src => $clear, onmouseover => $clear_hint_handler );
       }
     else
       {
       my $s = $clear eq 1 ? '&times;' : $clear;
-      $clear_tag = html_element( 'span', $s, class => 'icon-clear',  border => '0', onClick => "return set_value('$id', '')", extra => $clear_hint_handler );
+      $clear_tag = html_element( 'span', $s, class => 'icon-clear',  border => '0', onClick => "return set_value('$id', '')", onmouseover => $clear_hint_handler );
       }
     }
 
@@ -699,6 +705,9 @@ sub file_upload
   my $class =    $opt{ 'CLASS'   } || $self->{ 'CLASS_MAP' }{ 'FILE_UPLOAD' } || 'file_upload';
   my $args  =    $opt{ 'ARGS'    };
 
+die "error: Form.pm: EXTRA used but it is removed, content is [$opt{ 'EXTRA' }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'EXTRA' };
+die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'ARGS'   };
+
   __check_ident( $name, $id );
 
   my $options;
@@ -736,15 +745,17 @@ sub button
   my $class   =    $opt{ 'CLASS'   } || 'button';
   my $value   =    $opt{ 'VALUE'   };
   my $confirm =    $opt{ 'CONFIRM' };
-  my $args    =    $opt{ 'ARGS'    };
+
+die "error: Form.pm: EXTRA used but it is removed, content is [$opt{ 'EXTRA' }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'EXTRA' };
+die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'ARGS'   };
 
   __check_ident( $name, $id );
 
-  my $options;
+  my %options;
 
   if( $opt{ 'DISABLED' } )
     {
-    $options .= "disabled='disabled' " ;
+    $options{ 'disabled' } = 'disabled';
     $class   .= " disabled-button";
     }
 
@@ -762,7 +773,7 @@ sub button
     $confirm = qq[return confirm("$confirm");];
     }
 
-  $text .= html_element( 'button', $value, form => $form_id, class => $class, id => $id, name => "button:$name", onDblClick => 'return false;', onClick => $confirm, extra => "$options $args" );
+  $text .= html_element( 'button', $value, %options, form => $form_id, class => $class, id => $id, name => "button:$name", onDblClick => 'return false;', onClick => $confirm );
 
   $text .= "\n";
   return $text;
@@ -778,26 +789,35 @@ sub image_button
   my $id    =    $opt{ 'ID'    };
   my $class =    $opt{ 'CLASS' } || 'image_button';
   my $src   =    $opt{ 'SRC'   } || $opt{ 'IMG'  };
-  my $args  =    $opt{ 'ARGS'  };
-  my $extra =    $opt{ 'EXTRA' };
+  my $confirm =    $opt{ 'CONFIRM' };
 
-  my $options;
+die "error: Form.pm: EXTRA used but it is removed, content is [$opt{ 'EXTRA' }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'EXTRA' };
+die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'ARGS'   };
+
+  my %options;
 
   # FIXME: make this for all entries! common func?
   for my $o ( qw( HEIGHT WIDTH ONMOUSEOVER ) )
     {
     my $e = $opt{ $o };
-    # FIXME: escape? $e
-    $options .= "$o='$e' " if $e ne '';
+    $options{ $o }  = $e if $e ne '';
     }
 
   __check_ident( $name, $id );
+
+  if( $confirm )
+    {
+    $confirm = "[~Are you sure?]" if $confirm == 1;
+    $confirm = qq[return confirm("$confirm");];
+    }
 
   my $text;
 
   my $form_id = $self->{ 'FORM_ID' };
   $name =~ s/^button://i;
-  $text .= "<input class='$class' id='$id' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;' $args form='$form_id' $extra>";
+
+  ### $text .= "<input class='$class' id='$id' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;'>";
+  $text .= html_element( 'input', undef, %options, form => $form_id, class => $class, id => $id, name => "button:$name", src => $src, onDblClick => 'return false;', onClick => $confirm );
 
   $text .= "\n";
   return $text;

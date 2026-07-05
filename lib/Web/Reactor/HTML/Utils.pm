@@ -4,7 +4,7 @@
 ##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
 ##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##  http://cade.noxrun.com
-##  
+##
 ##  LICENSE: GPLv2
 ##  https://github.com/cade-vs/perl-web-reactor
 ##
@@ -34,15 +34,15 @@ our @EXPORT = qw(
                 html_alink
 
                 html_tabs_table
-                
+
                 html_debug
-                
+
                 html_check_tag_name
                 html_check_tag_name_boom
-                
+
                 html_check_attr_name
                 html_check_attr_name_boom
-                
+
                 );
 use strict;
 use Exception::Sink;
@@ -65,16 +65,13 @@ sub html_element
   my %atr = @_;
 
   hash_lc_ipl( \%atr );
-  
-  my $extra = $atr{ 'extra' };
-  delete $atr{ 'extra' };
 
   html_check_tag_name_boom( $tag );
-  
+
   my $html;
-  
+
   $html .= "<$tag ";
-  
+
   while( my ( $k, $v ) = each %atr )
     {
     html_check_attr_name_boom( $k, "invalid attribute name [$k] for tag [$tag]" );
@@ -86,13 +83,12 @@ sub html_element
       }
     $html .= " ";
     }
-  
-  $html .= $extra;
+
   $html .= defined $txt ? ">$txt</$tag>" : "/>";
 
 #use Data::Dumper;
 #print STDERR Dumper( "\n"x10, \@_, $tag, $txt, \%atr, $html, "\n"x100 );
-  
+
   return $html;
 }
 
@@ -198,7 +194,7 @@ sub __html_ftree_branch
 
     $r_args ||= $opt->{ 'ARGS_TR' };
     $c_args ||= $opt->{ 'ARGS_TD' };
- 
+
     $ftree_item_id++;
 
     my $row_id = $branch_id . $ftree_item_id . '.';
@@ -233,7 +229,7 @@ sub __html_ftree_branch
 collapsable rows table
 
 first level items are always visible, click on cell1 on each row will show
-or hide all nested rows. visually collapsed rows will not be indented by 
+or hide all nested rows. visually collapsed rows will not be indented by
 default but can have separate per-level css classes
 
 DEMO:
@@ -261,10 +257,10 @@ DEMO:
                                  SUB => [
                                            [
                                            ],
-                                        ]         
+                                        ]
                                }
                            ],
-                        ]         
+                        ]
                }
              ],
           ];
@@ -289,14 +285,14 @@ sub html_ctable
 {
   my $data = shift;
   my $opt  = shift;
-  
+
   my $table = [];
-  
+
   for my $row ( @$data )
     {
-    
-    
-    
+
+
+
     }
 }
 
@@ -363,7 +359,7 @@ sub __html_ctable_branch2
 
     $r_args ||= $opt->{ 'ARGS_TR' };
     $c_args ||= $opt->{ 'ARGS_TD' };
- 
+
     $ftree_item_id++;
 
     my $row_id = $branch_id . $ftree_item_id . '.';
@@ -393,6 +389,7 @@ sub __html_ctable_branch2
 
 ##############################################################################
 
+# returns the value for html tag attribute "onmouseover"
 sub html_hover_layer
 {
   my $reo = shift;
@@ -418,8 +415,8 @@ sub html_hover_layer
   my $html;
   my $handle;
 
-  $handle = qq{ onmouseover='reactor_hover_show_delay( this, "$hover_layer_id", $delay, event )' };
-  $html   = qq{ <div class='$class' id="$hover_layer_id">$value</div> };
+  $handle = qq{ reactor_hover_show_delay( this, "$hover_layer_id", $delay, event ) };
+  $html   = html_element( 'div', $value, class => $class, id => $hover_layer_id );
 
   if ( wantarray )
     {
@@ -459,14 +456,14 @@ sub html_popup_layer
   $timeout = 200 unless $timeout > 0;
 
   my $trigger;
-  if( $type eq 'CONTEXT' )  
+  if( $type eq 'CONTEXT' )
     {
     $trigger = qq( onContextMenu="return reactor_popup_mouse_over( this )" );
     }
-  else # ( $type eq 'CLICK' )  
+  else # ( $type eq 'CLICK' )
     {
     $trigger = qq( onClick="return reactor_popup_mouse_over( this, { click_open: 1, timeout: $timeout, single: $single } )" );
-    }  
+    }
 
   my $popup_layer_id_counter = $reo->create_uniq_id();
   my $popup_layer_id = "R_POPUP_LAYER_$popup_layer_id_counter";
@@ -504,10 +501,10 @@ sub html_alink
 
   my $class = $opts->{ 'CLASS' };
   my $hint = $opts->{ 'HINT' };
-  
+
   my $confirm = $opts->{ 'CONFIRM' };
   $tag_args .= '  ' . qq( onclick="return confirm('$confirm');" ) if $confirm =~ /^([^"']+)$/;
-  
+
   if( $opts->{ 'DISABLED' } )
     {
     $tag_args .= '  ' . qq( onclick="return false;" ) ;
@@ -677,7 +674,7 @@ sub html_debug
 sub html_check_tag_name
 {
   return $_[0] =~ /^[a-zA-Z0-9]+$/; # $13.1.2.1
-}                                             
+}
 
 sub html_check_tag_name_boom
 {
@@ -687,7 +684,7 @@ sub html_check_tag_name_boom
 sub html_check_attr_name
 {
   return $_[0] =~ /^[a-zA-Z_0-9\:\-]+$/; # $13.1.2.3 but extra strict
-}                                             
+}
 
 sub html_check_attr_name_boom
 {

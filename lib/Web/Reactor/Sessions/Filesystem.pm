@@ -15,7 +15,8 @@ use Exception::Sink;
 use Web::Reactor::Sessions;
 use Web::Reactor::Utils;
 use POSIX;
-use Storable qw( freeze thaw lock_store lock_retrieve );
+use Storable qw( lock_store lock_retrieve );
+use Data::Tools;
 use Data::Dumper;
 
 use parent 'Web::Reactor::Sessions';
@@ -73,7 +74,7 @@ sub _storage_load
   my $in_data;
   eval
     {
-    $in_data = lock_retrieve( $fn );
+    $in_data = lock_retrieve( $fn, 0 );
     boom "error: cannot retrieve session data from [$fn]" unless $in_data;
     };
   if( $@ )

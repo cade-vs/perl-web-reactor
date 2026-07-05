@@ -19,6 +19,7 @@ use Data::Tools 1.24;
 use Exception::Sink;
 use Data::Dumper;
 use Encode;
+use Crypt::PRNG;
 
 use Web::Reactor::Utils;
 use Web::Reactor::HTML::Form;
@@ -1133,7 +1134,6 @@ sub encrypt
 
   my ( $cryo, $key, $ivs ) = $self->__crypto_object();
 
-  require Crypt::PRNG;
   my $iv = Crypt::PRNG::random_bytes( $ivs );
 
   return $iv . $cryo->encrypt( $data, $key, $iv );
@@ -1963,11 +1963,14 @@ sub create_uniq_id
   my $self = shift;
   my $case = shift;
 
+  my $cfg = $self->get_cfg();
+  my $let = $cfg->{ 'SESS_LETTERS' } || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
   my $nid;
   my $limit = 137;
   while( $limit-- )
     {
-    my $nid = create_random_id( 8 );
+    my $nid = Crypt::PRNG::random_string_from( $let, 16 );
     $nid = uc $nid if $case == 1;
     $nid = lc $nid if $case == 2;
     next if $self->{ 'CREATE_UNIQ_ID' }{ $nid }++;

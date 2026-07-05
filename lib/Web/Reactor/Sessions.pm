@@ -4,7 +4,7 @@
 ##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
 ##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##  http://cade.noxrun.com
-##  
+##
 ##  LICENSE: GPLv2
 ##  https://github.com/cade-vs/perl-web-reactor
 ##
@@ -15,7 +15,7 @@ use Exception::Sink;
 use Crypt::PRNG;
 use Data::Tools 1.24;
 
-use parent 'Web::Reactor::Base'; 
+use parent 'Web::Reactor::Base';
 
 ##############################################################################
 ##
@@ -63,7 +63,7 @@ sub create
       return undef;
       }
     }
- 
+
   return $id;
 };
 
@@ -166,6 +166,13 @@ sub exists
 #       1 if successful or 0 or undef if not possible or session id already exists
 sub _storage_create { die "Web::Reactor::Sessions::*::_storage_create() is not implemented!"; }
 
+# delete session data from the storage
+# args:
+#       @key (i.e. @_) -- key components array, example: $key = join '.' @_;
+# returns:
+#       hashref of session data or undef if error
+sub _storage_delete   { die "Web::Reactor::Sessions::*::_storage_delete() is not implemented!"; }
+
 # loads session data from the storage
 # args:
 #       @key (i.e. @_) -- key components array, example: $key = join '.' @_;
@@ -192,7 +199,7 @@ sub _storage_exists { die "Web::Reactor::Sessions::*::_storage_exists() is not i
 # args:
 #       none
 # returns:
-#       information text 
+#       information text
 sub _storage_debug_info { die "Web::Reactor::Sessions::*::_storage_debug_info() is not implemented!"; }
 
 ##############################################################################
@@ -211,7 +218,7 @@ sub create_id
 {
   my $self = shift;
   my $cfg  = $self->get_cfg();
- 
+
   my $len = shift() || $cfg->{ 'SESS_LENGTH'  } || 73; # 21st prime :)
   my $let = shift() || $cfg->{ 'SESS_LETTERS' } || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
@@ -225,13 +232,13 @@ sub compose_key_from_id
   my $id   = shift;
 
   boom "Web::Reactor::Sessions::compose_key_from_id: invalid type, expected ALPHANUMERIC" unless $type =~ /^[A-Z0-9]+$/;
- 
+
   my @key;
- 
+
   push @key, $type;
   push @key, $self->get_user_sid() unless $type eq 'USER' or $type eq 'HOLD'; # USER and HOLD data are not tied to current session
   push @key, $id;
- 
+
   return @key;
 }
 

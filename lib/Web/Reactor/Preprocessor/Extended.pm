@@ -4,7 +4,7 @@
 ##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
 ##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##  http://cade.noxrun.com
-##  
+##
 ##  LICENSE: GPLv2
 ##  https://github.com/cade-vs/perl-web-reactor
 ##
@@ -90,7 +90,7 @@ sub load_file
     my $orgs = $cfg->{ 'HTML_DIRS' };
 
     my @pn = grep { $_ } split /\/+/, $pn;
-    
+
     my @dirs_try;
 
     while( 4 )
@@ -102,8 +102,8 @@ sub load_file
           push @dirs_try, "$org/$ln/" . join( '/', @pn );
           }
         }
-      last unless @pn;  
-      pop @pn;  
+      last unless @pn;
+      pop @pn;
       }
 
     $dirs = [ grep { -d } @dirs_try ];
@@ -163,7 +163,7 @@ sub process
 #print STDERR Dumper( 'PROCESS PRE --- ' x 7, $pn, $text );
 
   # FIXME: cache here? moje bi ne, zaradi modulite
-  $text =~ s/<([\$\&\#]|\$\$|\&\&)([a-zA-Z_\-0-9]+)(:(a-zA-Z_\-0-9]+))?(\s*[^>]*)?>/$self->__process_tag( $pn, $1, $2, $4, $5, $opt, $ctx )/ge;
+  $text =~ s/<([\$\&\#]|\$\$|\&\&)([a-zA-Z_\-0-9]+)(:([a-zA-Z_\-0-9]+))?(\s*[^>]*)?>/$self->__process_tag( $pn, $1, $2, $4, $5, $opt, $ctx )/ge;
   $text =~ s/reactor_((new|back|here|none)_)?(href|src)=(["'])?([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"'#]*)(#[a-z_0-9\.]+)?(\4)?/$self->__process_href( $2, $3, $5, $7, $8 )/gie;
 
 #print STDERR Dumper( 'PROCESS POST --- ' x 7, $pn, $text );
@@ -188,7 +188,7 @@ sub __process_tag
 #print STDERR Dumper( 'PROCESS ARGS --- ' x 7, ( $pn, $type, $tag, $args, $opt, $ctx ) );
   $self->tagid_push( $tagid );
 
-  $ctx = { %$opt };
+  $ctx = { %$ctx }; # FIXME: CHECK, was opt
   $ctx->{ 'PATH' } .= ", $type$tag";
   my $path = $ctx->{ 'PATH' };
 
@@ -227,10 +227,10 @@ sub __process_tag
       $args{ $k } = $v;
       }
     # FIXME: action calls may return non-text data, however the preprocessor expects text data for now...
-    
+
     # session stack, parnets etc?
 
-#print STDERR ">>> $reo->act->call( $tag, HTML_ARGS => \%args )\n";    
+#print STDERR ">>> $reo->act->call( $tag, HTML_ARGS => \%args )\n";
     my $calltext = $reo->act->call( $tag, HTML_ARGS => \%args );
     if( $type eq '&&' )
       {
@@ -244,7 +244,7 @@ sub __process_tag
     }
 
 # print STDERR Dumper( 'PROCESS TEXT --- ' x 7, ( $pn, $text, $opt, $ctx ) );
-#print STDERR ">>> $self->process( $pn, $text, $opt, $ctx )\n";    
+#print STDERR ">>> $self->process( $pn, $text, $opt, $ctx )\n";
   $text = $self->process( $pn, $text, $opt, $ctx );
 
   $self->tagid_pop();
@@ -282,7 +282,7 @@ sub tagid_push
 {
   my $self  = shift;
   my $tagid = shift;
-  
+
   push @{ $self->{ 'TAG_ID_STACK' } }, $tagid;
 }
 

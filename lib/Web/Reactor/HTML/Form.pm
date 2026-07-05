@@ -79,15 +79,15 @@ sub begin
   $self->{ 'FORM_ID'    } = $id;
   $self->{ 'RADIO'      } = {};
   $self->{ 'RET_MAP'    } = {}; # return data mapping (combo, checkbox, etc.)
-  
+
   my %at;
-  
+
   $at{ 'autocomplete' } = 'off' if $opt{ 'NO_AUTOCOMPLETE' };
 
   my $text;
 
   # FIXME: TODO: debug info inside html text, begin formname end etc.
-  
+
   $self->state( 'FORM_NAME'  => $name  ); # TODO: replace with _FRO
   $self->state( 'FORM_ID'    => $id    ); # TODO: replace with _FRI
   $self->state( ':ARGS_TYPE' => 'HERE' );
@@ -95,9 +95,9 @@ sub begin
   my $ps = $reo->get_page_session();
   $ps->{ ':FORM_DEF' }{ $name } = {};
 
-  
+
   $text .= html_element( 'FORM', '', name => $name, id => $id, action => $action, method => $method, enctype => 'multipart/form-data', %at );
-  
+
 #### REMOVE ###  $text .= "<form name='$form_name' id='$form_id' action='$action' method='$method' enctype='multipart/form-data' $options></form>";
 #### REMOVE ###  ### $text .= "<input style='display: none;' name='__avoidiebug__' form='$form_id'>"; # stupid IE bugs
   if( $default_button )
@@ -113,35 +113,35 @@ sub state
   my $self = shift;
 
   $self->{ 'FORM_STATE'  } = { %{ $self->{ 'FORM_STATE'  } || {} }, @_ };
-  
+
   return undef;
 }
 
 sub state_new
 {
   my $self = shift;
-  
+
   return $self->state( @_, ':ARGS_TYPE' => 'NEW' );
 }
 
 sub state_here
 {
   my $self = shift;
-  
+
   return $self->state( @_, ':ARGS_TYPE' => 'HERE' );
 }
 
 sub state_back
 {
   my $self = shift;
-  
+
   return $self->state( @_, ':ARGS_TYPE' => 'BACK' );
 }
 
 sub state_none
 {
   my $self = shift;
-  
+
   return $self->state( @_, ':ARGS_TYPE' => 'NONE' );
 }
 
@@ -282,7 +282,7 @@ sub checkbox_multi
 #  $text .= html_element( "script", "reactor_form_multi_checkbox_setup_id( '$el_id' )" );
   $text .= "\n";
 
-print STDERR $text;
+# print STDERR $text;
 
   return $text;
 }
@@ -309,7 +309,7 @@ sub radio
   my $class = $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'RADIO' } || 'radio';
   my $on    = $opt{ 'ON'    }; # active?
   my $ret   = $opt{ 'RET'   }; # map return value!
-  my $key   = $opt{ 'KEY'   }; 
+  my $key   = $opt{ 'KEY'   };
   my $extra = $opt{ 'EXTRA' };
 
   __check_ident( $name );
@@ -385,7 +385,7 @@ sub select
   my $sel_data;
 
   my %at;
-  
+
   $at{ 'form' } = $self->{ 'FORM_ID' };
 
   $at{ 'name' } = $self->__ret_map_name( $name );
@@ -472,7 +472,7 @@ sub select
       else
         {
         $key = $value;
-        }  
+        }
 
       $at_opt{ 'value' } = $key;
 #print STDERR "sssssssssssssssssssssssss COMBO [$name] [$value] [$key] $sel\n";
@@ -481,7 +481,7 @@ sub select
       }
 
 #    $text .= "</select>";
-#    $text .= 
+#    $text .=
 #    $text .= "<select class='$class' id='$id' name='$name' size='$rows' $multiple form='$form_id' $args $extra $options>";
     $text .= html_element( 'SELECT', $opt_text, %at, %$attrs );
     }
@@ -566,11 +566,11 @@ sub input
   my $args  =    $opt{ 'ARGS'    };
   my $hid   =    $opt{ 'HIDDEN'  };
   my $ret   =    $opt{ 'RET'     } || $opt{ 'RETURN'  }; # if return value should be mapped, works only with HIDDEN
-  
+
   my $phi   =    $opt{ 'PH' } || $opt{ 'PHI' };
 
   my $clear =    $opt{ 'DISABLED' } ? undef : $opt{ 'CLEAR'   };
-  
+
   my $datalist    = $opt{ 'DATALIST'              }; # array ref with 'key', 'value' and 'label' hash
   my $datalist_sk = $opt{ 'DATALIST_SELECTED_KEY' }; # key of the selected item
 
@@ -628,14 +628,14 @@ sub input
   my $text;
 
   my $form_id = $self->{ 'FORM_ID' };
-  
+
   if( $datalist )
     {
     my $on_change;
     # TODO: FIXME: FIXME: FIXME: FIXME: FIXME: cleanup this mess!
     $on_change = 'this.form.submit()'       if $opt{ 'SUBMIT_ON_CHANGE' } and $opt{ 'SUBMIT_ON_CHANGE' }  > 0;
     $on_change = $opt{ 'SUBMIT_ON_CHANGE' } if $opt{ 'SUBMIT_ON_CHANGE' } and $opt{ 'SUBMIT_ON_CHANGE' } == 0;
-    
+
     my $empty_key   = $opt{ 'EMPTY_KEY' };
     my $input_id    = $self->create_uniq_id();
     my $datalist_id = $self->create_uniq_id();
@@ -664,20 +664,20 @@ sub input
       else
         {
         $k = $v;
-        }  
+        }
 
       ( $datalist_key, $datalist_label ) = ( $k, $l ) if $v eq $datalist_sk;
       $datalist_text .= html_element( 'option', undef, name => $l, value => $l, 'data-key' => $k );
       }
-    
+
     $datalist_text = html_element( 'datalist', $datalist_text, id => $datalist_id );
-    
+
     $text .= html_element( 'input', undef,           id => $input_id, type => 'hidden', class => $class, name => $name_hidden, value => $datalist_key,   form => $form_id );
     $text .= html_element( 'input', undef, %options, id => $input_id,                   class => $class,                       value => $datalist_label, form => $form_id, list => $datalist_id, 'data-input-id' => $input_id, 'data-empty-key' => $empty_key, onChange => "reactor_datalist_change( this, 0 ); $on_change; return" ) . $clear_tag;
     $text .= $datalist_text;
     }
   else
-    {  
+    {
 #    $text .= "<input class='$class' name='$name' value='$value' $options form='$form_id' $args>$clear_tag";
     $text .= html_element( 'input', undef, %options, class => $class, name => $name, value => $value, form => $form_id ) . $clear_tag;
     }
@@ -720,7 +720,7 @@ sub file_upload_multi
 {
   my $self = shift;
   return $self->file_upload( @_, MULTI => 1 );
-}  
+}
 
 
 ##############################################################################
@@ -741,7 +741,7 @@ sub button
   __check_ident( $name, $id );
 
   my $options;
-  
+
   if( $opt{ 'DISABLED' } )
     {
     $options .= "disabled='disabled' " ;
@@ -761,7 +761,7 @@ sub button
     $confirm = "[~Are you sure?]" if $confirm == 1;
     $confirm = qq[return confirm("$confirm");];
     }
-  
+
   $text .= html_element( 'button', $value, form => $form_id, class => $class, id => $id, name => "button:$name", onDblClick => 'return false;', onClick => $confirm, extra => "$options $args" );
 
   $text .= "\n";

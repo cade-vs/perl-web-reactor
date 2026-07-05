@@ -4,7 +4,7 @@
 ##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
 ##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##  http://cade.noxrun.com
-##  
+##
 ##  LICENSE: GPLv2
 ##  https://github.com/cade-vs/perl-web-reactor
 ##
@@ -83,14 +83,13 @@ sub load_file
     return $self->{ 'FILE_CACHE' }{ $lang }{ $pn };
     }
 
-  my $pn = "$pn.html";
   my $dirs = $cfg->{ 'HTML_DIRS' };
 
   my $fn;
   for my $dir ( @$dirs )
     {
-    next unless -e "$dir/$pn";
-    $fn = "$dir/$pn";
+    next unless -e "$dir/$pn.html";
+    $fn = "$dir/$pn.html";
     last;
     }
 
@@ -146,7 +145,7 @@ sub __process_tag
   my $opt  = shift;
   my $ctx  = shift;
 
-  $ctx = { %$opt };
+  $ctx = { %$ctx }; # FIXME: CHECK, was opt
   $ctx->{ 'PATH' } .= ", $type$tag";
   my $path = $ctx->{ 'PATH' };
 

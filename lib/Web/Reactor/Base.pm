@@ -4,7 +4,7 @@
 ##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
 ##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##  http://cade.noxrun.com
-##  
+##
 ##  LICENSE: GPLv2
 ##  https://github.com/cade-vs/perl-web-reactor
 ##
@@ -24,14 +24,14 @@ sub new
   my $class = shift;
   my $reo   = shift;
   my $cfg   = shift;
- 
+
   $class = ref( $class ) || $class;
   my $self = {};
   bless $self, $class;
 
   $self->{ 'CFG' } = $cfg;
   $self->__set_reo( $reo );
- 
+
   return $self;
 }
 
@@ -44,7 +44,7 @@ sub __lock_self_keys
     next if exists $self->{ $key };
     $self->{ $key } = undef;
     }
-  lock_ref_keys( $self );  
+  lock_ref_keys( $self );
 }
 
 sub __set_reo
@@ -65,15 +65,15 @@ sub __set_reo
     {
     boom "Web::Reactor object required! missing or wrong class!";
     }
-  
-  return 1;  
+
+  return 1;
 }
 
 sub get_reo
 {
   my $self = shift;
 
-  return $self->{ 'REO_REACTOR' } or boom "missing Web::Reactor object";
+  return ( $self->{ 'REO_REACTOR' } or boom "missing Web::Reactor object" );
 }
 
 sub get_cfg

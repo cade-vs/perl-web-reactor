@@ -4,7 +4,7 @@
 ##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
 ##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##  http://cade.noxrun.com
-##  
+##
 ##  LICENSE: GPLv2
 ##  https://github.com/cade-vs/perl-web-reactor
 ##
@@ -16,7 +16,7 @@ use Web::Reactor::Sessions;
 use Web::Reactor::Utils;
 use POSIX;
 use Storable qw( freeze thaw lock_store lock_retrieve );
-use Data::Dumper; 
+use Data::Dumper;
 
 use parent 'Web::Reactor::Sessions';
 
@@ -41,7 +41,7 @@ use parent 'Web::Reactor::Sessions';
 sub _storage_create
 {
   my $self = shift;
-  
+
   my $fn = $self->_key_to_fn( {}, @_ );
   my $F;
   if( sysopen $F, $fn, O_CREAT | O_EXCL, 0600 )
@@ -52,7 +52,7 @@ sub _storage_create
   else
     {
     return $!{EEXIST} ? 0 : undef;
-    }  
+    }
 }
 
 # loads session data from the storage
@@ -63,7 +63,7 @@ sub _storage_create
 sub _storage_load
 {
   my $self = shift;
-  
+
   my $fn = $self->_key_to_fn( { READONLY => 1 }, @_ );
   if( ! -r $fn )
     {
@@ -97,7 +97,7 @@ sub _storage_save
 {
   my $self = shift;
   my $out_data = shift;
-  
+
   my $fn = $self->_key_to_fn( {}, @_ );
 
 #print STDERR Dumper( "******* _storage_save [$fn] *******", $out_data );
@@ -113,9 +113,9 @@ sub _storage_save
 sub _storage_exists
 {
   my $self = shift;
-  
+
   my $fn = $self->_key_to_fn( { READONLY => 1 }, @_ );
-  
+
   return -e $fn ? 1 : 0;
 }
 
@@ -123,15 +123,15 @@ sub _storage_exists
 # args:
 #       none
 # returns:
-#       information text 
-sub _storage_debug_info 
-{ 
+#       information text
+sub _storage_debug_info
+{
   my $self = shift;
-  
+
   my $cfg = $self->get_cfg();
-  
+
   my $vd = $cfg->{ 'SESS_VAR_DIR' };
-  
+
   return "Web::Reactor::Sess::Filesystem: session directory: [$vd]";
 }
 
@@ -144,23 +144,23 @@ sub _storage_debug_info
 sub _split_dir_components
 {
   my $self = shift;
-  
+
   my $s = shift;
   my $c = shift; # parts count
   my $l = shift || 2; # how long is each part
-  
+
   die "Web::Reactor::Sess::Filesystem:_split_dir_components: parts*length > length(s)-1" if $c * $l > length( $s ) - 1;
 
   my $r; # result
-  
+
   for my $p ( 0 .. $c-1 )
     {
     $r .= substr( $s, $p * $l, $l ) . '/';
     }
-  # $r .= substr( $s, $c * $l );  
-  $r .= $s;  
-  
-  return $r;  
+  # $r .= substr( $s, $c * $l );
+  $r .= $s;
+
+  return $r;
 }
 
 sub _key_to_fn
@@ -171,9 +171,9 @@ sub _key_to_fn
 
   my $r = shift @key; # this should be type
   boom "invalid key component 0, needs ALPHANUMERIC type, got [$r]" unless $r =~ /^[A-Z]+$/;
-  
+
   my $cfg = $self->get_cfg();
-  
+
   my $vd = $cfg->{ 'SESS_VAR_DIR' };
   if( ! $vd )
     {
@@ -181,7 +181,7 @@ sub _key_to_fn
     boom "missing APP_ROOT" unless -d $app_root; # FIXME: function? get_app_root()
     $vd = "$app_root/var";
     }
-  dir_path_check( $vd ) unless -d $vd;
+  dir_path_ensure( $vd ) unless -d $vd;
   boom "missing SESS_VAR_DIR or APP_ROOT/var [$vd]" unless -d $vd;
 
   while( @key > 0 )
@@ -194,7 +194,7 @@ sub _key_to_fn
   my $dir = $vd . '/' . $r;
   my $chk = $dir;
   $chk =~ s/\/[^\/]*$//;
-  dir_path_check( $chk ) unless $opt->{ 'READONLY' };
+  dir_path_ensure( $chk ) unless $opt->{ 'READONLY' };
 
   return $dir . '.wrs';
 }

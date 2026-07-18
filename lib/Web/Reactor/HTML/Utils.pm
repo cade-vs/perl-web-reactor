@@ -24,6 +24,7 @@ our @EXPORT = qw(
                 html_escape
 
                 html_element
+                html_element_e
 
                 html_ftree
                 html_ctable
@@ -90,6 +91,16 @@ sub html_element
 #print STDERR Dumper( "\n"x10, \@_, $tag, $txt, \%atr, $html, "\n"x100 );
 
   return $html;
+}
+
+sub html_element_e
+{
+  my $tag = shift;
+  my $txt = shift;
+
+  $txt = str_html_escape( $txt ) if defined $txt;
+
+  return html_element( $tag, $txt, @_ );
 }
 
 ##############################################################################

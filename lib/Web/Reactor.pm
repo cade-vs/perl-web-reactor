@@ -2936,6 +2936,7 @@ Web::Reactor requires the following Perl modules:
   * Crypt::Cipher          -- Base class for encryption ciphers
   * Crypt::Mode::CBC       -- AES encryption in CBC mode
   * Crypt::PK::RSA         -- RSA encryption (for password fields)
+  * Crypt::PRNG            -- CSPRNG for session ids and crypto IVs
 
 =head2 GitHub Repositories
 

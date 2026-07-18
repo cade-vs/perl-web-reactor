@@ -408,7 +408,7 @@ sub prepare_and_execute
         }
       }
 
-=pod
+=begin comment
     # remap names
     for my $n ( keys %$rmn )
       {
@@ -424,6 +424,9 @@ sub prepare_and_execute
       $input_safe_hr->{ $k } = $rmd->{ $k }{ $input_user_hr->{ $k } };
       delete $input_user_hr->{ $k };
       }
+
+=end comment
+
 =cut
 
     }
@@ -2121,7 +2124,7 @@ Startup PLACK/PSGI script example (RECOMMENDED):
 Run with: plackup -p 5000 app.psgi
 Or with reverse proxy (nginx): plackup --server Starman -p 5000 app.psgi
 
-=head1 INTRODUCTION
+=head1 INTRODUCTION AND DESIGN GOALS
 
 Web::Reactor is a perl module which automates as much as possible of the all
 routine tasks when implementing web applications, interactive sites, etc.
@@ -2130,12 +2133,61 @@ functionality like:
 
   * setting and recognising web browser cookies (for sessions or other data)
   * handling user and page sessions (storage, cookie management, etc.)
-  * hiding html link data and forms data to rise page-to-page transfer safety.
-  * preprocessing of text/html, including hiding data, calling actions etc.
+  * isolating html link data and forms data to rise page-to-page transfer safety.
+  * preprocessing of text/html, including data isolation, calling actions etc.
   * on-demand loading of 'actions', perl code modules to handle dynamic pages.
 
 Web::Reactor can be extended, though it was not supposed to. There are 4 main
 parts of it which can be extended. See section EXTENDING below for details.
+
+Web::Reactor was designed and written from scratch, independently, and was not
+modelled on, ported from, or influenced by any other software or framework. The
+earliest versions depended only on the CGI protocol -- and, initially, on a
+strict subset of CGI.pm used solely for reading input parameters and handling
+HTTP headers. The other frameworks named below (Seaside, ASP.NET WebForms,
+Catalyst, Mojolicious, Rails, Django, ...) are mentioned only as analogies, to
+orient readers already familiar with them; any resemblance is convergent design,
+not lineage, derivation or influence.
+
+Two deliberate design choices shape everything else and place Web::Reactor in a
+specific corner of the web-framework space:
+
+1. A single per-request context object (the C<$reo> passed to every action).
+Off one invocant you reach the request, the response, sessions, module
+dispatch and the HTML preprocessor. This is the same "context object"
+ergonomics as Catalyst's C<$c> or Mojolicious' controller -- convenient, and
+deliberately not split into separate request/response objects passed around.
+
+2. A server-side, stateful page-instance model. Each page instance keeps its
+full context on the server; control moves with forward_new / forward_back, and
+links carry an opaque page-session id (_P), never the parameters themselves.
+This converges with the continuation style seen in Seaside (Smalltalk) and
+classic ASP.NET WebForms, and differs from the stateless REST/MVC model of
+Rails or Django.
+
+Two properties follow, and they are the GOAL of the design, not side effects:
+
+  * FULL CONTEXT PRESERVATION -- a page instance survives across steps with its
+    complete state, handing a controlled slice forward to the next
+    page/session, without re-deriving or re-posting it.
+
+  * DATA ISOLATION -- nothing of the context is exposed to the client; the link is
+    an opaque handle and the server is the sole authority on what the next
+    session receives. Parameters cannot be seen, edited or forged.
+
+The price, paid deliberately: state lives on the server, so horizontal scaling
+needs sticky sessions or a shared store, raw links are not durable/shareable
+outside their session, and the model targets server-rendered pages rather than
+JSON APIs or SPA back-ends. The per-instance storage footprint scales with
+active flows and is bounded by session expiry -- it is the designed cost of
+full preservation plus data isolation, not accidental bloat.
+
+The HTML preprocessor is likewise "active": templates call back into action
+code while rendering (the Mason / PHP / SSI family), as opposed to passive
+engines such as Template Toolkit. In short, Web::Reactor is a
+server-authoritative, stateful application server for form-heavy, internal /
+back-office, multi-step-workflow applications, rather than a stateless REST
+toolkit.
 
 =head1 SECURITY FEATURES
 
@@ -2238,7 +2290,7 @@ Action module example:
     # add some html content
     $text .= "<p>Reactor::Actions::demo::test here!<p>";
 
-    # create link and hide its data. only accessible from inside web app.
+    # create link and isolate its data. only accessible from inside web app.
     my $grid_href = $reo->args_new( _PN => 'grid', TABLE => 'testtable', );
     $text .= "<a href=?_=$grid_href>go to grid</a><p>";
 
@@ -2545,7 +2597,7 @@ documentation, see the method source code and examples in the demo/ directory.
 =head1 CRYPTOGRAPHY API
 
 Web::Reactor provides AES-CBC encryption for sensitive data. This is used
-internally to hide form data and page session IDs in URLs.
+internally to isolate form data and page session IDs in URLs.
 
 =head2 Configuration
 
@@ -2606,7 +2658,7 @@ Same as above but with hexadecimal encoding.
   Padding:    PKCS#7 (handled by Crypt::Mode::CBC)
   Key:        User-provided, validated against cipher key size requirements
 
-=head2 Example: Hiding Form Data
+=head2 Example: Isolating Form Data
 
   my $form_data = {
                   'account_id' => $account_id,

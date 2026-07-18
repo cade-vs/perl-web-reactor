@@ -207,12 +207,15 @@ sub prepare_and_execute
 
   # 2. loading user session, setup new session and cookie if needed
   my $user_shr = {}; # user session hash ref
-  unless( $user_sid =~ /^[a-zA-Z0-9_]+$/ and $user_shr = $self->ses->load( 'USER', $user_sid ) )
+  if( $user_sid =~ /^[a-zA-Z0-9_]+$/ and $user_shr = $self->ses->load( 'USER', $user_sid ) )
+    {
+    $self->__set_session( 'USER', $user_sid, $user_shr );
+    }
+  else
     {
     $self->log( "warning: invalid user session [$user_sid]" );
-    ( $user_sid, $user_shr ) = $self->__create_new_user_session();
+    ( $user_sid, $user_shr ) = $self->__create_new_user_session(); # installs the session itself
     }
-  $self->__set_session( 'USER', $user_sid, $user_shr );
 
   if( ( $user_shr->{ ':LOGGED_IN' } and $user_shr->{ ':XTIME' } > 0 and time() > $user_shr->{ ':XTIME' } )
       or
@@ -483,6 +486,11 @@ sub __create_new_user_session
   $user_sid = $self->ses->create( 'USER' );
   $user_shr = { ':ID' => $user_sid };
 
+  # install immediately so this becomes the current user session; the helpers
+  # below (expire time) and the end-of-request save() then act on THIS session
+  # rather than on a stale/undef one.
+  $self->__set_session( 'USER', $user_sid, $user_shr );
+
 # ROTATION REMOVED #   my $path = $cfg->{ 'COOKIE_PATH' };
 # ROTATION REMOVED #   if( ! $path )
 # ROTATION REMOVED #     {
@@ -555,7 +563,10 @@ sub __rotate_user_session_id
   $user_shr->{ ':ID' } = $new_sid;
   $self->{ 'SESSIONS' }{ 'SID'  }{ 'USER' }             = $new_sid;
   $self->{ 'SESSIONS' }{ 'DATA' }{ 'USER' }{ $new_sid } = $user_shr;
-  $self->__update_session_fingerprint( 'USER', $new_sid, $user_shr );
+  # do NOT prime the fingerprint here: leave the new id absent from the SHA1
+  # cache so the end-of-request save() always persists the rotated session at
+  # least once, even if the caller does not further mutate the session data.
+  delete $self->{ 'CACHE' }{ 'SESSION_DATA_SHA1' }{ 'USER' }{ $new_sid };
 
   # reissue the cookie bound to the new id
   $self->__set_user_session_cookie( $new_sid );

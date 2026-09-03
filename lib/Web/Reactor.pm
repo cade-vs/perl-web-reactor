@@ -107,23 +107,36 @@ sub new
 
   @INC = grep { $_ ne '.' } @INC;
 
-  my $reo_ses_class = $cfg->{ 'REO_SES_CLASS' } ||= 'Web::Reactor::Sessions::Filesystem';
-  my $reo_pre_class = $cfg->{ 'REO_PRE_CLASS' } ||= 'Web::Reactor::Preprocessor::Native';
-  my $reo_act_class = $cfg->{ 'REO_ACT_CLASS' } ||= 'Web::Reactor::Actions::Native';
-
-  my $reo_ses_class_file = perl_package_to_file( $reo_ses_class );
-  my $reo_pre_class_file = perl_package_to_file( $reo_pre_class );
-  my $reo_act_class_file = perl_package_to_file( $reo_act_class );
-
-  require $reo_ses_class_file;
-  require $reo_pre_class_file;
-  require $reo_act_class_file;
-
-  $self->{ 'REO_SES' } = new $reo_ses_class $self, $cfg;
-  $self->{ 'REO_PRE' } = new $reo_pre_class $self, $cfg;
-  $self->{ 'REO_ACT' } = new $reo_act_class $self, $cfg;
+  $self->__attach_all_modules();
 
   return $self;
+}
+
+sub __attach_all_modules
+{
+  my $self = shift;
+
+  $self->__attach_module( 'SES', 'Web::Reactor::Sessions::Filesystem' );
+  $self->__attach_module( 'PRE', 'Web::Reactor::Preprocessor::Native' );
+  $self->__attach_module( 'ACT', 'Web::Reactor::Actions::Native'      );
+
+  return 1;
+}
+
+sub __attach_module
+{
+  my $self = shift;
+  my $key  = shift;
+  my $mod  = shift;
+
+  my $cfg = $self->get_cfg();
+
+  my $reo_class = $cfg->{ "REO_${key}_CLASS" } ||= $mod;
+  my $reo_class_file = perl_package_to_file( $reo_class );
+  require $reo_class_file;
+  $self->{ "REO_${key}" } = $reo_class->new( $self, $cfg );
+
+  return 1;
 }
 
 sub DESTROY
@@ -167,26 +180,30 @@ sub run
 
   $self->save();
 
-  if( $self->is_debug() )
-    {
-    my $psid = $self->get_page_session_id( 0 ) || 'empty';
-    my $rsid = $self->get_page_session_id( 1 ) || 'empty';
-    my $usid = $self->get_user_session_id(   ) || 'empty';
-    $self->log_dumper( "USER INPUT-------------------------------------", $self->get_user_input()   );
-    $self->log_dumper( "SAFE INPUT-------------------------------------", $self->get_safe_input()   );
-    $self->log_dumper( "PAGE SESSION [$psid]-----------------------------------", $self->get_page_session() );
-    $self->log_dumper( "REF  SESSION [$rsid]-----------------------------------", $self->get_page_session( 1 ) );
-
-    if( $self->is_debug() > 2 )
-      {
-      $self->log_dumper( "USER SESSION [$usid]---------------------------", $self->get_user_session() );
-      my ( $ls, $lsid ) = $self->get_link_session();
-      $self->log_dumper( "FINAL LINK SESSION  [$lsid]-----------------------------------", $ls );
-      }
-    }
+  $self->run_print_final_debug() if $self->is_debug();
 
   # $self->log_dumper( 'RUN RESULT, CODE, HEADERS, BODY_LENGTH:', $res->[0], $res->[1], length( $res->[2] ) );
   return $res;
+}
+
+sub run_print_final_debug
+{
+  my $self = shift;
+
+  my $psid = $self->get_page_session_id( 0 ) || 'empty';
+  my $rsid = $self->get_page_session_id( 1 ) || 'empty';
+  my $usid = $self->get_user_session_id(   ) || 'empty';
+  $self->log_dumper( "USER INPUT-------------------------------------", $self->get_user_input()   );
+  $self->log_dumper( "SAFE INPUT-------------------------------------", $self->get_safe_input()   );
+  $self->log_dumper( "PAGE SESSION [$psid]-----------------------------------", $self->get_page_session() );
+  $self->log_dumper( "REF  SESSION [$rsid]-----------------------------------", $self->get_page_session( 1 ) );
+
+  if( $self->is_debug() > 2 )
+    {
+    $self->log_dumper( "USER SESSION [$usid]---------------------------", $self->get_user_session() );
+    my ( $ls, $lsid ) = $self->get_link_session();
+    $self->log_dumper( "FINAL LINK SESSION  [$lsid]-----------------------------------", $ls );
+    }
 }
 
 sub prepare_and_execute
@@ -567,7 +584,6 @@ sub __rotate_user_session_id
 
   return $new_sid;
 }
-
 
 sub get_postdata_fh
 {

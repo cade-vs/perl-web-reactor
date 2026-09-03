@@ -1,6 +1,6 @@
 ##############################################################################
 ##
-##  Web::Base foundation for stateless and stateful application machinery
+##  Web::Reactor::Core foundation for stateless and stateful application machinery
 ##  Copyright (c) 2013-2026 Vladi Belperchinov-Shabanski "Cade"
 ##        <cade@noxrun.com>
 ##  http://cade.noxrun.com
@@ -10,11 +10,11 @@
 ##
 ## this is part of Web::Reactor package and serves as base class for:
 ##
-##      Web::Reflex  -- stateless machinery
-##      Web::Reactor -- full state integrated actor
+##      Web::Reactor::Reflex  -- stateless machinery
+##      Web::Reactor          -- full state integrated actor
 ##
 ##############################################################################
-package Web::Base;
+package Web::Reactor::Core;
 use strict;
 use Storable qw( dclone );
 use Plack::Request;
@@ -23,9 +23,6 @@ use Data::Tools 1.24;
 use Exception::Sink;
 use Data::Dumper;
 use Encode;
-
-#######use Web::Reactor::Utils;
-#######use Web::Reactor::HTML::Form;
 
 our $VERSION = '3.14';
 
@@ -41,7 +38,7 @@ sub new
   die "expected first  argument to be ENV hash reference" unless ref $env eq 'HASH';
   die "expected second argument to be CFG hash reference" unless ref $cfg eq 'HASH';
 
-  # FIXME: TODO: check ref env and cfg to be hashrefs
+  srand();
 
   $class = ref( $class ) || $class;
   my $self = {};
@@ -76,8 +73,6 @@ sub run
 {
   my $self = shift;
 
-  srand();
-
   my $res;
   eval
     {
@@ -111,7 +106,7 @@ sub process_request
   my $args = @_ / 2; # count of arg pairs
   my %args = @_;
 
-  die "you need to subclass Web::Base and reimplement Web::Base::request";
+  die "you need to subclass Web::Reactor::Core and reimplement Web::Reactor::Core::process_request";
 }
 
 ### SET/GET INSTANCE STATE ###################################################
@@ -325,15 +320,23 @@ sub res_set_headers
   my $self = shift;
   my %h    = @_;
 
-  hash_lc_ipl( \%h );
-
-  if( exists $h{ 'status' } )
+  for my $k ( keys %h )
     {
-    $self->res_set_status( $h{ 'status' } );
-    delete $h{ 'status' };
+    my $v = $h{ $k };
+    my $k = lc $k;
+    boom "invalid output headers [$k] value [$v]" if ( $k . $v ) =~ /[\r\n]/;
+
+    if( $k eq 'status' )
+      {
+      $self->res_set_status( $v );
+      }
+    else
+      {
+      $self->{ 'OUT' }{ 'HEADERS' }{ $k } = $v;
+      }
     }
 
-  return $self->{ 'OUT' }{ 'HEADERS' } = { %{ $self->{ 'OUT' }{ 'HEADERS' } || {} }, %h };
+  return $self->{ 'OUT' }{ 'HEADERS' };
 }
 
 sub res_get_headers_ar
@@ -362,9 +365,7 @@ sub res_get_headers_ar
   my @ho;
   for my $k ( sort keys %$ho )
     {
-    my $v = $ho->{ $k };
-    boom "invalid output headers [$k] value [$v]" if ( $k . $v ) =~ /[\r\n]/;
-    push @ho, $k, $v;
+    push @ho, $k, $ho->{ $k };
     }
 
   while( my ( $k, $v ) = each %{ $self->{ 'OUT' }{ 'COOKIES' } || {} } )
@@ -385,7 +386,7 @@ sub res_set_cookie
   my $name = shift;
   my %opt  = @_;
 
-  $self->log( "debug: creating new cookie [$name]" );
+  $self->log_debug( "debug: creating new cookie [$name]" );
   # FIXME: validate %opt  Data::Validate::Struct
 
   $self->{ 'OUT' }{ 'COOKIES' }{ $name } = bake_cookie( $name, \%opt );
@@ -571,28 +572,6 @@ sub log_dumper
 
 ##############################################################################
 
-=pod
-sub render_action
-{
-  my $self   = shift;
-  my $action = shift;
-
-  $portray_data = $self->act->call( $action );
-
-  return $self->render( $portray_data );
-}
-
-sub render_page
-{
-  my $self = shift;
-  my $page = shift;
-
-  $portray_data = $self->pre->load_page( $page );
-
-  return $self->render( $portray_data );
-}
-=cut
-
 sub render
 {
   my $self = shift;
@@ -687,6 +666,14 @@ sub forward_url
 
   sink 'RENDER';
 }
+
+##############################################################################
+
+=pod
+
+   pod here
+
+=cut
 
 ##############################################################################
 1;

@@ -69,14 +69,14 @@ sub __set_reo
   return 1;
 }
 
-sub get_reo
+sub reo
 {
   my $self = shift;
 
   return ( $self->{ 'REO_REACTOR' } or boom "missing Web::Reactor object" );
 }
 
-sub get_cfg
+sub cfg
 {
   my $self = shift;
 

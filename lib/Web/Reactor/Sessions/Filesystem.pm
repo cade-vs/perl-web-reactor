@@ -68,7 +68,7 @@ sub _storage_load
   my $fn = $self->_key_to_fn( { READONLY => 1 }, @_ );
   if( ! -r $fn )
     {
-    $self->get_reo()->log( "error: session file not readable: $fn" );
+    $self->reo()->log( "error: session file not readable: $fn" );
     return undef;
     }
   my $in_data;
@@ -79,7 +79,7 @@ sub _storage_load
     };
   if( $@ )
     {
-    $self->get_reo()->log( "error: retrieving session failed $fn\n($@)" );
+    $self->reo()->log( "error: retrieving session failed $fn\n($@)" );
     return undef;
     }
 
@@ -129,7 +129,7 @@ sub _storage_debug_info
 {
   my $self = shift;
 
-  my $cfg = $self->get_cfg();
+  my $cfg = $self->cfg();
 
   my $vd = $cfg->{ 'SESS_VAR_DIR' };
 
@@ -173,7 +173,7 @@ sub _key_to_fn
   my $r = shift @key; # this should be type
   boom "invalid key component 0, needs ALPHANUMERIC type, got [$r]" unless $r =~ /^[A-Z]+$/;
 
-  my $cfg = $self->get_cfg();
+  my $cfg = $self->cfg();
 
   my $vd = $cfg->{ 'SESS_VAR_DIR' };
   if( ! $vd )

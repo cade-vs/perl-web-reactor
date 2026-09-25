@@ -37,7 +37,7 @@ sub create
   die "Web::Reactor::Sessions::create: invalid type, expected ALPHANUMERIC, got [$type]" unless $type =~ /^[A-Z0-9]+$/;
   die "Web::Reactor::Sessions::create: invalid length, expected len > 0, got [$len]" unless $len > 0;
 
-  my $cfg  = $self->get_cfg();
+  my $cfg  = $self->cfg();
 
   my $id;
   my $t  = time();
@@ -217,7 +217,7 @@ sub _storage_debug_info { die "Web::Reactor::Sessions::*::_storage_debug_info() 
 sub create_id
 {
   my $self = shift;
-  my $cfg  = $self->get_cfg();
+  my $cfg  = $self->cfg();
 
   my $len = shift() || $cfg->{ 'SESS_LENGTH'  } || 73; # 21st prime :)
   my $let = shift() || $cfg->{ 'SESS_LETTERS' } || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';

@@ -14,13 +14,11 @@ use strict;
 
 use parent 'Web::Reactor::Core';
 
-use Storable qw( dclone freeze thaw ); # FIXME: move to Data::Tools (data_freeze/data_thaw)
 use Data::Tools 1.24;
 use Exception::Sink;
 use Data::Dumper;
-use Encode;
 
-our $VERSION = '3.14';
+our $VERSION = '3.33';
 
 ##############################################################################
 
@@ -31,6 +29,10 @@ sub new
   my $cfg   = shift;
 
   $class = ref( $class ) || $class;
+  my $self = $class->SUPER::new( $env, $cfg );
+
+  $cfg = $self->cfg();
+  $env = $self->env();
 
   data_tools_set_text_io_encoding( 'UTF-8' );
 
@@ -41,44 +43,52 @@ sub new
   for my $lib_dir ( @{ $cfg->{ 'LIB_DIRS' } || [] } )
     {
     next unless -d $lib_dir;
+    next if grep { $_ eq $lib_dir } @INC; # persistent servers call new() per request
     push @INC, $lib_dir;
     }
 
   @INC = grep { $_ ne '.' } @INC;
 
-  my $self = SUPER::new( $env, $cfg );
 
   return $self;
 }
 
-sub __load_module
+sub __load_and_attach_module
 {
   my $self = shift;
   my $key  = shift;
   my $mod  = shift;
+  my @args = @_;
 
-  my $cfg = $self->get_cfg();
+  my $cfg = $self->cfg();
 
   my $reo_class = $cfg->{ "REO_${key}_CLASS" } ||= $mod;
   my $reo_class_file = perl_package_to_file( $reo_class );
   require $reo_class_file;
-  return $reo_class->new( $self, $cfg );
+  return $reo_class->new( @args );
 }
 
-##############################################################################
+### FUNC PLUGS ###############################################################
 
 sub act
 {
   my $self = shift;
 
-  return $self->{ "REO_ACT" } ||= $self->__attach_module( 'ACT', 'Web::Reactor::Actions::Native' );
+  return $self->{ "REO_ACT" } ||= $self->__load_and_attach_module( 'ACT', 'Web::Reactor::Actions::Native', $self, $self->cfg() );
 }
 
 sub pre
 {
   my $self = shift;
 
-  return $self->{ "REO_PRE" } ||= $self->__attach_module( 'PRE', 'Web::Reactor::Preprocessor::Native' );
+  return $self->{ "REO_PRE" } ||= $self->__load_and_attach_module( 'PRE', 'Web::Reactor::Preprocessor::Native', $self, $self->cfg() );
+}
+
+sub cry
+{
+  my $self = shift;
+
+  return $self->{ "REO_CRY" } ||= $self->__load_and_attach_module( 'CRY', 'Data::Tools::Crypto::Symmetric', $self->cfg->{ 'CRY_KEY' } );
 }
 
 ##############################################################################
@@ -89,238 +99,82 @@ sub process_request
   my $args = @_ / 2; # count of arg pairs
   my %args = @_;
 
-  my $cfg = $self->get_cfg();
+  my $cfg = $self->cfg();
 
-  # 0. load/setup env/config defaults
   my $app_name = $cfg->{ 'APP_NAME' } or boom( "missing APP_NAME" );
 
-  my $client_input = $self->get_client_input();
+  my $user_input_hr = $self->get_user_input();
+  my $safe_input_hr = $self->get_safe_input();
 
+  my $action_name = lc( $safe_input_hr->{ '_AN' } || $user_input_hr->{ '_AN' } );
+  boom "invalid action name [$action_name]" unless $action_name =~ /^[a-z0-9_]*$/;
 
+  my $page_name = lc( $safe_input_hr->{ '_PN' } || $user_input_hr->{ '_PN' } );
+  # TODO: "/" is allowed here but Preprocessor::Native rejects it, only Extended accepts paths; align them
+  boom "invalid page name [$page_name]" unless $page_name =~ /^[a-z0-9_\-\/]*$/;
 
-
-  # 3. get input data, CGI::params, postdata
-  my $input_user_hr = $self->{ 'INPUT_USER_HR' } = {};
-  my $input_safe_hr = $self->{ 'INPUT_SAFE_HR' } = {};
-
-  # FIXME: TODO: handle and URL params here. only for EX?
-  my $iconv;
-  my $app_charset = uc $cfg->{ 'APP_CHARSET' } || 'UTF-8';
-  my $incoming_charset = $app_charset;
-
-  my $no_pass_encrypt = $cfg->{ 'NO_PASS_ENCRYPT' };
-
-  if( uc( $self->get_http_env->{ 'HTTP_X_REQUESTED_WITH' } ) eq 'XMLHTTPREQUEST' )
-    {
-    # TODO: it can be different, but nobody seems to use it, should be fixed eventually
-    $incoming_charset = 'UTF-8';
-    }
-
-  my $plack = $self->{ 'PLACK' };
-
-  my $params = $plack->parameters(); # input parameters, GET + POST
-  my %params; # preprocessed parameters
-
-  # check valid params names and preprocess multiple values
-  # import plain parameters from GET/POST request
-  for my $n ( keys %$params )
-    {
-    if( $n !~ /^[A-Za-z0-9\-\_\.\:]+$/o )
-      {
-      $self->log( "error: invalid CGI/input parameter name: [$n]" );
-      next;
-      }
-    my @v = $params->get_all( $n );
-    $n = uc $n;
-    if( @v > 1 )
-      {
-      for( my $vi = 0; $vi < @v; $vi++ )
-        {
-        # ignore the whole array if any value is invalid
-        next     if $self->__input_cgi_skip_invalid_value( $n, $v[$vi] );
-        $v[$vi] = $self->__input_cgi_make_safe_value( $n, decode( $incoming_charset, $v[$vi] ) );
-        }
-      $input_user_hr->{ '@' . $n } = \@v;
-      }
-    elsif ( $n =~ /BUTTON:([a-z0-9_\-]+)(:(.+?))?(\.[XY])?$/oi )
-      {
-      # regular button BUTTON:CANCEL
-      # button with id BUTTON:REDIRECT:USERID
-      $input_user_hr->{ 'BUTTON'    } = uc $1;
-      $input_user_hr->{ 'BUTTON_ID' } =    $3;
-      }
-    elsif( $n eq '_BTN' )
-      {
-      # simulated button, i.e. hidden input with 'BUTTON_NAME:BUTTON_ID'
-      my ( $b, $i ) = split /:/, $v[0], 2;
-      $input_user_hr->{ 'BUTTON'    } = uc $b;
-      $input_user_hr->{ 'BUTTON_ID' } =    $i;
-      }
-    else
-      {
-      next                  if $self->__input_cgi_skip_invalid_value( $n, $v[0] );
-      my $out;
-      if( ! $no_pass_encrypt and $n =~ /^(F:)?PASSWORD/ )
-        {
-        # TODO: move it to overload function
-        $out = $self->rsa_pub_encrypt( $v[0] ) if $v[0] ne '';
-        }
-      else
-        {
-        $out = $self->__input_cgi_make_safe_value( $n, decode( $incoming_charset, $v[0] ) );
-        }
-      $input_user_hr->{ $n } = $out;
-      }
-    $self->log_debug( "debug: CGI/input param [$n] value [$v[0]] array [@v]" );
-    }
-
-  # import uploads
-  my $uploads = $plack->uploads();
-  for my $n ( keys %$uploads )
-    {
-    my @u = $uploads->get_all( $n );
-    $input_user_hr->{ "#$n" } =  @u; # count of the uploaded files
-    $input_user_hr->{ "^$n" } = \@u; # holds all uploads, could be empty
-    }
-
-  # merge forced parameters
-  %$input_user_hr = ( %$input_user_hr, %args ) if $args;
-
-  my $safe_input_link_sess = $input_user_hr->{ '_' };
-
-  my $link_session_hr; # FIXME!!!!!!!!!!!!!!!!!!!!!
-
-  # parse link session: link-sid.link-key
-  if( $safe_input_link_sess =~ /^([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)$/ )
-    {
-    my ( $link_sid, $link_key ) = ( $1, $2 );
-
-####### my >!!!!!!!!!!!!!!!!!!!!!
-    $link_session_hr = $self->ses->load( 'LINK', $link_sid );
-
-    my $link_data = $link_session_hr->{ 'ARGS' }{ $link_key };
-
-    # merge safe input if valid
-    %$input_safe_hr = ( %$input_safe_hr, %$link_data ) if $link_data;
-    # merge forced parameters
-    %$input_safe_hr = ( %$input_safe_hr, %args       ) if $args;
-    }
-  elsif( $safe_input_link_sess ne '' )
-    {
-    $self->log( "warning: invalid safe input link session.key [$safe_input_link_sess] ignored" );
-    }
-
-  # 4. loading page session
-  my $page_sid = __input_sid_check( $input_safe_hr->{ '_P' } );
-  my $page_shr = $self->ses->load( 'PAGE', $page_sid ); # user session hash ref
-  if( ! $page_shr )
-    {
-    $self->log_debug( "warning: invalid page session [$page_sid]" ) if $page_sid;
-    $page_sid = $self->ses->create( 'PAGE', 8 );
-    $page_sid = $HNS[rand(@HNS)] . '_' . $page_sid if $self->is_debug();
-    $self->log( "status: new page session created [$page_sid]" );
-    $page_shr = { ':ID' => $page_sid };
-    }
-  $self->__set_session( 'PAGE', $page_sid, $page_shr );
-
-  $page_shr->{ ':REF_PAGE_SID' } = __input_sid_check( $input_safe_hr->{ '_R' } || $page_shr->{ ':REF_PAGE_SID' } );
-  $page_shr->{ ':TOP_PAGE_SID' } = __input_sid_check( $input_safe_hr->{ '_T' } || $page_shr->{ ':TOP_PAGE_SID' } );
-
-  # 5. remap form input names and data, post to safe input
-  my $form_id = $input_safe_hr->{ 'FORM_ID' }; # FIXME: replace with _FRI
-  if( $form_id and exists $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id } )
-    {
-    my $rmn = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'NAME' }; # return map names
-    my $rmd = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'DATA' }; # return map data
-
-    for my $n ( keys %$input_user_hr )
-      {
-      my $nn = $n;
-      if( exists $rmn->{ $n } )
-        {
-        $nn = $rmn->{ $n };
-        $input_user_hr->{ $nn } = $input_user_hr->{ $n };
-        delete $input_user_hr->{ $n };
-        }
-      if( exists $rmd->{ $nn } )
-        {
-        $input_safe_hr->{ $nn } = $rmd->{ $nn }{ $input_user_hr->{ $nn } };
-        delete $input_user_hr->{ $nn };
-        }
-      }
-
-=pod
-    # remap names
-    for my $n ( keys %$rmn )
-      {
-      next unless exists $input_user_hr->{ $n };
-      $input_user_hr->{ $rmn->{ $n } } = $input_user_hr->{ $n };
-      delete $input_user_hr->{ $n };
-      }
-
-    # remap data
-    for my $k ( keys %$rmd )
-      {
-      next unless exists $input_user_hr->{ $k };
-      $input_safe_hr->{ $k } = $rmd->{ $k }{ $input_user_hr->{ $k } };
-      delete $input_user_hr->{ $k };
-      }
-=cut
-
-    }
-
-  # 6. get action from input (USER/CGI) or page session
-  my $action_name = lc( $input_safe_hr->{ '_AN' } || $input_user_hr->{ '_AN' } || $page_shr->{ ':ACTION_NAME' } );
-  if( $action_name =~ /^[a-z0-9_]+$/ )
-    {
-    $page_shr->{ ':ACTION_NAME' } = $action_name;
-    }
-  else
-    {
-    # $self->log( "error: invalid action name [$action_name]" );
-    }
-
-  # 7. get page from input (USER/CGI) or page session
-  my $page_name = lc( $input_safe_hr->{ '_PN' } || $input_user_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || { $self->get_page_session( 1 ) || {} }->{ ':PAGE_NAME' } || 'main' );
-  if( $page_name ne '' )
-    {
-    if( $page_name =~ /^[a-z0-9_\-\/]+$/ )
-      {
-      $page_shr->{ ':PAGE_NAME' } = $page_name;
-      }
-    else
-      {
-      $self->log( "error: invalid page name [$page_name]" );
-      }
-    }
-
-  # 8. render output action/page
   if( $action_name )
     {
-    $self->render( ACTION => $action_name );
+    $self->render_action( $action_name );
     }
   else
     {
-    $self->render( PAGE => $page_name );
+    $self->render_page( $page_name || 'main' );
     }
+}
+
+#-----------------------------------------------------------------------------
+
+sub render_action
+{
+  my $self   = shift;
+  my $action = shift;
+
+  my $portray_data = $self->act->call( $action );
+
+  boom "rendering action [$action] returns empty data" if ! ref $portray_data and $portray_data eq '';
+
+  $portray_data = $self->portray( $portray_data, 'text/html' ) unless ref $portray_data;
+
+  if( $portray_data->{ 'TYPE' } eq 'text/html' )
+    {
+    $portray_data->{ 'DATA' } = $self->pre->process( '*', $portray_data->{ 'DATA' } );
+    }
+
+  return $self->render( $portray_data );
+}
+
+sub render_page
+{
+  my $self = shift;
+  my $page = shift;
+
+  # page data is always text/html and must be preprocessed
+  my $text = $self->pre->load_page( $page );
+
+  boom "rendering page [$page] returns empty text, file does not exists or is empty" if $text eq '';
+
+  $text = $self->pre->process( $page, $text );
+
+  return $self->render( $self->portray( $text, 'text/html' ) );
 }
 
 ### REQUEST/INPUT DATA & UPLOADS #############################################
 
-sub get_client_input_button
+sub get_user_input_button
 {
   my $self  = shift;
 
-  my $input_user_hr = $self->get_client_input();
+  my $user_input_hr = $self->get_user_input();
 
-  for( keys %$input_user_hr )
+  for( keys %$user_input_hr )
     {
     # regular button BUTTON:CANCEL
     # button with id BUTTON:REDIRECT:USERID
     next unless /BUTTON:([a-z0-9_\-]+)(:(.+?))?(\.[XY])?$/oi;
 
     # return ( button, button_id )
-    return wantarray ? ( $1, $2 ) : $1
+    return wantarray ? ( $1, $3 ) : $1
     }
 
   return ();
@@ -330,21 +184,36 @@ sub get_lang
 {
   my $self  = shift;
 
-  return $self->get_cfg->{ 'LANG' };
+  return lc $self->cfg->{ 'LANG' };
 }
 
 sub get_app_name
 {
   my $self  = shift;
 
-  return $self->get_cfg->{ 'APP_NAME' };
+  return $self->cfg->{ 'APP_NAME' };
 }
 
 sub get_app_root
 {
   my $self  = shift;
 
-  return $self->get_cfg->{ 'APP_ROOT' };
+  return $self->cfg->{ 'APP_ROOT' };
+}
+
+#-----------------------------------------------------------------------------
+
+sub __import_safe_input
+{
+  my $self = shift;
+
+  my $user_input_hr = $self->get_user_input();
+  my $x = $user_input_hr->{ '_' } or return {};
+  return {} unless $x =~ s/^~//;
+
+  my $hr = $self->cry->thaw_base64url( $x );
+  $self->log( "error: invalid or tampered safe input token, ignored" ) unless $hr;
+  return $hr || {};
 }
 
 ##############################################################################
@@ -354,7 +223,20 @@ sub args
   my $self = shift;
   my %args = @_;
 
-  die "not implemented yet";
+  hash_uc_ipl( \%args );
+
+  return '~' . $self->cry()->freeze_base64url( \%args );
+}
+
+sub args_type
+{
+  my $self = shift;
+  my $type = shift;
+
+  # type (here/back/new/none) is ignored: stateless reactor has no link/page
+  # sessions, so "back" has nothing to return to and all types behave as "here"
+
+  return $self->args( @_ );
 }
 
 ### HTML HOLD ### CONTAINS PREPROCESSING CHUNKS OF HTML ######################
@@ -374,15 +256,16 @@ sub html_hold_set
 sub html_hold_get
 {
   my $self = shift;
-  my $name = shift;
+  my $name = lc shift;
 
+  return undef unless exists $self->{ 'HTML_HOLD' }{ $name };
   return $self->{ 'HTML_HOLD' }{ $name };
 }
 
 sub html_hold_del
 {
   my $self = shift;
-  my $name = shift;
+  my $name = lc shift;
 
   delete $self->{ 'HTML_HOLD' }{ $name };
 
@@ -393,7 +276,7 @@ sub html_hold_clear
 {
   my $self = shift;
 
-  $self->{ 'HTML_HOLD' } ||= {};
+  $self->{ 'HTML_HOLD' } = {};
 }
 
 sub html_hold_reset
@@ -407,13 +290,14 @@ sub html_hold_reset
 sub html_hold_kit_add
 {
   my $self = shift;
-  my $name = shift;
+  my $name = lc shift;
   my $text = shift;
 
-  $self->{ 'HTML_HOLD' } ||= {};
-  $self->{ 'HTML_HOLD' }{ $name }{ $text }++;
+  # kit snippets are collected in a separate hash, so each unique snippet is
+  # emitted once; the joined text goes into the hold under the same (lc) name
+  $self->{ 'HTML_HOLD_KIT' }{ $name }{ $text }++;
 
-  $self->html_hold_set( $name, join '', keys %{ $self->{ 'HTML_CONTENT' }{ $name } } );
+  $self->html_hold_set( $name, join '', sort keys %{ $self->{ 'HTML_HOLD_KIT' }{ $name } } );
 }
 
 # <$kit_head> is assumed to be in the <head> section
@@ -433,38 +317,6 @@ sub html_hold_kit_css
 
   my $text = qq{ <link href="$css" rel="stylesheet" type="text/css"> };
   $self->html_hold_kit_add( "KIT_HEAD", $text );
-}
-
-##############################################################################
-
-sub render_action
-{
-  my $self   = shift;
-  my $action = shift;
-
-  $portray_data = $self->act->call( $action );
-
-  if( $portray_data->{ 'TYPE' } eq 'text/html' )
-    {
-    $portray_data->{ 'TYPE' } = $self->pre->preprocess( $portray_data->{ 'TYPE' } );
-    }
-
-  return $self->render( $portray_data );
-}
-
-sub render_page
-{
-  my $self = shift;
-  my $page = shift;
-
-  $portray_data = $self->pre->load_page( $page );
-
-  if( $portray_data->{ 'TYPE' } eq 'text/html' )
-    {
-    $portray_data->{ 'TYPE' } = $self->pre->preprocess( $portray_data->{ 'TYPE' } );
-    }
-
-  return $self->render( $portray_data );
 }
 
 ##############################################################################
@@ -499,7 +351,7 @@ sub load_trans
 {
   my $self = shift;
 
-  my $cfg = $self->get_cfg();
+  my $cfg = $self->cfg();
 
   my $lang = lc $cfg->{ 'LANG' };
 
@@ -511,6 +363,7 @@ sub load_trans
 
   my $tr = $self->{ 'TRANS' }{ $lang } = {};
 
+  # FIXME: TRANS_DIRS may be undef (dies on deref below) and TRANS_FILE may be undef (-e warns)
   my $trans_dirs = $cfg->{ 'TRANS_DIRS' };
   my $trans_file = $cfg->{ 'TRANS_FILE' };
 

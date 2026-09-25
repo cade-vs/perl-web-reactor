@@ -4,7 +4,7 @@
 ##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
 ##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##  http://cade.noxrun.com
-##  
+##
 ##  LICENSE: GPLv2
 ##  https://github.com/cade-vs/perl-web-reactor
 ##
@@ -28,66 +28,21 @@ use Data::Dumper;
 
 use parent 'Web::Reactor::Actions';
 
-# calls an action (function) by name
-# args:
-#       name   -- function/action name
-#       %args  -- array used as named hash arguments
-# args hash keys:
-#       ARGS   -- hash reference of attributes/arguments passed to the action
-# returns:
-#       result text to be replaced in output
-sub call
+sub __find_code_by_name
 {
-  my $self  = shift;
-
+  my $self = shift;
   my $name = lc shift;
-  my %args = @_;
 
-  my $reo = $self->get_reo();
-  
-  if( $name !~ /^[a-z_\-0-9]+$/ )
-    {
-    $reo->log( "error: invalid action name [$name] expected ALPHANUMERIC" );
-    return undef;
-    }
+  my $act_cache = $self->{ 'Web::Reactor::Actions::Alt' }{ 'CACHE' } ||= {};
 
-  my $cr = $self->__load_action_file( $name );
+  return $act_cache->{ $name } if exists $act_cache->{ $name };
 
-  if( ! $cr )
-    {
-    $reo->log( "error: cannot load action [$name]" );
-    return undef;
-    }
+  my $reo = $self->reo();
+  my $cfg = $self->cfg();
 
-  my $data;
-  
-  eval
-    {
-    $data = $cr->( $reo, %args );
-    };
-  if( $@ )  
-    {
-    $reo->log( "error: call alt action failed: $name(%args): $@" );
-    return undef;
-    }
-
-  return $data;
-}
-
-sub __load_action_file
-{
-  my $self  = shift;
-
-  my $name = shift;
-
-  my $reo = $self->get_reo();
-  my $cfg = $self->get_cfg();
-  
-  return $self->{ 'ACTIONS_CODE_CACHE' }{ $name } if exists $self->{ 'ACTIONS_CODE_CACHE' }{ $name };
-  
   my $dirs = $cfg->{ 'ACTIONS_DIRS' } || [ $cfg->{ 'APP_ROOT' } . '/actions' ];
   my $pkgs = $cfg->{ 'ACTIONS_PKGS' } || 'reactor::actions::';
-  
+
   my $found;
   for my $dir ( @$dirs )
     {
@@ -97,6 +52,7 @@ sub __load_action_file
     last;
     }
 
+  # TODO: cache for missing ones
   return undef unless $found;
 
   my $ap = $pkgs . $name;
@@ -107,20 +63,27 @@ sub __load_action_file
     require $found;
     };
 
-  if( ! $@ )  
+  if( ! $@ )
     {
     $reo->log_debug( "status: 1 load action ok: $ap [$found]" );
-    my $cr = $self->{ 'ACTIONS_CODE_CACHE' }{ $name } = \&{ "${ap}::main" }; # call/function reference
-    return $cr;
+    # file loaded but declares no main() (or a different package than ACTIONS_PKGS expects)
+    if( ! defined &{ "${ap}::main" } )
+      {
+      $reo->log( "error: action file [$found] loaded but package [$ap] has no main() sub, check ACTIONS_PKGS" );
+      return undef;
+      }
+    my $code = $act_cache->{ $name } = \&{ "${ap}::main" }; # call/function reference
+    return $code;
     }
-  elsif( $@ =~ /Can't locate $found/)
+  elsif( $@ =~ /Can't locate /)
     {
-    $reo->log( "error: action not found: $ap [$found]" );
+    # TODO: cache for missing ones
+    $reo->log( "error: action not found or cannot be resolved: $ap [$found]" );
     }
   else
     {
     $reo->log( "error: load action failed: $ap: $@ [$found]" );
-    }  
+    }
 
   return undef;
 }

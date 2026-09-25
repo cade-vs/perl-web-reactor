@@ -28,10 +28,10 @@ sub new
   $self->{ 'FILE_CACHE' } = {};
   $self->{ 'DIR_CACHE'  } = {};
 
-  my $cfg = $self->get_cfg();
+  my $cfg = $self->cfg();
 
   $cfg->{ 'HTML_DIRS' } = [ $cfg->{ 'HTML_DIRS' } ] if ! ref( $cfg->{ 'HTML_DIRS' } ) and $cfg->{ 'HTML_DIRS' };
-  $cfg->{ 'HTML_DIRS' } = [ $cfg->{ 'APP_ROOT' } . '/html/' ] if ! $cfg->{ 'HTML_DIRS' } or @{ $cfg->{ 'HTML_DIRS' } } < 1;
+  $cfg->{ 'HTML_DIRS' } = [ $self->reo->get_app_root() . '/html/' ] if ! $cfg->{ 'HTML_DIRS' } or @{ $cfg->{ 'HTML_DIRS' } } < 1;
 
   $cfg->{ 'HTML_DIRS' } = [ grep { -d } @{ $cfg->{ 'HTML_DIRS' } } ];
 
@@ -68,9 +68,9 @@ sub load_file
   boom "invalid page name, expected ALPHANUMERIC, got [$pn]" unless $pn =~ /^[a-zA-Z_\-0-9\/]+$/o;
   boom "invalid file name, expected ALPHANUMERIC, got [$fn]" unless $fn =~ /^[a-zA-Z_\-0-9]+$/o;
 
-  my $cfg = $self->get_cfg();
+  my $cfg = $self->cfg();
 
-  my $lang = $cfg->{ 'LANG' } || '*';
+  my $lang = $self->reo->get_lang() || 'default';
 
   if( exists $self->{ 'FILE_CACHE' }{ $lang }{ $pn }{ $fn } )
     {
@@ -97,7 +97,7 @@ sub load_file
       {
       for my $org ( @$orgs )
         {
-        for my $ln ( ( $lang ? ( $lang ) : () ), 'default' )
+        for my $ln ( ( $lang ne 'default' ? ( $lang ) : () ), 'default' )
           {
           push @dirs_try, "$org/$ln/" . join( '/', @pn );
           }
@@ -113,7 +113,7 @@ sub load_file
     $self->{ 'DIRS_CACHE' }{ $lang }{ $pn } = $dirs;
     }
 
-  my $reo = $self->get_reo();
+  my $reo = $self->reo();
 
   my $fname;
   for my $dir ( @$dirs )
@@ -155,7 +155,7 @@ sub process
 
 #print STDERR "DEBUG: PROCESS PAGE----------------------- [$pn]\n";
 
-  boom "too many nesting levels at page [$pn], probable bug in actions or page files" if (caller(128))[0] ne ''; # FIXME: config option for max level
+  boom "too many nesting levels at page [$pn], probable bug in actions or page files" if defined( (caller(128))[0] ); # FIXME: config option for max level
 
   $ctx = { %$ctx };
   $ctx->{ 'LEVEL' }++;
@@ -195,7 +195,7 @@ sub __process_tag
   die "preprocess loop detected, tag [$type$tag] path [$path]" if $ctx->{ 'SEEN:' . $type . $tag }++;
   die "empty or invalid tag" unless $tag =~ /^[a-zA-Z_\-0-9]+$/;
 
-  my $reo = $self->get_reo();
+  my $reo = $self->reo();
 
   $tag = lc $tag;
 
@@ -208,9 +208,7 @@ sub __process_tag
     }
   elsif( $type eq '$' )
     {
-    # FIXME: get content from reactor?
-    $text = undef unless exists $reo->{ 'HTML_CONTENT' }{ $tag };
-    $text = $reo->{ 'HTML_CONTENT' }{ $tag };
+    $text = $reo->html_hold_get( $tag );
     }
   elsif( $type eq '#' )
     {
@@ -240,7 +238,7 @@ sub __process_tag
     }
   else
     {
-    re_log( "debug: invalid tag: [$type$tag]" );
+    $reo->log( "debug: invalid tag: [$type$tag]" );
     }
 
 # print STDERR Dumper( 'PROCESS TEXT --- ' x 7, ( $pn, $text, $opt, $ctx ) );
@@ -264,7 +262,7 @@ sub __process_href
 
   my $data_hr = url2hash( $data );
 
-  my $reo = $self->get_reo();
+  my $reo = $self->reo();
 
   $type = 'new' if $attr eq 'src'; # images
 

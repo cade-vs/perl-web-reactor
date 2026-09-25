@@ -33,7 +33,7 @@ sub create_uniq_id
 {
   my $self = shift;
 
-  return $self->get_reo()->create_uniq_id( shift() );
+  return $self->reo()->create_uniq_id( shift() );
 }
 
 sub __check_ident
@@ -63,7 +63,7 @@ sub begin
 
   $method =~ /^(POST|GET)$/  or boom "METHOD can be either POST or GET";
 
-  my $reo = $self->get_reo();
+  my $reo = $self->reo();
 
   $name ||= $reo->create_uniq_id();
   $id   ||= $name . '.' . $reo->create_uniq_id();
@@ -156,7 +156,7 @@ sub end
 
 # FIXME: TODO: debug info inside html text, begin formname end etc.
 
-  my $reo = $self->get_reo();
+  my $reo = $self->reo();
   my $page_session = $reo->get_page_session();
 
   my $form_name = $self->{ 'FORM_NAME' };
@@ -275,7 +275,7 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
     $labels_spans .= html_element( 'span', $labels->[$s], style => "display: $display" );
     }
 
-  my $reo = $self->get_reo();
+  my $reo = $self->reo();
   my $hint_handler = $hint ? html_hover_layer( $reo, VALUE => $hint ) : undef;
 
   my $cb_id = $self->create_uniq_id(); # checkbox id
@@ -617,7 +617,7 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
   my $clear_tag;
   if( $clear )
     {
-    my $reo = $self->get_reo();
+    my $reo = $self->reo();
     my $clear_hint_handler = html_hover_layer( $reo, VALUE => 'Clear field' );
 
     if( $clear =~ /^[a-z_\-0-9\/]+\.(png|jpg|jpeg|gif|svg)$/ )
@@ -829,7 +829,7 @@ sub image_button_default
 
   my %opt = @_;
 
-  my $user_agent = $self->get_reo()->get_user_session_agent();
+  my $user_agent = $self->reo()->get_user_session_agent();
 
   my $default_class = 'hidden';
   $default_class = 'hidden2' if $user_agent =~ /MSIE|Safari/;

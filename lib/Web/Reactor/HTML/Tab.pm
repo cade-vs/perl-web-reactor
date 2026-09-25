@@ -35,7 +35,7 @@ sub new
 
   # FIXME: move as argument, not env option
   $self->__set_reo( $env{ 'REO_REACTOR' } );
-  my $reo = $self->get_reo();
+  my $reo = $self->reo();
 
   $self->{ 'TABS_LIST'         } = []; # contain tab IDs
   $self->{ 'TAB_CONTROLLER_ID' } = join '_', ( 'RE_TAB', $reo->get_page_session_id(), ( $env{ 'NAME' } || $reo->create_uniq_id() ) );
@@ -116,7 +116,7 @@ sub finish
 </DIV>
 };
 
-  my $reo = $self->get_reo();
+  my $reo = $self->reo();
   $reo->html_content_accumulator( 'ACCUMULATOR_HTML', $html );
 }
 

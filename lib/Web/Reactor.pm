@@ -11,6 +11,9 @@
 ##############################################################################
 package Web::Reactor;
 use strict;
+
+use parent 'Web::Reactor::Reflex';
+
 use Storable qw( dclone freeze thaw ); # FIXME: move to Data::Tools (data_freeze/data_thaw)
 use Plack::Request;
 use Cookie::Baker;
@@ -24,7 +27,7 @@ use Crypt::PRNG;
 use Web::Reactor::Utils;
 use Web::Reactor::HTML::Form;
 
-our $VERSION = '2.14';
+our $VERSION = '3.33';
 
 ##############################################################################
 
@@ -76,74 +79,23 @@ sub new
   my $cfg   = shift;
 
   $class = ref( $class ) || $class;
-  my $self = {};
-  bless $self, $class;
+  my $self = $class->SUPER::new( $env, $cfg );
 
-  $self->{ 'CFG' }                    = $cfg;
-  $self->{ 'CFG' }{ 'APP_CHARSET' } ||= 'UTF-8';
-  $self->{ 'IN'  }{ 'ENV'         }   = $env; # including headers
-  $self->{ 'IN'  }{ 'ENV'         }{ '_CLIENT_IP' } = $self->get_client_ip();
-
-  $self->log_debug( "\n\n\n\n\ninfo: *** BEGIN *** $self ***" . ( '*' x 64 ) ) if $self->is_debug();
-  $self->log_dumper( "debug: reactor[$self] setup (ENV & CFG): ", $env, $cfg ) if $self->is_debug() > 3;
-
-  $self->{ 'PLACK' } = Plack::Request->new( $env );
 
   # FIXME: verify %env content! Data::Validate::Struct
   boom "fatal: configuration: request scheme [HTTP] does not match cookies security policy! either enable HTTPS scheme or set DISABLE_SECURE_COOKIES=1"
       if $self->get_request_scheme() eq 'http' and ! $cfg->{ 'DISABLE_SECURE_COOKIES' };
 
-  data_tools_set_text_io_encoding( $self->{ 'CFG' }{ 'APP_CHARSET' } );
-
-  # FIXME: common directories setup code?
-  $cfg->{ 'LIB_DIRS' } = [ $cfg->{ 'LIB_DIRS' } ] if ! ref( $cfg->{ 'LIB_DIRS' } ) and $cfg->{ 'LIB_DIRS' };
-  $cfg->{ 'LIB_DIRS' } = [ $cfg->{ 'APP_ROOT' } . '/lib/' ] if ! $cfg->{ 'LIB_DIRS' } or @{ $cfg->{ 'LIB_DIRS' } } < 1;
-
-  for my $lib_dir ( @{ $cfg->{ 'LIB_DIRS' } || [] } )
-    {
-    next unless -d $lib_dir;
-    push @INC, $lib_dir;
-    }
-
-  @INC = grep { $_ ne '.' } @INC;
-
-  $self->__attach_all_modules();
-
   return $self;
 }
 
-sub __attach_all_modules
+### FUNC PLUGS ###############################################################
+
+sub ses
 {
   my $self = shift;
 
-  $self->__attach_module( 'SES', 'Web::Reactor::Sessions::Filesystem' );
-  $self->__attach_module( 'PRE', 'Web::Reactor::Preprocessor::Native' );
-  $self->__attach_module( 'ACT', 'Web::Reactor::Actions::Native'      );
-
-  return 1;
-}
-
-sub __attach_module
-{
-  my $self = shift;
-  my $key  = shift;
-  my $mod  = shift;
-
-  my $cfg = $self->get_cfg();
-
-  my $reo_class = $cfg->{ "REO_${key}_CLASS" } ||= $mod;
-  my $reo_class_file = perl_package_to_file( $reo_class );
-  require $reo_class_file;
-  $self->{ "REO_${key}" } = $reo_class->new( $self, $cfg );
-
-  return 1;
-}
-
-sub DESTROY
-{
-  my $self = shift;
-
-  $self->log_debug( "info: *** END *** $self ***" . ( '*' x 64 ) . "\n\n\n\n\n" ) if $self->is_debug();
+  return $self->{ "REO_SES" } ||= $self->__attach_module( 'SES', 'Web::Reactor::Sessions::Filesystem' );
 }
 
 ##############################################################################
@@ -212,7 +164,7 @@ sub prepare_and_execute
   my $args = @_;
   my %args = @_;
 
-  my $cfg = $self->get_cfg();
+  my $cfg = $self->cfg();
 
   # 0. load/setup env/config defaults
   my $app_name = $cfg->{ 'APP_NAME' } or boom( "missing APP_NAME" );
@@ -491,7 +443,7 @@ sub __create_new_user_session
   my $user_sid;
   my $user_shr;
 
-  my $cfg = $self->get_cfg();
+  my $cfg = $self->cfg();
 
 # ROTATION REMOVED #   # FIXME: move to function
 # ROTATION REMOVED #   my $app_name = $cfg->{ 'APP_NAME' } or boom( "missing APP_NAME" );
@@ -534,7 +486,7 @@ sub __set_user_session_cookie
   my $self     = shift;
   my $user_sid = shift;
 
-  my $cfg = $self->get_cfg();
+  my $cfg = $self->cfg();
 
   my $app_name    = $cfg->{ 'APP_NAME' } or boom( "missing APP_NAME" );
   my $cookie_name = lc( $cfg->{ 'COOKIE_NAME' } || "$app_name\_cookie" );
@@ -602,7 +554,7 @@ sub get_postdata_body
   return <$fh>;
 }
 
-sub get_cfg
+sub cfg
 {
   my $self = shift;
 
@@ -827,21 +779,21 @@ sub get_lang
 {
   my $self  = shift;
 
-  return $self->get_cfg->{ 'LANG' };
+  return $self->cfg->{ 'LANG' };
 }
 
 sub get_app_name
 {
   my $self  = shift;
 
-  return $self->get_cfg->{ 'APP_NAME' };
+  return $self->cfg->{ 'APP_NAME' };
 }
 
 sub get_app_root
 {
   my $self  = shift;
 
-  return $self->get_cfg->{ 'APP_ROOT' };
+  return $self->cfg->{ 'APP_ROOT' };
 }
 
 sub args
@@ -1157,9 +1109,11 @@ sub __rsa_object
 
   return $self->{ 'RSAO' } if exists $self->{ 'RSAO' };
 
-  require Crypt::PK::RSA;
-  my $pub_key = $self->get_cfg()->{ 'RSA_PUB_KEY' }; # file name or if reference, the actual pem data
-  my $pub = Crypt::PK::RSA->new( $pub_key );
+  eval { require Data::Tool::Crypto::RSA; };
+  boom( "error: require Data::Tool::Crypto::RSA [$@]" ) if $@;
+
+  my $pub_key = $self->cfg()->{ 'RSA_PUB_KEY' }; # file name or, if reference, the actual pem data
+  my $pub = Data::Tool::Crypto::RSA->new( $pub_key );
   $self->{ 'RSAO' } = $pub;
 
   return $pub;
@@ -1169,121 +1123,11 @@ sub rsa_pub_encrypt
 {
   my $self = shift;
 
-  return encode_base64( $self->__rsa_object()->encrypt( $_[0], 'oaep', 'SHA256' ) );
+  return $self->__rsa_object()->encrypt_base64url( $_[0] );
 }
 
 ## FIXME: move most to Data::Tools or separate module
 
-sub __crypto_object
-{
-  my $self = shift;
-
-  return ( $self->{ 'CRYO' }, $self->{ 'CRYO_KEY' }, $self->{ 'CRYO_IVS' } ) if exists $self->{ 'CRYO' }; # crypto object
-
-  my $cfg = $self->get_cfg();
-
-  my $ci = $cfg->{ 'ENCRYPT_CIPHER' } || 'AES';
-
-  my $cryo = $self->{ 'CRYO' } = Crypt::Mode::CBC->new( $ci );
-
-
-  # FIXME: read key from config file only!
-  my $key = $cfg->{ 'ENCRYPT_KEY' };
-  boom( "missing key in ENV:ENCRYPT_KEY" ) unless $key =~ /\S/;
-
-  my $kl = length( $key );
-  my $il = Crypt::Cipher::min_keysize( $ci );
-  my $xl = Crypt::Cipher::max_keysize( $ci );
-  boom( "invalid key size in ENV:ENCRYPT_KEY got [$kl] expected between [$il] and [$xl]" ) unless $kl >= $il and $kl <= $xl;
-
-  $self->{ 'CRYO_KEY' } = $key;
-  $self->{ 'CRYO_IVS' } = Crypt::Cipher::blocksize( $ci ); # iv size
-
-  return ( $self->{ 'CRYO' }, $self->{ 'CRYO_KEY' }, $self->{ 'CRYO_IVS' } );
-}
-
-sub encrypt
-{
-  my $self = shift;
-  my $data = shift;
-
-  my ( $cryo, $key, $ivs ) = $self->__crypto_object();
-
-  my $iv = Crypt::PRNG::random_bytes( $ivs );
-
-  return $iv . $cryo->encrypt( $data, $key, $iv );
-}
-
-sub decrypt
-{
-  my $self = shift;
-  my $data = shift;
-
-  my ( $cryo, $key, $ivs ) = $self->__crypto_object();
-
-  my $iv = substr( $data, 0, $ivs );
-  return $cryo->decrypt( substr( $data, $ivs ), $key, $iv );
-}
-
-sub encrypt_hex
-{
-  my $self = shift;
-
-  return str_hex( $self->encrypt( @_ ) );
-}
-
-sub decrypt_hex
-{
-  my $self = shift;
-
-  return $self->decrypt( str_unhex( @_ ) );
-}
-
-sub crypto_freeze_hex
-{
-  my $self = shift;
-  my $data = shift; # reference to any data/scalar/hash/array
-
-  return $self->encrypt_hex( freeze( $data ) );
-}
-
-sub crypto_thaw_hex
-{
-  my $self = shift;
-  my $data = shift; # hex encoded data
-
-  return thaw( $self->decrypt_hex( $data ) );
-}
-
-sub encrypt_base64u
-{
-  my $self = shift;
-
-  return MIME::Base64::encode_base64url( $self->encrypt( @_ ) );
-}
-
-sub decrypt_base64u
-{
-  my $self = shift;
-
-  return $self->decrypt( MIME::Base64::decode_base64url( @_ ) );
-}
-
-sub crypto_freeze_base64u
-{
-  my $self = shift;
-  my $data = shift; # reference to any data/scalar/hash/array
-
-  return $self->encrypt_base64u( freeze( $data ) );
-}
-
-sub crypto_thaw_base64u
-{
-  my $self = shift;
-  my $data = shift; # base64u encoded data
-
-  return thaw( $self->decrypt_base64u( $data ) );
-}
 
 ##############################################################################
 
@@ -1292,14 +1136,14 @@ sub set_debug
   my $self  = shift;
   my $level = abs(int(shift));
 
-  return $self->get_cfg->{ 'DEBUG' } = $level;
+  return $self->cfg->{ 'DEBUG' } = $level;
 }
 
 sub is_debug
 {
   my $self = shift;
 
-  return $self->get_cfg->{ 'DEBUG' } || 0;
+  return $self->cfg->{ 'DEBUG' } || 0;
 }
 
 #-----------------------------------------------------------------------------
@@ -1547,10 +1391,10 @@ sub render
     }
 
   # handling Content Security Policy (CSP) -- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
-  my $http_csp = $self->get_cfg->{ 'HTTP_CSP' }; # || " default-src 'self' ";
+  my $http_csp = $self->cfg->{ 'HTTP_CSP' }; # || " default-src 'self' ";
   $self->res_set_headers( 'Content-Security-Policy' => $http_csp ) if $http_csp;
 
-  my $app_charset = uc $self->get_cfg->{ 'APP_CHARSET' } || 'UTF-8';
+  my $app_charset = uc $self->cfg->{ 'APP_CHARSET' } || 'UTF-8';
 
   my $page_type_is_text = $page_type =~ /^text\//i;
   if( $page_type_is_text )
@@ -1575,7 +1419,7 @@ sub render
 
     # FIXME: translation
     $self->load_trans();
-    my $tr = $self->{ 'TRANS' }{ $self->get_cfg->{ 'LANG' } } || {};
+    my $tr = $self->{ 'TRANS' }{ $self->cfg->{ 'LANG' } } || {};
     $page_data =~ s/\<~([^\<\>]*)\>/$tr->{ $1 } || $1/ge;
     $page_data =~ s/\[~([^\[\]]*)\]/$tr->{ $1 } || $1/ge;
 
@@ -1952,7 +1796,7 @@ sub load_trans
 {
   my $self = shift;
 
-  my $cfg = $self->get_cfg();
+  my $cfg = $self->cfg();
 
   my $lang = lc $cfg->{ 'LANG' };
 
@@ -2043,7 +1887,7 @@ sub create_uniq_id
   my $self = shift;
   my $case = shift;
 
-  my $cfg = $self->get_cfg();
+  my $cfg = $self->cfg();
   my $let = $cfg->{ 'SESS_LETTERS' } || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
   my $nid;

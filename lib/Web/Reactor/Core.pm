@@ -24,7 +24,7 @@ use Exception::Sink;
 use Data::Dumper;
 use Encode;
 
-our $VERSION = '3.14';
+our $VERSION = '3.33';
 
 
 ##############################################################################
@@ -38,15 +38,13 @@ sub new
   die "expected first  argument to be ENV hash reference" unless ref $env eq 'HASH';
   die "expected second argument to be CFG hash reference" unless ref $cfg eq 'HASH';
 
-  srand();
-
   $class = ref( $class ) || $class;
   my $self = {};
   bless $self, $class;
 
   $self->{ 'CFG' }                    = dclone( $cfg );
   $self->{ 'CFG' }{ 'CHARSET' }       = 'UTF-8'; # force UTF-8 always
-  $self->{ 'IN'  }{ 'ENV'         }   = $env; # including headers
+  $self->{ 'IN'  }{ 'ENV'         }   = $env = { %$env }; # including headers
   $self->{ 'IN'  }{ 'ENV'         }{ ':CLIENT_IP' } = $self->get_client_ip(); # this is always end-point client browser IP, reglardless of claudflare proxy etc.
 
   $self->set_debug( $cfg->{ 'DEBUG' } );
@@ -55,6 +53,8 @@ sub new
   $self->log_dumper( "debug: *** BEGIN *** obj [$self] *** setup (ENV & CFG): ", $env, $cfg ) if $self->is_debug() > 3;
 
   $self->{ 'PLACK' } = Plack::Request->new( $env );
+
+  srand();
 
   return $self;
 }
@@ -86,6 +86,8 @@ sub run
     $body = [ $body ] unless ref $body;
     $res = [ $status, $headers, $body ];
     }
+  # NOTE: failures below answer with HTTP 200 on purpose for now, so proxies and
+  #       caches do not replace the message; consider 500/503 for monitoring later
   elsif( surface( '*' ) )
     {
     $self->log( "error: prepare or execute code failed: $@" );
@@ -114,7 +116,7 @@ sub process_request
 sub set_debug
 {
   my $self  = shift;
-  my $level = abs(int(shift));
+  my $level = abs(int(shift // 0));
 
   return $self->{ 'DEBUG' } = $level;
 }
@@ -136,7 +138,7 @@ sub inc_debug
 
 ### GET HELPERS ##############################################################
 
-sub get_cfg
+sub cfg
 {
   my $self = shift;
 
@@ -150,7 +152,7 @@ sub plack
   return ( $self->{ 'PLACK' } || die "missing PLACK object" );
 }
 
-sub get_http_env
+sub env
 {
   my $self  = shift;
 
@@ -163,11 +165,14 @@ sub get_client_ip
 {
   my $self  = shift;
 
-  my $env = $self->get_http_env();
+  my $cfg = $self->cfg();
+  my $env = $self->env();
 
   my $client_ip;
 
-  $client_ip ||= $env->{ $_ } for qw( HTTP_CF_CONNECTING_IP HTTP_X_REAL_IP REMOTE_ADDR );
+  $client_ip ||= $env->{ 'HTTP_CF_CONNECTING_IP' } if $cfg->{ 'CLOUDFLARE'   };
+  $client_ip ||= $env->{ 'HTTP_X_REAL_IP'        } if $cfg->{ 'PROXY_REMOTE' };
+  $client_ip ||= $env->{ 'REMOTE_ADDR' };
 
   return $client_ip;
 }
@@ -176,7 +181,9 @@ sub get_request_scheme
 {
   my $self   = shift;
 
-  return $self->{ 'IN' }{ 'ENV' }{ 'REQUEST_SCHEME' };
+  # REQUEST_SCHEME is CGI/Apache only, PSGI guarantees psgi.url_scheme instead
+  my $env = $self->{ 'IN' }{ 'ENV' };
+  return lc( $env->{ 'REQUEST_SCHEME' } || $env->{ 'psgi.url_scheme' } );
 }
 
 sub get_request_uri
@@ -220,7 +227,7 @@ sub get_headers
 sub get_header
 {
   my $self = shift;
-  my $name = shift;
+  my $name = lc shift;
 
   return $self->get_headers->{ $name };
 }
@@ -250,32 +257,32 @@ sub get_safe_input
   return $self->{ 'SAFE_INPUT_HR' } ||= $self->__import_safe_input();
 }
 
-sub get_client_input
+sub get_user_input
 {
   my $self  = shift;
 
-  return $self->{ 'CLIENT_INPUT_HR'  } ||= $self->__import_client_input();
+  return $self->{ 'USER_INPUT_HR'  } ||= $self->__import_user_input();
 }
 
-sub get_client_uploads
+sub get_user_uploads
 {
   my $self  = shift;
 
-  return $self->{ 'CLIENT_UPLOADS_HR'  } ||= $self->__import_client_uploads();
+  return $self->{ 'USER_UPLOADS_HR'  } ||= $self->__import_user_uploads();
 }
 
-sub get_client_postdata_fh
+sub get_user_postdata_fh
 {
   my $self = shift;
 
   return $self->plack()->body();
 }
 
-sub get_client_postdata_body
+sub get_user_postdata_body
 {
   my $self = shift;
 
-  my $fh = $self->get_client_postdata_fh();
+  my $fh = $self->get_user_postdata_fh();
 
   local $/ = undef;
   return <$fh>;
@@ -368,9 +375,10 @@ sub res_get_headers_ar
     push @ho, $k, $ho->{ $k };
     }
 
-  while( my ( $k, $v ) = each %{ $self->{ 'OUT' }{ 'COOKIES' } || {} } )
+  my $cookies = $self->{ 'OUT' }{ 'COOKIES' } || {};
+  for my $k ( keys %$cookies )
     {
-    push @ho, 'set-cookie', $v;
+    push @ho, 'set-cookie', $cookies->{ $k };
     }
 
   $self->log_dumper( 'RESULT HEADERS---------------------------------', \@ho );
@@ -410,11 +418,11 @@ sub res_get_body
 
 ### INTERNAL API: IMPORT INPUT DATA & UPLOADS ################################
 
-sub __import_client_input
+sub __import_user_input
 {
   my $self = shift;
 
-  my $input_client_hr = {};
+  my $input_user_hr = {};
 
   my $params = $self->plack()->parameters(); # input parameters, GET + POST
   my %params; # preprocessed parameters
@@ -441,17 +449,17 @@ sub __import_client_input
 
     if( @v > 1 )
       {
-      $input_client_hr->{ '@' . $n } = \@v;
+      $input_user_hr->{ '@' . $n } = \@v;
       }
     else
       {
-      $input_client_hr->{ $n } = $v[0];
+      $input_user_hr->{ $n } = $v[0];
       }
 
     $self->log_debug( "debug: input param [$n] value [$v[0]] array [@v]" );
     }
 
-  return $input_client_hr;
+  return $input_user_hr;
 }
 
 sub __import_safe_input
@@ -461,7 +469,7 @@ sub __import_safe_input
   return {}; # not implemented in base
 }
 
-sub __import_client_uploads
+sub __import_user_uploads
 {
   my $self = shift;
 
@@ -605,7 +613,7 @@ sub render
     }
 
   # handling Content Security Policy (CSP) -- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
-  my $http_csp = $self->get_cfg->{ 'HTTP_CSP' }; # || " default-src 'self' ";
+  my $http_csp = $self->cfg->{ 'HTTP_CSP' }; # || " default-src 'self' ";
   $self->res_set_headers( 'Content-Security-Policy' => $http_csp ) if $http_csp;
 
   my $page_type_is_text = $page_type =~ /^text\//i;
@@ -648,7 +656,7 @@ sub portray
 
   $type = $SIMPLE_PORTRAY_TYPE_MAP{ $type } || $type;
 
-  boom "portray needs mime type xxx/xxx as arg 2, got [$type]" unless $type =~ /^[a-z\-_0-9]+\/[a-z\-_0-9\.]+$/;
+  boom "portray needs mime type xxx/xxx as arg 2, got [$type]" unless $type =~ /^[a-z\-_0-9]+\/[a-z\-_0-9\.\+]+$/;
 
   return { DATA => $data, TYPE => $type, @_ };
 }
@@ -662,7 +670,7 @@ sub forward_url
 
   # FIXME: use render+portray
   $self->res_set_headers( status => 302, location => $url );
-  $self->res_set_body();
+  $self->res_set_body( '' );
 
   sink 'RENDER';
 }

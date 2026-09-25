@@ -4,7 +4,7 @@
 ##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
 ##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##  http://cade.noxrun.com
-##  
+##
 ##  LICENSE: GPLv2
 ##  https://github.com/cade-vs/perl-web-reactor
 ##
@@ -17,77 +17,20 @@ use Data::Dumper;
 
 use parent 'Web::Reactor::Actions';
 
-# calls an action (function) by name
-# args:
-#       name   -- function/action name
-#       %args  -- array used as named hash arguments
-# args hash keys:
-#       ARGS   -- hash reference of attributes/arguments passed to the action
-# returns:
-#       result text to be replaced in output
-sub call
+sub __find_code_by_name
 {
-  my $self  = shift;
-
+  my $self = shift;
   my $name = lc shift;
-  my %args = @_;
 
+  my $act_cache = $self->{ 'Web::Reactor::Actions::Native' }{ 'CACHE' } ||= {};
 
-  die "invalid action name, expected ALPHANUMERIC, got [$name]" unless $name =~ /^[a-z_\-0-9]+$/;
-
-  my $ap = $self->__find_act_pkg( $name );
-
-#  print STDERR Dumper( $name, $ap, \%args );
-
-  if( ! $ap )
-    {
-    boom "action package for action name [$name] not found";
-    return undef;
-    }
-
-  # FIXME: move to global error/log reporting
-  #print STDERR "reactor::actions::call [$name] action package found [$ap]\n";
-
-
-  my $data;
-  
-  eval
-    {
-    my $cr = \&{ "${ap}::main" }; # call/function reference
-    $data = $cr->( $self->get_reo(), %args );
-    };
-  if( $@ )  
-    {
-    my $reo = $self->get_reo();
-    $reo->log( "error: call native action failed: $ap(%args): $@" );
-    return undef;
-    }
-
-  # print STDERR "reactor::actions::call result: $data\n";
-
-  return $data;
-}
-
-sub __find_act_pkg
-{
-  my $self  = shift;
-
-  my $name = lc shift;
-  
-  my $act_cache = $self->{ 'ACT_PKG_CACHE' };
-  
   return $act_cache->{ $name } if exists $act_cache->{ $name };
 
-  my $cfg = $self->get_cfg();
+  my $reo = $self->reo();
+  my $cfg = $self->cfg();
 
   my $app_name = lc $cfg->{ 'APP_NAME' };
-  my $dirs     =    $cfg->{ 'LIB_DIRS' } || [];
-  if( @$dirs == 0 )
-    {
-    my $app_root = $cfg->{ 'APP_ROOT' };
-    boom "missing APP_ROOT" unless -d $app_root; # FIXME: function? get_app_root()
-    $dirs = [ "$app_root/lib" ]; # FIXME: 'act' actions ?
-    }
+  # action packages are found via require() through @INC, LIB_DIRS are pushed there by the reactor constructor
 
   # actions sets list
   my @asl = @{ $cfg->{ 'ACTIONS_SETS' } || [] };
@@ -106,20 +49,29 @@ sub __find_act_pkg
       {
       require $fn;
       };
-    if( ! $@ )  
+    if( ! $@ )
       {
+      # package loaded but has no main(): a reference to an undefined sub would
+      # only fail later inside call() with a generic "Undefined subroutine"
+      if( ! defined &{ "${ap}::main" } )
+        {
+        $reo->log( "error: action package [$ap] loaded from [$fn] but has no main() sub" );
+        return undef;
+        }
+      my $code = $act_cache->{ $name } = \&{ "${ap}::main" }; # call/function reference
+
       #print STDERR "LOADED! action: $ap: $fn\n";
-      $act_cache->{ $name } = $ap;
-      return $ap;
+      return $code;
       }
-    elsif( $@ =~ /Can't locate $fn/)
+    elsif( $@ =~ /Can't locate /)
       {
-      #print STDERR "NOT FOUND: action: $ap: $fn\n"; #  [@INC] 
+      # TODO: cache for missing ones
+      $reo->log( "error: action not found or cannot be resolved: $ap [$fn]" );
       }
     else
       {
-      print STDERR "ERROR LOADING: action: $ap: $@\n";
-      }  
+      $reo->log( "error: load action failed: $ap: $@ [$fn]" );
+      }
   }
 
   return undef;

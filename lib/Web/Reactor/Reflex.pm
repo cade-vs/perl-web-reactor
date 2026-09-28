@@ -18,6 +18,9 @@ use Data::Tools 1.24;
 use Exception::Sink;
 use Data::Dumper;
 
+use Web::Reactor::Actions;
+use Web::Reactor::Preprocessor;
+
 our $VERSION = '3.33';
 
 ##############################################################################
@@ -32,23 +35,13 @@ sub new
   my $self = $class->SUPER::new( $env, $cfg );
 
   $cfg = $self->cfg();
-  $env = $self->env();
+  # $env = $self->env();
 
   data_tools_set_text_io_encoding( 'UTF-8' );
 
-  # FIXME: common directories setup code?
-  $cfg->{ 'LIB_DIRS' } = [ $cfg->{ 'LIB_DIRS' } ] if ! ref( $cfg->{ 'LIB_DIRS' } ) and $cfg->{ 'LIB_DIRS' };
-  $cfg->{ 'LIB_DIRS' } = [ $cfg->{ 'APP_ROOT' } . '/lib/' ] if ! $cfg->{ 'LIB_DIRS' } or @{ $cfg->{ 'LIB_DIRS' } } < 1;
-
-  for my $lib_dir ( @{ $cfg->{ 'LIB_DIRS' } || [] } )
-    {
-    next unless -d $lib_dir;
-    next if grep { $_ eq $lib_dir } @INC; # persistent servers call new() per request
-    push @INC, $lib_dir;
-    }
-
-  @INC = grep { $_ ne '.' } @INC;
-
+  boom "invalid APP_NAME [$cfg->{ 'APP_NAME' }]" unless    $cfg->{ 'APP_NAME' } =~ /^[a-z_0-9]+$/;
+  boom "invalid LANG     [$cfg->{ 'LANG' }]"     unless    $cfg->{ 'LANG' }     =~ /^([a-z][a-z])?$/;
+  boom "invalid APP_ROOT [$cfg->{ 'APP_ROOT' }]" unless -d $cfg->{ 'APP_ROOT' };
 
   return $self;
 }
@@ -74,21 +67,26 @@ sub act
 {
   my $self = shift;
 
-  return $self->{ "REO_ACT" } ||= $self->__load_and_attach_module( 'ACT', 'Web::Reactor::Actions::Native', $self, $self->cfg() );
+  return $self->{ "REO_ACT" } ||= $self->__load_and_attach_module( 'ACT', 'Web::Reactor::Actions::Files', $self, $self->cfg() );
 }
 
 sub pre
 {
   my $self = shift;
 
-  return $self->{ "REO_PRE" } ||= $self->__load_and_attach_module( 'PRE', 'Web::Reactor::Preprocessor::Native', $self, $self->cfg() );
+  return $self->{ "REO_PRE" } ||= $self->__load_and_attach_module( 'PRE', 'Web::Reactor::Preprocessor::Tree', $self, $self->cfg() );
 }
 
 sub cry
 {
   my $self = shift;
 
-  return $self->{ "REO_CRY" } ||= $self->__load_and_attach_module( 'CRY', 'Data::Tools::Crypto::Symmetric', $self->cfg->{ 'CRY_KEY' } );
+  return $self->{ "REO_CRY" } if exists $self->{ "REO_CRY" };
+
+  my $key = $self->cfg->{ 'CRY_KEY' };
+  boom "symmetric encryption requested but configuration does not have CRY_KEY in it" unless $key;
+
+  return $self->{ "REO_CRY" } = $self->__load_and_attach_module( 'CRY', 'Data::Tools::Crypto::Symmetric', $key );
 }
 
 ##############################################################################
@@ -99,19 +97,17 @@ sub process_request
   my $args = @_ / 2; # count of arg pairs
   my %args = @_;
 
-  my $cfg = $self->cfg();
-
-  my $app_name = $cfg->{ 'APP_NAME' } or boom( "missing APP_NAME" );
-
   my $user_input_hr = $self->get_user_input();
   my $safe_input_hr = $self->get_safe_input();
 
+  # TODO/FIXME: the name checks below instantiate act() and pre() on every request,
+  #             even when only one of them will be used; cheap after the first
+  #             call but no longer lazy. consider class-level check functions.
   my $action_name = lc( $safe_input_hr->{ '_AN' } || $user_input_hr->{ '_AN' } );
-  boom "invalid action name [$action_name]" unless $action_name =~ /^[a-z0-9_]*$/;
+  $self->act->check_action_name( $action_name ) if $action_name;
 
   my $page_name = lc( $safe_input_hr->{ '_PN' } || $user_input_hr->{ '_PN' } );
-  # TODO: "/" is allowed here but Preprocessor::Native rejects it, only Extended accepts paths; align them
-  boom "invalid page name [$page_name]" unless $page_name =~ /^[a-z0-9_\-\/]*$/;
+  $self->pre->check_page_name( $page_name ) if $page_name;
 
   if( $action_name )
     {
@@ -138,7 +134,7 @@ sub render_action
 
   if( $portray_data->{ 'TYPE' } eq 'text/html' )
     {
-    $portray_data->{ 'DATA' } = $self->pre->process( '*', $portray_data->{ 'DATA' } );
+    $portray_data->{ 'DATA' } = $self->pre->process( undef, $portray_data->{ 'DATA' } );
     }
 
   return $self->render( $portray_data );
@@ -184,7 +180,7 @@ sub get_lang
 {
   my $self  = shift;
 
-  return lc $self->cfg->{ 'LANG' };
+  return $self->cfg->{ 'LANG' };
 }
 
 sub get_app_name
@@ -208,11 +204,11 @@ sub __import_safe_input
   my $self = shift;
 
   my $user_input_hr = $self->get_user_input();
-  my $x = $user_input_hr->{ '_' } or return {};
-  return {} unless $x =~ s/^~//;
+  my $x = $user_input_hr->{ '__' } or return {};
+  ### return {} unless $x =~ s/^~//;
 
   my $hr = $self->cry->thaw_base64url( $x );
-  $self->log( "error: invalid or tampered safe input token, ignored" ) unless $hr;
+  $self->log( "error: invalid or tampered encrypted safe input token, ignored" ) unless $hr;
   return $hr || {};
 }
 
@@ -355,7 +351,7 @@ sub load_trans
 
   my $lang = lc $cfg->{ 'LANG' };
 
-  return 0 if $lang !~ /^[a-z][a-z]$/; # FIXME: move to init check! verofy hash etc. data::tools
+  return 0 if $lang !~ /^[a-z][a-z]$/; # FIXME: move to init check! verify hash etc. data::tools
 
   $self->{ 'TRANS' }{ 'LANG' } = $lang;
 
@@ -422,7 +418,263 @@ sub set_browser_window_title
 
 =pod
 
-   pod here
+=head1 NAME
+
+Web::Reactor::Reflex - stateless web application machinery
+
+=head1 SYNOPSIS
+
+  package Web::Reactor::MyApp;
+  use parent 'Web::Reactor::Reflex';
+
+  # app.psgi
+  my %cfg = (
+            APP_NAME => 'myapp',
+            APP_ROOT => '/opt/myapp',   # html/ and actions/ live here
+            LANG     => 'en',
+            CRY_KEY  => $secret,        # symmetric key for link arguments
+            );
+
+  my $app = sub { Web::Reactor::MyApp->new( $_[0], \%cfg )->run() };
+
+=head1 DESCRIPTION
+
+Web::Reactor::Reflex is the stateless layer of Web::Reactor. It sits on top of
+Web::Reactor::Core, which handles the PSGI request and response, and adds
+everything needed to serve pages and run actions without any server side
+session storage:
+
+=over 4
+
+=item * page rendering through a pluggable preprocessor (templates, includes,
+action calls inside templates, link rewriting)
+
+=item * action dispatch through a pluggable action loader
+
+=item * safe (tamper proof) link arguments, carried inside the URL as an
+encrypted token instead of a session key
+
+=item * a per request "HTML hold" of named text chunks that templates refer to
+
+=back
+
+Application classes must live under the C<Web::Reactor::> namespace, this is
+checked by the plug modules when they attach to the reactor.
+
+Web::Reactor (the stateful, session based reactor) inherits from this class.
+
+=head1 REQUEST FLOW
+
+C<run()> (inherited from Core) calls C<process_request()>, which:
+
+=over 4
+
+=item 1. reads user input (GET/POST parameters) and safe input (the decrypted
+C<_> token, if any)
+
+=item 2. takes the action name from C<_AN> and the page name from C<_PN>, safe
+input first, user input second, and validates them through the plugs
+
+=item 3. calls C<render_action( $name )> if an action name is present,
+otherwise C<render_page( $name || 'main' )>
+
+=back
+
+Both render helpers hand their output to Core's C<render()>, which sinks
+C<RENDER> and returns the PSGI response.
+
+=head1 URL PARAMETERS
+
+=over 4
+
+=item C<_AN>  action name, C<[a-z0-9_]>, case insensitive
+
+=item C<_PN>  page name, C<[a-z0-9_-]> with optional C</> separated path,
+case insensitive, defaults to C<main>
+
+=item C<_>    safe input token produced by C<args()>: C<~> followed by the
+encrypted, base64url encoded hash of arguments. Values found here override
+the same names from user input. An invalid or tampered token is logged and
+ignored.
+
+=back
+
+=head1 CONFIG ENTRIES
+
+Validated in C<new()>:
+
+=over 4
+
+=item C<APP_NAME>   required, C<[a-z0-9_]>, also the default action set name
+
+=item C<APP_ROOT>   required, existing directory, base for the defaults below
+
+=item C<LANG>       required, two lowercase letters, selects the C<html/E<lt>langE<gt>>
+tree and the translation files
+
+=back
+
+Used by the plugs:
+
+=over 4
+
+=item C<CRY_KEY>       symmetric key for C<args()> and safe input, required if
+any link arguments or forwards are used
+
+=item C<HTML_DIRS>     list (or single string) of template roots, default
+C<APP_ROOT/html>; see Web::Reactor::Preprocessor::Tree for the layout
+
+=item C<ACTIONS_DIRS>  list of action file directories, default
+C<APP_ROOT/actions> (Web::Reactor::Actions::Files)
+
+=item C<ACTIONS_PKGS>  package prefix for action files, default
+C<reactor::actions::> (Web::Reactor::Actions::Files)
+
+=item C<LIB_DIRS>      extra directories pushed to C<@INC>, default
+C<APP_ROOT/lib> (Web::Reactor::Actions::Packages)
+
+=item C<ACTIONS_SETS>  action set search order, default C<( APP_NAME, Base, Core )>
+(Web::Reactor::Actions::Packages)
+
+=item C<REO_ACT_CLASS> action loader class, default C<Web::Reactor::Actions::Files>
+
+=item C<REO_PRE_CLASS> preprocessor class, default C<Web::Reactor::Preprocessor::Tree>
+
+=item C<REO_CRY_CLASS> cipher class, default C<Data::Tools::Crypto::Symmetric>
+
+=item C<TRANS_DIRS>, C<TRANS_FILE>  translation sources for C<load_trans()>
+
+=back
+
+Inherited from Core: C<DEBUG>, C<HTTP_CSP>, C<CLOUDFLARE>, C<PROXY_REMOTE>.
+
+=head1 METHODS
+
+=head2 Plugs
+
+=over 4
+
+=item C<act()>  the action loader object, created on first use
+
+=item C<pre()>  the preprocessor object, created on first use
+
+=item C<cry()>  the cipher object, created on first use
+
+=back
+
+=head2 Rendering
+
+=over 4
+
+=item C<render_page( $page_name )>
+
+Loads the page through C<pre-E<gt>load_page()>, runs it through
+C<pre-E<gt>process()> and renders it as C<text/html>. Booms if the page does
+not exist or is empty.
+
+=item C<render_action( $action_name )>
+
+Calls the action through C<act-E<gt>call()>. A plain string result is treated
+as HTML and processed like a page. A hashref result (see C<portray()> in Core)
+is rendered as is, processed only if its type is C<text/html>. Booms if the
+action returns nothing.
+
+=item C<forward( %args )>
+
+Redirects (302) to the current script with C<%args> as a safe input token.
+
+=item C<require_post_method()>
+
+Returns if the request is POST, otherwise renders page C<epostrequired>.
+
+=back
+
+=head2 Arguments
+
+=over 4
+
+=item C<args( %args )>
+
+Returns the safe input token for C<%args> (keys uppercased), ready to be used
+as the C<_> parameter.
+
+=item C<args_type( $type, %args )>
+
+Same as C<args()>, C<$type> (here/back/new/none) is accepted for template
+compatibility and ignored, a stateless reactor has nothing to go back to.
+
+=back
+
+=head2 Input
+
+=over 4
+
+=item C<get_user_input_button()>
+
+Finds the first C<BUTTON:NAME> or C<BUTTON:NAME:ID> parameter, returns
+C<( $name, $id )> in list context, C<$name> in scalar context.
+
+=item C<get_lang()>, C<get_app_name()>, C<get_app_root()>
+
+Config accessors, C<get_lang()> returns the language lowercased.
+
+=back
+
+=head2 HTML hold
+
+Named text chunks templates refer to with C<E<lt>$nameE<gt>>. Names are case
+insensitive.
+
+=over 4
+
+=item C<html_hold_set( %chunks )>, C<html_hold_get( $name )>,
+C<html_hold_del( $name )>, C<html_hold_clear()>, C<html_hold_reset( %chunks )>
+
+=item C<html_hold_kit_add( $name, $text )>
+
+Accumulates unique snippets under C<$name>, the hold value is the sorted
+concatenation of all snippets added so far.
+
+=item C<html_hold_kit_js( $url )>, C<html_hold_kit_css( $url )>
+
+Add a script or stylesheet tag to the C<KIT_HEAD> kit.
+
+=item C<set_browser_window_title( $title )>
+
+Strips HTML and sets C<BROWSER_WINDOW_TITLE>.
+
+=back
+
+=head2 Translations
+
+=over 4
+
+=item C<load_trans()>
+
+Loads C<*.tr> files for the current language from C<TRANS_DIRS> (or the
+single C<TRANS_FILE>) into the reactor. Returns 1 on success, 0 if the
+language is not a two letter code.
+
+=item C<load_trans_file( $file_name )>
+
+Loads one translation file, returns a hashref.
+
+=back
+
+=head1 SEE ALSO
+
+Web::Reactor::Core, Web::Reactor::Preprocessor::Tree,
+Web::Reactor::Actions::Files, Web::Reactor::Actions::Packages, Web::Reactor.
+
+=head1 AUTHOR
+
+  Vladi Belperchinov-Shabanski "Cade"
+  <cade@noxrun.com>
+  http://cade.noxrun.com
+
+=head1 LICENSE
+
+GPLv2, see COPYING.
 
 =cut
 

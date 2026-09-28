@@ -9,8 +9,9 @@
 ##  https://github.com/cade-vs/perl-web-reactor
 ##
 ##############################################################################
-package Web::Reactor::Preprocessor::Extended;
+package Web::Reactor::Preprocessor::Tree;
 use strict;
+use List::Util qw( first );
 use Exception::Sink;
 use Data::Dumper;
 use Data::Tools;
@@ -26,16 +27,22 @@ sub new
   my $self = $class->SUPER::new( @_ );
 
   $self->{ 'FILE_CACHE' } = {};
-  $self->{ 'DIR_CACHE'  } = {};
+  $self->{ 'DIRS_CACHE' } = {};
 
   my $cfg = $self->cfg();
 
-  $cfg->{ 'HTML_DIRS' } = [ $cfg->{ 'HTML_DIRS' } ] if ! ref( $cfg->{ 'HTML_DIRS' } ) and $cfg->{ 'HTML_DIRS' };
-  $cfg->{ 'HTML_DIRS' } = [ $self->reo->get_app_root() . '/html/' ] if ! $cfg->{ 'HTML_DIRS' } or @{ $cfg->{ 'HTML_DIRS' } } < 1;
+  # FIXME: this code is the same, move to base function vvvvvvvvvvvvvvvv
+  my $dirs = $cfg->{ 'HTML_DIRS' };
+  my $root = $self->reo->get_app_root();
+  my $lang = $self->reo->get_lang();
 
-  $cfg->{ 'HTML_DIRS' } = [ grep { -d } @{ $cfg->{ 'HTML_DIRS' } } ];
+  # FIXME: common directories setup code?
+  # single directory (scalar) specified, convert to list
+  $dirs = [ $dirs ] if ! ref( $dirs ) and $dirs;
+  # nothing specified, set default
+  $dirs = [ $root . '/html' ] if ! $dirs or @{ $dirs } < 1;
 
-  boom "empty HTML_DIRS list or dirs do not exist (1)" unless @{ $cfg->{ 'HTML_DIRS' } } > 0;
+  $self->{ 'HTML_DIRS' } = $dirs;
 
   return $self;
 }
@@ -60,17 +67,16 @@ sub load_file
   my $fn = lc shift || 'index'; # file name (file name only, no path, no ext)
 
   # sanitize page name
-  $pn =~ s|^\s*/*||o;
-  $pn =~ s|/*\s*$||o;
-  $pn =~ s|\.+||go;
-  $pn =~ s|/+|/|go;
+  $pn =~ s|^\s*/*||o; # strip leading  /s (but checked again later in check_page_name())
+  $pn =~ s|/*\s*$||o; # strip trailing /s (but checked again later in check_page_name())
+  $pn =~ s|\.+||go;   # remove all dots
+  $pn =~ s|/+|/|go;   # compact repeating /s
 
-  boom "invalid page name, expected ALPHANUMERIC, got [$pn]" unless $pn =~ /^[a-zA-Z_\-0-9\/]+$/o;
-  boom "invalid file name, expected ALPHANUMERIC, got [$fn]" unless $fn =~ /^[a-zA-Z_\-0-9]+$/o;
+  $self->check_page_name( $pn );
+  $self->check_page_file_name( $fn );
 
-  my $cfg = $self->cfg();
-
-  my $lang = $self->reo->get_lang() || 'default';
+  my $cfg  = $self->cfg();
+  my $lang = $self->reo->get_lang();
 
   if( exists $self->{ 'FILE_CACHE' }{ $lang }{ $pn }{ $fn } )
     {
@@ -87,41 +93,40 @@ sub load_file
     }
   else
     {
-    my $orgs = $cfg->{ 'HTML_DIRS' };
+    $dirs = $self->{ 'HTML_DIRS' };
+
+    my @lang = ( 'default' );
+    unshift @lang, $lang if $lang;
 
     my @pn = grep { $_ } split /\/+/, $pn;
 
-    my @dirs_try;
+    my @dirx; # expanded with pn/pn/pn etc...
 
-    while( 4 )
+    for my $ln ( @lang )
       {
-      for my $org ( @$orgs )
+      my @dx;
+      my $pp;
+      for my $p ( undef, @pn )
         {
-        for my $ln ( ( $lang ne 'default' ? ( $lang ) : () ), 'default' )
+        $pp .= $p . '/' if $p;
+        for my $dir ( reverse @$dirs )
           {
-          push @dirs_try, "$org/$ln/" . join( '/', @pn );
+          push @dx, "$dir/$ln/$pp";
           }
         }
-      last unless @pn;
-      pop @pn;
+      push @dirx, reverse @dx;
       }
 
-    $dirs = [ grep { -d } @dirs_try ];
+    $dirs = [ grep { -d } @dirx ];
 
-    boom "empty HTML_DIRS list or dirs do not exist (2) tried dirs [@dirs_try]" unless @$dirs > 0;
+    boom "empty HTML_DIRS list or dirs do not exist after expansion [@dirx]" unless @$dirs;
 
     $self->{ 'DIRS_CACHE' }{ $lang }{ $pn } = $dirs;
     }
 
   my $reo = $self->reo();
 
-  my $fname;
-  for my $dir ( @$dirs )
-    {
-    next unless -e "$dir/$fn.html";
-    $fname = "$dir/$fn.html";
-    last;
-    }
+  my $fname = first { -e } map { "$_/$fn.html" } @$dirs;
 
   if( ! $fname )
     {
@@ -139,12 +144,33 @@ sub load_file
   my $fdata = file_text_load( $fname );
 
   $reo->log_debug2( "debug: preprocessor load page [$pn] file [$fn] OK [$fname]" );
+
   $self->{ 'FILE_CACHE' }{ $lang }{ $pn }{ $fn } = $fdata;
 
   return $fdata;
 }
 
 sub process
+{
+  my $self = shift;
+
+  my $pn   = lc shift; # page name
+  my $text = shift;
+  my $opt  = shift || {};
+  my $ctx  = shift || {};
+
+  my $c = 16; # 16+ passes is definitely a bug
+  while( $c-- )
+    {
+    delete $opt->{ ':REPEAT_PROCESSING_REQUESTED' };
+    $text = $self->process_single_pass( $pn, $text, $opt, $ctx );
+    return $text unless $opt->{ ':REPEAT_PROCESSING_REQUESTED' };
+    }
+
+  boom "too many processing passes at page [$pn], deferred tags never settle, probable bug in actions or page files";
+}
+
+sub process_single_pass
 {
   my $self = shift;
 
@@ -163,7 +189,7 @@ sub process
 #print STDERR Dumper( 'PROCESS PRE --- ' x 7, $pn, $text );
 
   # FIXME: cache here? moje bi ne, zaradi modulite
-  $text =~ s/<([\$\&\#]|\$\$|\&\&)([a-zA-Z_\-0-9]+)(:([a-zA-Z_\-0-9]+))?(\s*[^>]*)?>/$self->__process_tag( $pn, $1, $2, $4, $5, $opt, $ctx )/ge;
+  $text =~ s/<([\$\&\#]|\$\$+|\&\&)([a-zA-Z_\-0-9]+)(:([a-zA-Z_\-0-9]+))?(\s*[^>]*)?>/$self->__process_tag( $pn, $1, $2, $4, $5, $opt, $ctx )/ge;
   $text =~ s/reactor_((new|back|here|none)_)?(href|src)=(["'])?([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"'#]*)(#[a-z_0-9\.]+)?(\4)?/$self->__process_href( $2, $3, $5, $7, $8 )/gie;
 
 #print STDERR Dumper( 'PROCESS POST --- ' x 7, $pn, $text );
@@ -192,8 +218,8 @@ sub __process_tag
   $ctx->{ 'PATH' } .= ", $type$tag";
   my $path = $ctx->{ 'PATH' };
 
-  die "preprocess loop detected, tag [$type$tag] path [$path]" if $ctx->{ 'SEEN:' . $type . $tag }++;
-  die "empty or invalid tag" unless $tag =~ /^[a-zA-Z_\-0-9]+$/;
+  boom "preprocess loop detected, tag [$type$tag] path [$path]" if $ctx->{ 'SEEN:' . $type . $tag }++;
+  boom "empty or invalid tag" unless $tag =~ /^[a-zA-Z_\-0-9]+$/;
 
   my $reo = $self->reo();
 
@@ -201,10 +227,12 @@ sub __process_tag
 
   my $text;
 
-  if( $type eq '$$' )
+  if( $type =~ /^\$\$+/ )
     {
-    $opt->{ 'SECOND_PASS_REQUIRED' }++;
-    return "<\$$tag>"; # shortcut to deferred eval
+    $opt->{ ':REPEAT_PROCESSING_REQUESTED' }++;
+    my $nt = substr( $type, 1 );
+    $self->tagid_pop();
+    return "<${nt}$tag>"; # shortcut to deferred eval
     }
   elsif( $type eq '$' )
     {
@@ -226,13 +254,13 @@ sub __process_tag
       }
     # FIXME: action calls may return non-text data, however the preprocessor expects text data for now...
 
-    # session stack, parnets etc?
+    # session stack, parents etc?
 
 #print STDERR ">>> $reo->act->call( $tag, HTML_ARGS => \%args )\n";
     my $calltext = $reo->act->call( $tag, HTML_ARGS => \%args );
     if( $type eq '&&' )
       {
-      $calltext = "<div class vframe>" . $calltext . "</div>";
+      $calltext = "<div class=vframe>" . $calltext . "</div>";
       }
     $text .= $calltext;
     }
@@ -243,7 +271,7 @@ sub __process_tag
 
 # print STDERR Dumper( 'PROCESS TEXT --- ' x 7, ( $pn, $text, $opt, $ctx ) );
 #print STDERR ">>> $self->process( $pn, $text, $opt, $ctx )\n";
-  $text = $self->process( $pn, $text, $opt, $ctx );
+  $text = $self->process_single_pass( $pn, $text, $opt, $ctx );
 
   $self->tagid_pop();
 
@@ -297,6 +325,20 @@ sub tagid_peek
 
   return undef unless exists $self->{ 'TAG_ID_STACK' };
   return $self->{ 'TAG_ID_STACK' }->[-1];
+}
+
+##############################################################################
+
+sub check_page_name
+{
+  my $self = shift;
+  boom "invalid page name [$_[0]]" unless $_[0] =~ /^[a-z0-9_\-]+(\/[a-z0-9_\-]+)*$/o;
+}
+
+sub check_page_file_name
+{
+  my $self = shift;
+  boom "invalid page name [$_[0]]" unless $_[0] =~ /^[a-z0-9_\-]+$/o;
 }
 
 ##############################################################################

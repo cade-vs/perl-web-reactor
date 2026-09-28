@@ -81,7 +81,6 @@ sub new
   $class = ref( $class ) || $class;
   my $self = $class->SUPER::new( $env, $cfg );
 
-
   # FIXME: verify %env content! Data::Validate::Struct
   boom "fatal: configuration: request scheme [HTTP] does not match cookies security policy! either enable HTTPS scheme or set DISABLE_SECURE_COOKIES=1"
       if $self->get_request_scheme() eq 'http' and ! $cfg->{ 'DISABLE_SECURE_COOKIES' };
@@ -98,6 +97,304 @@ sub ses
   return $self->{ "REO_SES" } ||= $self->__attach_module( 'SES', 'Web::Reactor::Sessions::Filesystem' );
 }
 
+# actually reactor uses only public part rsa, any private decoders are backend-related
+sub rsa
+{
+  my $self = shift;
+
+  return $self->{ "REO_RSA" } if exists $self->{ "REO_RSA" };
+
+  my $pub = $self->cfg->{ 'RSA_PUB' };
+  boom "RSA encryption requested but configuration does not have RSA_PUB key in it" unless $pub;
+
+  return $self->{ "REO_RSA" } = $self->__load_and_attach_module( 'RSA', 'Data::Tools::Crypto::RSA', $pub );
+}
+
+##############################################################################
+
+sub process_request
+{
+  my $self = shift;
+  my $args = @_ / 2; # count of arg pairs
+  my %args = @_;
+
+  my $cfg = $self->cfg();
+
+  # 0. load/setup env/config defaults
+  my $app_name = $self->get_app_name();
+
+  # 1. loading cookie for keeping user sessions
+  my $cookie_name = lc( $cfg->{ 'COOKIE_NAME' } || "$app_name\_cookie" );
+  my $user_sid = __input_sid_check( $self->get_cookie( $cookie_name ) );
+  $self->log_debug( "debug: incoming USER_SID cookie name [$cookie_name] value [$user_sid]" );
+
+  # 2. loading user session, setup new session and cookie if needed
+  my $user_shr = {}; # user session hash ref
+  unless( $user_sid and $user_shr = $self->ses->load( 'USER', $user_sid ) )
+    {
+    $self->log( "warning: invalid user session [$user_sid]" );
+    ( $user_sid, $user_shr ) = $self->__create_new_user_session();
+    }
+
+  if( ( $user_shr->{ ':LOGGED_IN' } and $user_shr->{ ':XTIME' } > 0 and time() > $user_shr->{ ':XTIME' } )
+      or
+      ( $user_shr->{ ':CLOSED' } ) )
+    {
+    $self->log( "status: user session expired or closed, sid [$user_sid]" );
+    # not logged-in sessions dont expire
+    $user_shr->{ ':XTIME_STR'    } = scalar localtime() if time() > $user_shr->{ ':XTIME' };
+    $user_shr->{ ':CLOSED'       } = 1;
+    $user_shr->{ ':ETIME'        } = time();
+    $user_shr->{ ':ETIME_STR'    } = scalar localtime();
+
+    ( $user_sid, $user_shr ) = $self->__create_new_user_session();
+
+    $self->render_page( 'eexpired' );
+    }
+
+  for my $k ( keys %{ $user_shr->{ ":HTTP_CHECK_HR" } } )
+    {
+    # check if session parameters are changed, stealing session?
+    my $chk_exp = $user_shr->{ ":HTTP_CHECK_HR" }{ $k };
+    my $chk_got = $self->{ 'IN' }{ 'ENV' }{ $k };
+    next if $chk_exp eq $chk_got;
+
+    $self->log( "error: user session parameter [$k] check failed, expected [$chk_exp] got [$chk_got] for sid [$user_sid]" );
+    # FIXME: move to function: close_session();
+    $user_shr->{ ':CLOSED'       } = 1;
+    $user_shr->{ ':ETIME'        } = time();
+    $user_shr->{ ':ETIME_STR'    } = scalar localtime();
+
+    ( $user_sid, $user_shr ) = $self->__create_new_user_session();
+
+    $self->render_page( 'einvalid' );
+    last;
+    }
+
+  # FIXME: move to single place
+  my $user_session_expire = $cfg->{ 'USER_SESSION_EXPIRE' } || 600; # 10 minutes
+  $self->set_user_session_expire_time_in( $user_session_expire );
+
+  $self->save();
+
+  my $user_input_hr = $self->get_user_input();
+  my $safe_input_hr = $self->get_safe_input();
+
+  # merge forced parameters
+  # FIXME: TODO: should it go only to the safe params, or?
+  %$user_input_hr = ( %$user_input_hr, %args ) if $args;
+  %$safe_input_hr = ( %$safe_input_hr, %args ) if $args;
+
+
+  # 4. loading page session
+  my $page_sid = __input_sid_check( $safe_input_hr->{ '_P' } );
+  my $page_shr = $self->ses->load( 'PAGE', $page_sid ); # user session hash ref
+  if( ! $page_shr )
+    {
+    $self->log_debug( "warning: invalid page session [$page_sid]" ) if $page_sid;
+    $page_sid = $self->ses->create( 'PAGE', 8 );
+    $page_sid = $HNS[rand(@HNS)] . '_' . $page_sid if $self->is_debug();
+    $self->log( "status: new page session created [$page_sid]" );
+    $page_shr = { ':ID' => $page_sid };
+    }
+  $self->__set_session( 'PAGE', $page_sid, $page_shr );
+
+  $page_shr->{ ':REF_PAGE_SID' } = __input_sid_check( $safe_input_hr->{ '_R' } || $page_shr->{ ':REF_PAGE_SID' } );
+  $page_shr->{ ':TOP_PAGE_SID' } = __input_sid_check( $safe_input_hr->{ '_T' } || $page_shr->{ ':TOP_PAGE_SID' } );
+
+  # 6. get action from input (USER/CGI) or page session
+  my $action_name = lc( $safe_input_hr->{ '_AN' } || $user_input_hr->{ '_AN' } || $page_shr->{ ':ACTION_NAME' } );
+  if( $action_name )
+    {
+    $self->act->check_action_name( $action_name );
+    $page_shr->{ ':ACTION_NAME' } = $action_name;
+    }
+
+  # 7. get page from input (USER/CGI) or page session
+  my $page_name = lc( $safe_input_hr->{ '_PN' } || $user_input_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || { $self->get_page_session( 1 ) || {} }->{ ':PAGE_NAME' } || 'main' );
+  $self->pre->check_page_name( $page_name );
+  $page_shr->{ ':PAGE_NAME' } = $page_name;
+
+  # TODO/FIXME: the name checks below instantiate act() and pre() on every request,
+  #             even when only one of them will be used; cheap after the first
+  #             call but no longer lazy. consider class-level check functions.
+
+  if( $action_name )
+    {
+    $self->render_action( $action_name );
+    }
+  else
+    {
+    $self->render_page( $page_name );
+    }
+}
+
+### USER SESSION API #########################################################
+
+sub __input_sid_check
+{
+  return $_[0] =~ /^[a-zA-Z0-9_]+$/ ? $_[0] : undef;
+}
+
+sub __create_new_user_session
+{
+  my $self = shift;
+
+  my $user_sid;
+  my $user_shr;
+
+  my $cfg = $self->cfg();
+
+  $user_sid = $self->ses->create( 'USER' );
+  $user_shr = { ':ID' => $user_sid };
+
+  $self->__set_user_session_cookie( $user_sid ); # FIXME: CHECK ROTATION
+  $self->log( "debug: creating new user session [$user_sid]" );
+
+  my $user_session_expire = $cfg->{ 'USER_SESSION_EXPIRE' } || 600; # 10 minutes
+
+  $user_shr->{ ':CTIME'      } = time();
+  $user_shr->{ ':CTIME_STR'  } = scalar localtime();
+
+  $self->set_user_session_expire_time_in( $user_session_expire );
+
+  # read and save http environment data into user session, used for checks and info
+  $user_shr->{ ":HTTP_CHECK_HR" } = { map { $_ => $self->{ 'IN' }{ 'ENV' }{ $_ } } @HTTP_VARS_CHECK };
+  $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $self->{ 'IN' }{ 'ENV' }{ $_ } } @HTTP_VARS_SAVE  };
+
+  $self->__set_session( 'USER', $user_sid, $user_shr );
+
+  return ( $user_sid, $user_shr );
+}
+
+# (re)issue the user session cookie bound to the given session id
+sub __set_user_session_cookie
+{
+  my $self     = shift;
+  my $user_sid = shift;
+
+  my $cfg = $self->cfg();
+
+  my $app_name    = $cfg->{ 'APP_NAME' } or boom( "missing APP_NAME" );
+  my $cookie_name = lc( $cfg->{ 'COOKIE_NAME' } || "$app_name\_cookie" );
+
+  my $path = $cfg->{ 'COOKIE_PATH' };
+  if( ! $path )
+    {
+    $path = $self->get_request_uri();
+    $path =~ s/^([^\?]*\/)([^\?\/]*)(\?.*)?$/$1/; # remove args: ?...
+    }
+  $path ||= '/';
+
+  my $secure_cookie = $cfg->{ 'DISABLE_SECURE_COOKIES' } ? 0 : 1;
+  $self->res_set_cookie( $cookie_name, value => $user_sid, path => $path, httponly => 1, secure => $secure_cookie, samesite => 'lax' );
+}
+
+sub __rotate_user_session_id
+{
+  my $self = shift;
+
+  my $old_sid  = $self->get_user_session_id();
+  my $user_shr = $self->get_user_session();
+
+  # allocate a fresh, unpredictable session id for the elevated session
+  my $new_sid = $self->ses->create( 'USER' );
+
+  # re-key the current in-memory user session data under the new id (data kept)
+  delete $self->{ 'SESSIONS' }{ 'DATA'              }{ 'USER' }{ $old_sid };
+  delete $self->{ 'CACHE'    }{ 'SESSION_DATA_SHA1' }{ 'USER' }{ $old_sid };
+  $user_shr->{ ':ID' } = $new_sid;
+  $self->{ 'SESSIONS' }{ 'SID'  }{ 'USER' }             = $new_sid;
+  $self->{ 'SESSIONS' }{ 'DATA' }{ 'USER' }{ $new_sid } = $user_shr;
+  $self->__update_session_fingerprint( 'USER', $new_sid, $user_shr );
+
+  # reissue the cookie bound to the new id
+  $self->__set_user_session_cookie( $new_sid );
+
+  # invalidate the old session in storage so a fixed pre-login cookie is useless
+  $self->ses->save( 'USER', $old_sid, { ':ID' => $old_sid, ':CLOSED' => 1, ':ETIME' => time(), ':ETIME_STR' => scalar localtime() } );
+
+  $self->log( "status: rotated user session id on login [$old_sid] -> [$new_sid]" );
+
+  return $new_sid;
+}
+
+##############################################################################
+
+sub __import_safe_input
+{
+  my $self = shift;
+
+  my $safe_input_hr = $self->SUPER::__import_safe_input();
+
+  my $user_input_hr = $self->get_user_input();
+  my $x = $user_input_hr->{ '_' } or return {};
+  ### return $safe_input_hr if $x =~ /^~/; # this is encrypted data, skip it.
+
+  # FIXME: TODO: handle encrypted and hidden in separate params? _ and __ f.e.?
+
+  # parse link session: link-sid.link-key
+  if( $e =~ /^([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)$/ )
+    {
+    my ( $link_sid, $link_key ) = ( $1, $2 );
+
+    my $link_session_hr = $self->ses->load( 'LINK', $link_sid );
+
+    if( $link_session_hr )
+      {
+      my $ldhr = $link_session_hr->{ 'ARGS' }{ $link_key }; # link data hashref
+      # merge safe input if valid
+      %$safe_input_hr = ( %$safe_input_hr, %$ldhr ) if $ldhr;
+      }
+
+    # remap incoming parameter names and values, hidden by the FORMs engine
+    my $form_id = $safe_input_hr->{ 'FORM_ID' }; # FIXME: replace with _FRI
+    if( $form_id and $link_session_hr and exists $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id } )
+      {
+      my $rmn = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'NAME' }; # return map names
+      my $rmd = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'DATA' }; # return map data
+
+      # remap input data
+      for my $n ( keys %$user_input_hr )
+        {
+        my $nn = $n;
+        if( exists $rmn->{ $n } )
+          {
+          # remap names
+          $nn = $rmn->{ $n };
+          $user_input_hr->{ $nn } = $user_input_hr->{ $n };
+          delete $user_input_hr->{ $n };
+          }
+        if( exists $rmd->{ $nn } )
+          {
+          # remap values
+          $safe_input_hr->{ $nn } = $rmd->{ $nn }{ $user_input_hr->{ $nn } };
+          delete $user_input_hr->{ $nn };
+          }
+        }
+      }
+    }
+  elsif( $e ne '' )
+    {
+    $self->log( "warning: invalid hidden safe input link session.key [$e], ignored" );
+    }
+
+  return $safe_input_hr || {};
+}
+
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
 ##############################################################################
 
 sub run
@@ -166,213 +463,8 @@ sub prepare_and_execute
 
   my $cfg = $self->cfg();
 
-  # 0. load/setup env/config defaults
-  my $app_name = $cfg->{ 'APP_NAME' } or boom( "missing APP_NAME" );
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  # 1. loading cookie
-  my $cookie_name = lc( $cfg->{ 'COOKIE_NAME' } || "$app_name\_cookie" );
-  my $user_sid = $self->get_cookie( $cookie_name );
-  $self->log_debug( "debug: incoming USER_SID cookie name [$cookie_name] value [$user_sid]" );
-
-  # 2. loading user session, setup new session and cookie if needed
-  my $user_shr = {}; # user session hash ref
-  unless( $user_sid =~ /^[a-zA-Z0-9_]+$/ and $user_shr = $self->ses->load( 'USER', $user_sid ) )
-    {
-    $self->log( "warning: invalid user session [$user_sid]" );
-    ( $user_sid, $user_shr ) = $self->__create_new_user_session();
-    }
-  $self->__set_session( 'USER', $user_sid, $user_shr );
-
-  if( ( $user_shr->{ ':LOGGED_IN' } and $user_shr->{ ':XTIME' } > 0 and time() > $user_shr->{ ':XTIME' } )
-      or
-      ( $user_shr->{ ':CLOSED' } ) )
-    {
-    $self->log( "status: user session expired or closed, sid [$user_sid]" );
-    # not logged-in sessions dont expire
-    $user_shr->{ ':XTIME_STR'    } = scalar localtime() if time() > $user_shr->{ ':XTIME' };
-    $user_shr->{ ':CLOSED'       } = 1;
-    $user_shr->{ ':ETIME'        } = time();
-    $user_shr->{ ':ETIME_STR'    } = scalar localtime();
-
-    ( $user_sid, $user_shr ) = $self->__create_new_user_session();
-
-    $self->render( PAGE => 'eexpired' );
-    }
-
-  for my $k ( keys %{ $user_shr->{ ":HTTP_CHECK_HR" } } )
-    {
-    # check if session parameters are changed, stealing session?
-    my $chk_exp = $user_shr->{ ":HTTP_CHECK_HR" }{ $k };
-    my $chk_got = $self->{ 'IN' }{ 'ENV' }{ $k };
-    next if $chk_exp eq $chk_got;
-
-    $self->log( "error: user session parameter [$k] check failed, expected [$chk_exp] got [$chk_got] for sid [$user_sid]" );
-    # FIXME: move to function: close_session();
-    $user_shr->{ ':CLOSED'       } = 1;
-    $user_shr->{ ':ETIME'        } = time();
-    $user_shr->{ ':ETIME_STR'    } = scalar localtime();
-
-    ( $user_sid, $user_shr ) = $self->__create_new_user_session();
-
-    $self->render( PAGE => 'einvalid' );
-    last;
-    }
-
-  # FIXME: move to single place
-  my $user_session_expire = $cfg->{ 'USER_SESSION_EXPIRE' } || 600; # 10 minutes
-  $self->set_user_session_expire_time_in( $user_session_expire );
-
-  $self->save();
-
-  # 3. get input data, CGI::params, postdata
-  my $input_user_hr = $self->{ 'INPUT_USER_HR' } = {};
-  my $input_safe_hr = $self->{ 'INPUT_SAFE_HR' } = {};
-
-  # FIXME: TODO: handle and URL params here. only for EX?
-  my $iconv;
-  my $app_charset = uc $cfg->{ 'APP_CHARSET' } || 'UTF-8';
-  my $incoming_charset = $app_charset;
-
-  my $no_pass_encrypt = $cfg->{ 'NO_PASS_ENCRYPT' };
-
-  if( uc( $self->get_http_env->{ 'HTTP_X_REQUESTED_WITH' } ) eq 'XMLHTTPREQUEST' )
-    {
-    # TODO: it can be different, but nobody seems to use it, should be fixed eventually
-    $incoming_charset = 'UTF-8';
-    }
-
-  my $plack = $self->{ 'PLACK' };
-
-  my $params = $plack->parameters(); # input parameters, GET + POST
-  my %params; # preprocessed parameters
-
-  # check valid params names and preprocess multiple values
-  # import plain parameters from GET/POST request
-  for my $n ( keys %$params )
-    {
-    if( $n !~ /^[A-Za-z0-9\-\_\.\:]+$/o )
-      {
-      $self->log( "error: invalid CGI/input parameter name: [$n]" );
-      next;
-      }
-    my @v = $params->get_all( $n );
-    $n = uc $n;
-    if( @v > 1 )
-      {
-      for( my $vi = 0; $vi < @v; $vi++ )
-        {
-        # ignore the whole array if any value is invalid
-        next     if $self->__input_cgi_skip_invalid_value( $n, $v[$vi] );
-        $v[$vi] = $self->__input_cgi_make_safe_value( $n, decode( $incoming_charset, $v[$vi] ) );
-        }
-      $input_user_hr->{ '@' . $n } = \@v;
-      }
-    elsif ( $n =~ /BUTTON:([a-z0-9_\-]+)(:(.+?))?(\.[XY])?$/oi )
-      {
-      # regular button BUTTON:CANCEL
-      # button with id BUTTON:REDIRECT:USERID
-      $input_user_hr->{ 'BUTTON'    } = uc $1;
-      $input_user_hr->{ 'BUTTON_ID' } =    $3;
-      }
-    elsif( $n eq '_BTN' )
-      {
-      # simulated button, i.e. hidden input with 'BUTTON_NAME:BUTTON_ID'
-      my ( $b, $i ) = split /:/, $v[0], 2;
-      $input_user_hr->{ 'BUTTON'    } = uc $b;
-      $input_user_hr->{ 'BUTTON_ID' } =    $i;
-      }
-    else
-      {
-      next                  if $self->__input_cgi_skip_invalid_value( $n, $v[0] );
-      my $out;
-      if( ! $no_pass_encrypt and $n =~ /^(F:)?PASSWORD/ )
-        {
-        # TODO: move it to overload function
-        $out = $self->rsa_pub_encrypt( $v[0] ) if $v[0] ne '';
-        }
-      else
-        {
-        $out = $self->__input_cgi_make_safe_value( $n, decode( $incoming_charset, $v[0] ) );
-        }
-      $input_user_hr->{ $n } = $out;
-      }
-    $self->log_debug( "debug: CGI/input param [$n] value [$v[0]] array [@v]" );
-    }
-
-  # import uploads
-  my $uploads = $plack->uploads();
-  for my $n ( keys %$uploads )
-    {
-    my @u = $uploads->get_all( $n );
-    $input_user_hr->{ "#$n" } =  @u; # count of the uploaded files
-    $input_user_hr->{ "^$n" } = \@u; # holds all uploads, could be empty
-    }
-
-  # merge forced parameters
-  %$input_user_hr = ( %$input_user_hr, %args ) if $args;
-
-  my $safe_input_link_sess = $input_user_hr->{ '_' };
-
-  my $link_session_hr; # FIXME!!!!!!!!!!!!!!!!!!!!!
-
-  # parse link session: link-sid.link-key
-  if( $safe_input_link_sess =~ /^([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)$/ )
-    {
-    my ( $link_sid, $link_key ) = ( $1, $2 );
-
-####### my >!!!!!!!!!!!!!!!!!!!!!
-    $link_session_hr = $self->ses->load( 'LINK', $link_sid );
-
-    my $link_data = $link_session_hr->{ 'ARGS' }{ $link_key };
-
-    # merge safe input if valid
-    %$input_safe_hr = ( %$input_safe_hr, %$link_data ) if $link_data;
-    # merge forced parameters
-    %$input_safe_hr = ( %$input_safe_hr, %args       ) if $args;
-    }
-  elsif( $safe_input_link_sess ne '' )
-    {
-    $self->log( "warning: invalid safe input link session.key [$safe_input_link_sess] ignored" );
-    }
-
-  # 4. loading page session
-  my $page_sid = __input_sid_check( $input_safe_hr->{ '_P' } );
-  my $page_shr = $self->ses->load( 'PAGE', $page_sid ); # user session hash ref
-  if( ! $page_shr )
-    {
-    $self->log_debug( "warning: invalid page session [$page_sid]" ) if $page_sid;
-    $page_sid = $self->ses->create( 'PAGE', 8 );
-    $page_sid = $HNS[rand(@HNS)] . '_' . $page_sid if $self->is_debug();
-    $self->log( "status: new page session created [$page_sid]" );
-    $page_shr = { ':ID' => $page_sid };
-    }
-  $self->__set_session( 'PAGE', $page_sid, $page_shr );
-
-  $page_shr->{ ':REF_PAGE_SID' } = __input_sid_check( $input_safe_hr->{ '_R' } || $page_shr->{ ':REF_PAGE_SID' } );
-  $page_shr->{ ':TOP_PAGE_SID' } = __input_sid_check( $input_safe_hr->{ '_T' } || $page_shr->{ ':TOP_PAGE_SID' } );
-
-  # 5. remap form input names and data, post to safe input
-  my $form_id = $input_safe_hr->{ 'FORM_ID' }; # FIXME: replace with _FRI
-  if( $form_id and exists $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id } )
-    {
-    my $rmn = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'NAME' }; # return map names
-    my $rmd = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'DATA' }; # return map data
-
-    for my $n ( keys %$input_user_hr )
-      {
-      my $nn = $n;
-      if( exists $rmn->{ $n } )
-        {
-        $nn = $rmn->{ $n };
-        $input_user_hr->{ $nn } = $input_user_hr->{ $n };
-        delete $input_user_hr->{ $n };
-        }
-      if( exists $rmd->{ $nn } )
-        {
-        $input_safe_hr->{ $nn } = $rmd->{ $nn }{ $input_user_hr->{ $nn } };
-        delete $input_user_hr->{ $nn };
-        }
-      }
 
 =pod
     # remap names
@@ -394,30 +486,6 @@ sub prepare_and_execute
 
     }
 
-  # 6. get action from input (USER/CGI) or page session
-  my $action_name = lc( $input_safe_hr->{ '_AN' } || $input_user_hr->{ '_AN' } || $page_shr->{ ':ACTION_NAME' } );
-  if( $action_name =~ /^[a-z0-9_]+$/ )
-    {
-    $page_shr->{ ':ACTION_NAME' } = $action_name;
-    }
-  else
-    {
-    # $self->log( "error: invalid action name [$action_name]" );
-    }
-
-  # 7. get page from input (USER/CGI) or page session
-  my $page_name = lc( $input_safe_hr->{ '_PN' } || $input_user_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || { $self->get_page_session( 1 ) || {} }->{ ':PAGE_NAME' } || 'main' );
-  if( $page_name ne '' )
-    {
-    if( $page_name =~ /^[a-z0-9_\-\/]+$/ )
-      {
-      $page_shr->{ ':PAGE_NAME' } = $page_name;
-      }
-    else
-      {
-      $self->log( "error: invalid page name [$page_name]" );
-      }
-    }
 
   # 8. render output action/page
   if( $action_name )
@@ -428,137 +496,6 @@ sub prepare_and_execute
     {
     $self->render( PAGE => $page_name );
     }
-}
-
-sub __input_sid_check
-{
-  return $_[0] =~ /^[a-zA-Z0-9_]+$/ ? $_[0] : undef;
-}
-
-
-sub __create_new_user_session
-{
-  my $self = shift;
-
-  my $user_sid;
-  my $user_shr;
-
-  my $cfg = $self->cfg();
-
-# ROTATION REMOVED #   # FIXME: move to function
-# ROTATION REMOVED #   my $app_name = $cfg->{ 'APP_NAME' } or boom( "missing APP_NAME" );
-# ROTATION REMOVED #   my $cookie_name = lc( $cfg->{ 'COOKIE_NAME' } || "$app_name\_cookie" );
-
-  $user_sid = $self->ses->create( 'USER' );
-  $user_shr = { ':ID' => $user_sid };
-
-# ROTATION REMOVED #   my $path = $cfg->{ 'COOKIE_PATH' };
-# ROTATION REMOVED #   if( ! $path )
-# ROTATION REMOVED #     {
-# ROTATION REMOVED #     $path = $self->get_request_uri();
-# ROTATION REMOVED #     $path =~ s/^([^\?]*\/)([^\?\/]*)(\?.*)?$/$1/; # remove args: ?...
-# ROTATION REMOVED #     }
-# ROTATION REMOVED #   $path ||= '/';
-# ROTATION REMOVED #
-# ROTATION REMOVED #   my $secure_cookie = $cfg->{ 'DISABLE_SECURE_COOKIES' } ? 0 : 1;
-# ROTATION REMOVED #   $self->res_set_cookie( $cookie_name, value => $user_sid, path => $path, httponly => 1, secure => $secure_cookie, samesite => 'lax' );
-  $self->__set_user_session_cookie( $user_sid ); # FIXME: CHECK ROTATION
-  $self->log( "debug: creating new user session [$user_sid]" );
-
-  my $user_session_expire = $cfg->{ 'USER_SESSION_EXPIRE' } || 600; # 10 minutes
-
-  $user_shr->{ ':CTIME'      } = time();
-  $user_shr->{ ':CTIME_STR'  } = scalar localtime();
-
-  $self->set_user_session_expire_time_in( $user_session_expire );
-
-  # read and save http environment data into user session, used for checks and info
-  $user_shr->{ ":HTTP_CHECK_HR" } = { map { $_ => $self->{ 'IN' }{ 'ENV' }{ $_ } } @HTTP_VARS_CHECK };
-  $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $self->{ 'IN' }{ 'ENV' }{ $_ } } @HTTP_VARS_SAVE  };
-
-  return ( $user_sid, $user_shr );
-}
-
-# FIXME: CHECK ROTATION
-# (re)issue the user session cookie bound to the given session id
-sub __set_user_session_cookie
-{
-  my $self     = shift;
-  my $user_sid = shift;
-
-  my $cfg = $self->cfg();
-
-  my $app_name    = $cfg->{ 'APP_NAME' } or boom( "missing APP_NAME" );
-  my $cookie_name = lc( $cfg->{ 'COOKIE_NAME' } || "$app_name\_cookie" );
-
-  my $path = $cfg->{ 'COOKIE_PATH' };
-  if( ! $path )
-    {
-    $path = $self->get_request_uri();
-    $path =~ s/^([^\?]*\/)([^\?\/]*)(\?.*)?$/$1/; # remove args: ?...
-    }
-  $path ||= '/';
-
-  my $secure_cookie = $cfg->{ 'DISABLE_SECURE_COOKIES' } ? 0 : 1;
-  $self->res_set_cookie( $cookie_name, value => $user_sid, path => $path, httponly => 1, secure => $secure_cookie, samesite => 'lax' );
-}
-
-# FIXME: CHECK ROTATION
-# rotate the user session id, migrating current (anonymous) session data to a
-# fresh id. used on privilege change (login) to prevent session fixation.
-# note: PAGE/LINK sessions are namespaced under the user id, so the pre-login
-# page back-stack is intentionally not carried across the rotation.
-sub __rotate_user_session_id
-{
-  my $self = shift;
-
-  my $old_sid  = $self->get_user_session_id();
-  my $user_shr = $self->get_user_session();
-
-  # allocate a fresh, unpredictable session id for the elevated session
-  my $new_sid = $self->ses->create( 'USER' );
-
-  # re-key the current in-memory user session data under the new id (data kept)
-  delete $self->{ 'SESSIONS' }{ 'DATA'              }{ 'USER' }{ $old_sid };
-  delete $self->{ 'CACHE'    }{ 'SESSION_DATA_SHA1' }{ 'USER' }{ $old_sid };
-  $user_shr->{ ':ID' } = $new_sid;
-  $self->{ 'SESSIONS' }{ 'SID'  }{ 'USER' }             = $new_sid;
-  $self->{ 'SESSIONS' }{ 'DATA' }{ 'USER' }{ $new_sid } = $user_shr;
-  $self->__update_session_fingerprint( 'USER', $new_sid, $user_shr );
-
-  # reissue the cookie bound to the new id
-  $self->__set_user_session_cookie( $new_sid );
-
-  # invalidate the old session in storage so a fixed pre-login cookie is useless
-  $self->ses->save( 'USER', $old_sid, { ':ID' => $old_sid, ':CLOSED' => 1, ':ETIME' => time(), ':ETIME_STR' => scalar localtime() } );
-
-  $self->log( "status: rotated user session id on login [$old_sid] -> [$new_sid]" );
-
-  return $new_sid;
-}
-
-sub get_postdata_fh
-{
-  my $self = shift;
-
-  return $self->{ 'PLACK' }->body();
-}
-
-sub get_postdata_body
-{
-  my $self = shift;
-
-  my $fh = $self->get_postdata_fh();
-
-  local $/ = undef;
-  return <$fh>;
-}
-
-sub cfg
-{
-  my $self = shift;
-
-  return $self->{ 'CFG' };
 }
 
 ##############################################################################
@@ -881,59 +818,6 @@ sub args_type
   boom( "unknown or not supported TYPE [$type]" );
 }
 
-##############################################################################
-
-sub get_request_scheme
-{
-  my $self   = shift;
-
-  return $self->{ 'IN' }{ 'ENV' }{ 'REQUEST_SCHEME' };
-}
-
-sub get_request_uri
-{
-  my $self   = shift;
-
-  return $self->{ 'IN' }{ 'ENV' }{ 'REQUEST_URI' };
-}
-
-sub get_request_method
-{
-  my $self   = shift;
-
-  return $self->{ 'IN' }{ 'ENV' }{ 'REQUEST_METHOD' };
-}
-
-sub get_headers
-{
-  my $self  = shift;
-
-  return $self->{ 'IN' }{ 'HEADERS' } ||= { map { lc( $_ ) => $self->{ 'IN' }{ 'ENV' }{ $_ } } grep /^(HTTPS?_|SSL_)/, keys %{ $self->{ 'IN' }{ 'ENV' } } };
-}
-
-sub get_header
-{
-  my $self = shift;
-  my $name = shift;
-
-  return $self->get_headers->{ $name };
-}
-
-sub get_cookies
-{
-  my $self = shift;
-  return $self->{ 'IN' }{ 'COOKIES' } ||= crush_cookie( $self->get_header( 'http_cookie' ) );;
-}
-
-sub get_cookie
-{
-  my $self = shift;
-  my $name = shift;
-
-  my $cookie = $self->get_cookies->{ $name };
-  $self->log_debug( "get_cookie: name [$name] value [$cookie]" );
-  return $cookie;
-}
 
 ### RESULT/OUTPUT API ########################################################
 

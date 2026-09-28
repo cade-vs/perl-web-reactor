@@ -4,7 +4,7 @@
 ##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
 ##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##  http://cade.noxrun.com
-##  
+##
 ##  LICENSE: GPLv2
 ##  https://github.com/cade-vs/perl-web-reactor
 ##
@@ -12,8 +12,8 @@
 package Web::Reactor::Preprocessor;
 use strict;
 
-use parent 'Web::Reactor::Base'; 
- 
+use parent 'Web::Reactor::Base';
+
 # constructs real filesystem/storage file name and load the page_text
 # args:
 #       $page_name  -- page name, it should be sanitized and load from file,
@@ -37,6 +37,14 @@ sub process { die "Web::Reactor::Preprocessor::*::process() is not implemented!"
 #
 #  print "DESTROY: $self\n";
 #}
+
+##############################################################################
+
+sub check_page_name
+{
+  my $self = shift;
+  die "Web::Reactor::Preprocessor::check_page_name() cannot be called via the base class!";
+}
 
 ##############################################################################
 1;

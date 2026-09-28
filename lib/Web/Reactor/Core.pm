@@ -288,6 +288,58 @@ sub get_user_postdata_body
   return <$fh>;
 }
 
+sub get_request_scheme
+{
+  my $self   = shift;
+
+  return $self->{ 'IN' }{ 'ENV' }{ 'REQUEST_SCHEME' };
+}
+
+sub get_request_uri
+{
+  my $self   = shift;
+
+  return $self->{ 'IN' }{ 'ENV' }{ 'REQUEST_URI' };
+}
+
+sub get_request_method
+{
+  my $self   = shift;
+
+  return $self->{ 'IN' }{ 'ENV' }{ 'REQUEST_METHOD' };
+}
+
+sub get_headers
+{
+  my $self  = shift;
+
+  return $self->{ 'IN' }{ 'HEADERS' } ||= { map { lc( $_ ) => $self->{ 'IN' }{ 'ENV' }{ $_ } } grep /^(HTTPS?_|SSL_)/, keys %{ $self->{ 'IN' }{ 'ENV' } } };
+}
+
+sub get_header
+{
+  my $self = shift;
+  my $name = shift;
+
+  return $self->get_headers->{ $name };
+}
+
+sub get_cookies
+{
+  my $self = shift;
+  return $self->{ 'IN' }{ 'COOKIES' } ||= crush_cookie( $self->get_header( 'http_cookie' ) );;
+}
+
+sub get_cookie
+{
+  my $self = shift;
+  my $name = shift;
+
+  my $cookie = $self->get_cookies->{ $name };
+  $self->log_debug( "get_cookie: name [$name] value [$cookie]" );
+  return $cookie;
+}
+
 ### RESULT/OUTPUT API ########################################################
 
 
@@ -679,7 +731,352 @@ sub forward_url
 
 =pod
 
-   pod here
+=head1 NAME
+
+Web::Reactor::Core - PSGI request/response foundation for Web::Reactor
+
+=head1 SYNOPSIS
+
+  package Web::Reactor::Hello;
+  use parent 'Web::Reactor::Core';
+
+  sub process_request
+  {
+    my $self = shift;
+
+    my $in   = $self->get_user_input();
+    my $name = $in->{ 'NAME' } || 'world';
+
+    $self->render( $self->portray( "<h1>hello $name</h1>", 'html' ) );
+  }
+
+  # app.psgi
+  my $app = sub { Web::Reactor::Hello->new( $_[0], { DEBUG => 0 } )->run() };
+
+=head1 DESCRIPTION
+
+Web::Reactor::Core is the lowest layer of Web::Reactor. It wraps one PSGI
+request: it reads the environment, parameters, uploads, headers and cookies,
+collects the response status, headers, cookies and body, and turns them into
+the PSGI response triplet. It knows nothing about pages, actions, templates
+or sessions; those live in the subclasses:
+
+=over 4
+
+=item Web::Reactor::Reflex  stateless pages, actions, templates, safe links
+
+=item Web::Reactor          stateful, adds user, page and link sessions
+
+=back
+
+One object is created per request and discarded afterwards. Subclasses
+implement C<process_request()> and end it by calling C<render()> or
+C<forward_url()>, both of which sink the C<RENDER> exception that C<run()>
+catches to build the response.
+
+=head1 REQUEST LIFECYCLE
+
+=over 4
+
+=item 1. C<new( $env, $cfg )>
+
+Copies the config (deep) and the PSGI environment (shallow), forces
+C<CHARSET> to C<UTF-8>, resolves the client IP into C<$env-E<gt>{':CLIENT_IP'}>,
+sets the debug level from C<DEBUG> and creates the Plack::Request object.
+
+=item 2. C<run( @args )>
+
+Calls C<process_request( @args )> inside an eval and inspects the outcome:
+
+  RENDER sink      -> [ status || 200, headers, body ] from the res_* state
+  any other error  -> logged, "system is currently unavailable (*)"
+  no sink at all   -> logged, "system is currently unavailable (!)"
+
+Both failure responses use HTTP 200 on purpose, so proxies and caches do not
+replace the message with their own error page.
+
+=item 3. C<process_request( @args )>
+
+Must be implemented by the subclass. The base version dies. C<@args> is an
+optional list of name/value pairs a caller may force into the request.
+
+=back
+
+=head1 CONFIG ENTRIES
+
+=over 4
+
+=item C<DEBUG>         debug level, 0 (default) to 4; see "Logging" under METHODS
+
+=item C<CHARSET>       always overwritten with C<UTF-8>
+
+=item C<CLOUDFLARE>    true when behind Cloudflare, trust C<CF-Connecting-IP>
+for the client address
+
+=item C<PROXY_REMOTE>  true when behind a trusted reverse proxy, trust
+C<X-Real-IP> for the client address
+
+=item C<HTTP_CSP>      Content-Security-Policy header value sent with every
+C<render()>, none if empty
+
+=back
+
+Both proxy flags are off by default, so a client cannot spoof its address by
+sending those headers directly.
+
+=head1 METHODS
+
+=head2 Construction and dispatch
+
+=over 4
+
+=item C<new( \%env, \%cfg )>
+
+Dies unless both arguments are hash references.
+
+=item C<run( @args )>
+
+Returns the PSGI response array reference. Never dies.
+
+=item C<process_request( @args )>
+
+Abstract, see L</REQUEST LIFECYCLE>.
+
+=back
+
+=head2 Debug level
+
+=over 4
+
+=item C<set_debug( $level )>, C<is_debug()>, C<inc_debug( $step )>
+
+Non-negative integer, kept on the object. C<is_debug()> returns 0 when unset.
+
+=back
+
+=head2 Accessors
+
+=over 4
+
+=item C<cfg()>    the config hash reference (the copy, not the caller's)
+
+=item C<env()>    the PSGI environment hash reference (the copy)
+
+=item C<plack()>  the Plack::Request object
+
+=back
+
+=head2 Request state
+
+=over 4
+
+=item C<get_client_ip()>
+
+Client address honouring the proxy flags above, falls back to C<REMOTE_ADDR>.
+Also available as C<env-E<gt>{':CLIENT_IP'}>.
+
+=item C<get_request_scheme()>
+
+C<http> or C<https>, lowercased, from C<REQUEST_SCHEME> or, under PSGI,
+C<psgi.url_scheme>.
+
+=item C<get_request_uri()>, C<get_request_method()>, C<get_request_path_info()>
+
+Straight from the environment.
+
+=item C<get_headers()>
+
+Hash reference of request headers keyed by their real, lowercase names:
+C<content-type>, C<x-forwarded-for>, and so on. The CGI mangling (uppercase,
+underscores, C<HTTP_> prefix) is undone. Built once per request.
+
+=item C<get_header( $name )>
+
+One header by name, case insensitive.
+
+=item C<get_cookies()>, C<get_cookie( $name )>
+
+Parsed C<Cookie> header, via Cookie::Baker. Cookie names are case sensitive.
+
+=back
+
+=head2 Request input
+
+=over 4
+
+=item C<get_user_input()>
+
+Hash reference of GET and POST parameters, built once per request:
+
+=over 4
+
+=item * names are uppercased, so C<?page=1> arrives as C<PAGE>
+
+=item * names outside C<[A-Za-z0-9_.:-]> are logged and dropped
+
+=item * values are UTF-8 decoded and NUL bytes removed
+
+=item * a parameter sent more than once is stored as an array reference under
+C<@NAME>, a single one as a scalar under C<NAME>
+
+=back
+
+=item C<get_safe_input()>
+
+Hash reference of trusted input. Empty in the base class; Reflex fills it from
+the encrypted C<_> token.
+
+=item C<get_user_uploads()>
+
+Hash reference, uppercase field name to array reference of Plack::Request::Upload
+objects, one entry per field even for a single file.
+
+=item C<get_user_postdata_fh()>, C<get_user_postdata_body()>
+
+The raw request body as a file handle or as one string. Usable after
+C<get_user_input()> as well, Plack buffers the input.
+
+=back
+
+=head2 Response state
+
+All C<res_*> calls only record state; nothing is sent until C<run()> returns.
+
+=over 4
+
+=item C<res_set_status( $code )>, C<res_get_status()>
+
+HTTP status, defaults to 200 when unset.
+
+=item C<res_set_headers( %headers )>
+
+Records headers, names lowercased, later calls overwrite earlier ones for
+the same name. Booms on a CR or LF in a name or value. Two names are special:
+C<status> sets the HTTP status instead, C<content-charset> is appended to
+C<content-type> as C<; charset=...> when the response is built.
+
+=item C<res_get_headers_ar()>
+
+Flattens the recorded headers into the PSGI array. C<content-type> defaults to
+C<application/octet-stream> and is dropped when a C<location> header is
+present. One C<set-cookie> line is added per cookie.
+
+=item C<res_set_cookie( $name, %options )>
+
+Records a response cookie. C<%options> are passed to Cookie::Baker's
+C<bake_cookie>: C<value>, C<path>, C<domain>, C<expires>, C<secure>,
+C<httponly>, C<samesite>. One cookie per name.
+
+=item C<res_set_body( $body )>, C<res_get_body()>
+
+Body as a string of bytes or a file handle. A string is wrapped in an array
+reference for PSGI, a file handle is passed through.
+
+=back
+
+=head2 Rendering
+
+=over 4
+
+=item C<render( \%portray )> or C<render( %portray )>
+
+Builds the response from a portray hash and sinks C<RENDER>, so it never
+returns. Keys:
+
+  DATA              body text (or bytes for non-text types)
+  FH                body file handle, takes priority over DATA
+  TYPE              MIME type, default application/octet-stream
+  FILE_NAME         adds a Content-Disposition header, see below
+  DISPOSITION_TYPE  inline (default) or attachment
+
+For C<text/*> types the charset header is set to UTF-8 and DATA is encoded
+from characters to bytes; a FH is sent as is. FILE_NAME is sanitized for
+header injection and, when it contains non-ASCII, sent both as an ASCII
+fallback and as an RFC 5987 C<filename*> parameter. C<HTTP_CSP> from the
+config is added when set.
+
+=item C<portray( $data, $type, %extra )>
+
+Returns a portray hash for C<render()>. C<$type> is a MIME type or one of the
+shortcuts C<html>, C<text>, C<txt>, C<jpeg>, C<png>, C<bin>. Booms on
+anything that is not C<type/subtype>. C<%extra> is merged in, so
+C<FILE_NAME> and C<DISPOSITION_TYPE> go here.
+
+=item C<forward_url( $url )>
+
+Records a 302 redirect with an empty body and sinks C<RENDER>.
+
+=back
+
+=head2 Logging
+
+=over 4
+
+=item C<log( @text )>
+
+Writes to STDERR with a newline. Subclasses override this to route logs
+elsewhere; every other log method ends up here.
+
+=item C<log_debug( @text )>
+
+Logged when the debug level is 1 or more, prefixed with C<debug:> if not
+already.
+
+=item C<log_debug2( @text )>
+
+Same at level 2 or more.
+
+=item C<log_stack( @text )>
+
+C<log_debug> plus a stack trace.
+
+=item C<log_dumper( @data )>
+
+C<log_debug> of Data::Dumper output, keys sorted.
+
+=back
+
+=head1 OVERRIDABLE INTERNALS
+
+These are called by the input methods and may be replaced in a subclass to
+change policy:
+
+=over 4
+
+=item C<__import_user_input()>, C<__import_safe_input()>, C<__import_user_uploads()>
+
+Build the three input hashes. The results are cached on the object by the
+public getters.
+
+=item C<__input_param_name_check( $name )>
+
+Returns the name if acceptable, undef otherwise.
+
+=item C<__input_param_invalid_value( $name, $value )>
+
+Return 1 to drop the parameter (all of its values), 0 to keep it. Default
+keeps everything.
+
+=item C<__input_param_make_safe_value( $name, $value )>
+
+Cleans one value, default strips NUL bytes.
+
+=back
+
+=head1 SEE ALSO
+
+Web::Reactor::Reflex, Web::Reactor, Plack::Request, Cookie::Baker,
+Exception::Sink.
+
+=head1 AUTHOR
+
+  Vladi Belperchinov-Shabanski "Cade"
+  <cade@noxrun.com>
+  http://cade.noxrun.com
+
+=head1 LICENSE
+
+GPLv2, see COPYING.
 
 =cut
 

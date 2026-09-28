@@ -20,7 +20,7 @@
 ##  https://github.com/cade-vs/perl-decor
 ##
 ##############################################################################
-package Web::Reactor::Actions::Alt;
+package Web::Reactor::Actions::Files;
 use strict;
 use Exception::Sink;
 use Web::Reactor::Actions;
@@ -33,7 +33,7 @@ sub __find_code_by_name
   my $self = shift;
   my $name = lc shift;
 
-  my $act_cache = $self->{ 'Web::Reactor::Actions::Alt' }{ 'CACHE' } ||= {};
+  my $act_cache = $self->{ 'Web::Reactor::Actions::Files' }{ 'CACHE' } ||= {};
 
   return $act_cache->{ $name } if exists $act_cache->{ $name };
 
@@ -59,6 +59,7 @@ sub __find_code_by_name
 
   eval
     {
+    # TODO: option to reload on each request, for development purposes
     delete $INC{ $found };
     require $found;
     };
@@ -77,7 +78,7 @@ sub __find_code_by_name
     }
   elsif( $@ =~ /Can't locate /)
     {
-    # TODO: cache for missing ones
+    $act_cache->{ $name } = undef;
     $reo->log( "error: action not found or cannot be resolved: $ap [$found]" );
     }
   else

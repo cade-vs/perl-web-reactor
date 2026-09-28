@@ -12,6 +12,7 @@
 package Web::Reactor::Actions;
 use strict;
 
+use Data::Dumper;
 use Exception::Sink;
 
 use parent 'Web::Reactor::Base';
@@ -22,6 +23,27 @@ sub new
 
   $class = ref( $class ) || $class;
   my $self = $class->SUPER::new( @_ );
+
+  my $reo = $self->reo();
+  my $cfg = $self->cfg();
+
+  my $dirs = $cfg->{ 'LIB_DIRS' };
+
+  # FIXME: common directories setup code?
+  # single directory (scalar) specified, convert to list
+  $dirs = [ $dirs ] if ! ref( $dirs ) and $dirs;
+  # nothing specified, set default
+  $dirs = [ $reo->get_app_root() . '/lib/' ] if ! $dirs or @{ $dirs } < 1;
+
+  for my $lib_dir ( @$dirs )
+    {
+    next unless -d $lib_dir;
+    next if grep { $_ eq $lib_dir } @INC; # persistent servers call new() per request
+    push @INC, $lib_dir;
+    }
+
+  # remove '.'
+  @INC = grep { $_ ne '.' } @INC;
 
   return $self;
 }
@@ -41,17 +63,13 @@ sub call
   my $name = lc shift;
   my %args = @_;
 
-
-  die "invalid action name, expected ALPHANUMERIC, got [$name]" unless $name =~ /^[a-z_0-9]+$/;
+  $self->check_action_name( $name );
 
   my $code = $self->__find_code_by_name( $name );
 
 #  print STDERR Dumper( 'Web::Reactor::Actions::call()', $name, $code, \%args );
 
   boom "code for action name [$name] not found" unless $code;
-
-  # FIXME: move to global error/log reporting
-  #print STDERR "reactor::actions::call [$name] action package found [$ap]\n";
 
   my $data;
 
@@ -67,7 +85,7 @@ sub call
     {
     my $reo = $self->reo();
     my @args = %args;
-    $reo->log( "error: action code call failed: $name( @args ): $@" );
+    $reo->log( "error: action code call failed: $name: $@\nwith args: " . Dumper( \%args ) );
     return undef;
     }
 
@@ -78,7 +96,7 @@ sub call
 
 sub __find_code_by_name
 {
-  die "Web::Reactor::Actions::__find_code_by_name() must be implemented in subclasses!";
+  boom "Web::Reactor::Actions::__find_code_by_name() must be implemented in subclasses!";
 }
 
 #sub DESTROY
@@ -87,6 +105,14 @@ sub __find_code_by_name
 #
 # print "DESTROY: Reactor: $self\n";
 #}
+
+##############################################################################
+
+sub check_action_name
+{
+  my $self = shift;
+  boom "invalid action name [$_[0]]" unless $_[0] =~ /^[a-z0-9_]*$/;
+}
 
 ##############################################################################
 1;

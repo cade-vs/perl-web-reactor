@@ -1,0 +1,111 @@
+#!/usr/bin/perl
+##############################################################################
+##
+##  Web::Reactor page layout migration: Native -> Extended preprocessor
+##  Copyright (c) 2013-2026 Vladi Belperchinov-Shabanski "Cade"
+##        <cade@noxrun.com>
+##  http://cade.noxrun.com
+##
+##  LICENSE: GPLv2
+##  https://github.com/cade-vs/perl-web-reactor
+##
+##############################################################################
+##
+##  usage: web-reactor-migrate-native-to-extended <html-directory>
+##
+##  walks the given directory recursively and moves every
+##
+##      <dir>/page_<name>.html
+##
+##  to
+##
+##      <dir>/<name>/index.html
+##
+##  which is the layout Web::Reactor::Preprocessor::Extended expects.
+##  other files (includes, assets) are left untouched.
+##
+##  * can be run repeatedly, already migrated pages are simply not found
+##  * never overwrites: an existing <name>/index.html (or a plain file
+##    named <name>) is an error
+##  * never deletes anything
+##  * stops on the first error and reports what was done up to that point
+##
+##############################################################################
+use strict;
+use warnings;
+use File::Find;
+use File::Basename;
+
+my $root = shift;
+
+die "usage: $0 <html-directory>\n" unless defined $root and $root ne '';
+die "error: [$root] is not a directory\n" unless -d $root;
+
+$root =~ s{/+$}{};
+
+# collect first, then move, so the walk is not disturbed by directories we create
+my @pages;
+find( { no_chdir => 1,
+        wanted   => sub
+                    {
+                    return unless -f $_;
+                    return unless basename( $_ ) =~ /^page_(.+)\.html$/;
+                    push @pages, $_;
+                    }
+      }, $root );
+
+@pages = sort @pages;
+
+my @done;
+
+for my $src ( @pages )
+  {
+  my $dir  = dirname( $src );
+  my $name = basename( $src );
+  $name =~ s/^page_(.+)\.html$/$1/;
+
+  # Extended lowercases page names at lookup, so the directory must be lowercase
+  # too; a mixed case flat file was reachable under Native only by its lc name.
+  # if the lowercased target already exists, this stops and the file is left
+  # for manual resolution
+  $name = lc $name;
+
+  # Extended allows only these characters (plus '/' for nesting, which a flat
+  # file name cannot carry)
+  stop( "page name [$name] from [$src] has invalid characters, expected [a-z0-9_-] only" )
+      unless $name =~ /^[a-z0-9_\-]+$/;
+
+  my $dst_dir = "$dir/$name";
+  my $dst     = "$dst_dir/index.html";
+
+  stop( "target [$dst] already exists, will not overwrite (source [$src] left in place)" ) if -e $dst;
+  stop( "[$dst_dir] exists but is not a directory, cannot place [$dst]" ) if -e $dst_dir and ! -d $dst_dir;
+
+  if( ! -d $dst_dir )
+    {
+    mkdir( $dst_dir ) or stop( "cannot create directory [$dst_dir]: $!" );
+    }
+
+  rename( $src, $dst ) or stop( "cannot move [$src] to [$dst]: $!" );
+
+  push @done, "$src -> $dst";
+  print "moved: $src -> $dst\n";
+  }
+
+print "\ndone: " . scalar( @done ) . " page(s) migrated, " . scalar( @pages ) . " found under [$root]\n";
+exit 0;
+
+##############################################################################
+
+sub stop
+{
+  my $msg = shift;
+
+  print STDERR "\nerror: $msg\n";
+  print STDERR "stopped. " . scalar( @done ) . " page(s) were migrated before the error:\n";
+  print STDERR "  $_\n" for @done;
+  print STDERR "nothing was overwritten or deleted, fix the problem and run again.\n";
+  exit 1;
+}
+
+##############################################################################

@@ -9,7 +9,7 @@
 ##  https://github.com/cade-vs/perl-web-reactor
 ##
 ##############################################################################
-package Web::Reactor::Actions::Native;
+package Web::Reactor::Actions::Packages;
 use strict;
 use Exception::Sink;
 use Web::Reactor::Actions;
@@ -22,14 +22,14 @@ sub __find_code_by_name
   my $self = shift;
   my $name = lc shift;
 
-  my $act_cache = $self->{ 'Web::Reactor::Actions::Native' }{ 'CACHE' } ||= {};
+  my $act_cache = $self->{ 'Web::Reactor::Actions::Packages' }{ 'CACHE' } ||= {};
 
   return $act_cache->{ $name } if exists $act_cache->{ $name };
 
   my $reo = $self->reo();
   my $cfg = $self->cfg();
 
-  my $app_name = lc $cfg->{ 'APP_NAME' };
+  my $app_name = $cfg->{ 'APP_NAME' };
   # action packages are found via require() through @INC, LIB_DIRS are pushed there by the reactor constructor
 
   # actions sets list
@@ -38,7 +38,7 @@ sub __find_code_by_name
 
   # action package
   for my $asl ( @asl )
-  {
+    {
     my $ap = 'Web::Reactor::Actions::' . $asl . '::' . $name;
 
     # print STDERR "testing action: $ap\n";
@@ -65,14 +65,14 @@ sub __find_code_by_name
       }
     elsif( $@ =~ /Can't locate /)
       {
-      # TODO: cache for missing ones
-      $reo->log( "error: action not found or cannot be resolved: $ap [$fn]" );
+      $act_cache->{ $name } = undef;
+      $reo->log( "error: action not found or cannot be resolved: $ap [$fn] $@" );
       }
     else
       {
-      $reo->log( "error: load action failed: $ap: $@ [$fn]" );
+      $reo->log( "error: load action failed: $ap [$fn] $@" );
       }
-  }
+    }
 
   return undef;
 }
@@ -80,4 +80,3 @@ sub __find_code_by_name
 ##############################################################################
 1;
 ###EOF########################################################################
-

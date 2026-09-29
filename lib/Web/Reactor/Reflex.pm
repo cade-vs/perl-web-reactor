@@ -204,17 +204,48 @@ sub __import_safe_input
   my $self = shift;
 
   my $user_input_hr = $self->get_user_input();
-  my $x = $user_input_hr->{ '__' } or return {};
-  ### return {} unless $x =~ s/^~//;
+
+  # FIXME: TODO: same as in Reactor and Reflex, must be moved to func
+  my $x  = $user_input_hr->{  '_' };
+  my $ax = $user_input_hr->{ '@_' };
+
+  my @ax = $ax ? @$ax : $x ? ( $x ) : ();
+  @ax or return {};
+
+  my %safe_input_hr;
+
+  for my $z ( @ax )
+    {
+    my $shr;
+    if( $z =~ s/^~// )
+      {
+      $shr = $self->__import_encrypted_safe_input( $z );
+      }
+    elsif( $z ne '' )
+      {
+      $self->log( "warning: invalid hidden [_] safe input link session.key [$z], ignored" );
+      }
+
+    %safe_input_hr = ( %safe_input_hr, %$shr ) if $shr;
+    }
+
+  return \%safe_input_hr;
+}
+
+sub __import_encrypted_safe_input
+{
+  my $self = shift;
+
+  my $x = shift;
 
   my $hr = $self->cry->thaw_base64url( $x );
-  $self->log( "error: invalid or tampered encrypted safe input token, ignored" ) unless $hr;
+  $self->log( "error: invalid or tampered encrypted [_] safe input token, ignored" ) unless $hr;
   return $hr || {};
 }
 
 ##############################################################################
 
-sub args
+sub argsx
 {
   my $self = shift;
   my %args = @_;
@@ -224,7 +255,7 @@ sub args
   return '~' . $self->cry()->freeze_base64url( \%args );
 }
 
-sub args_type
+sub argsx_type
 {
   my $self = shift;
   my $type = shift;

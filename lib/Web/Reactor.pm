@@ -325,63 +325,84 @@ sub __import_safe_input
 {
   my $self = shift;
 
-  my $safe_input_hr = $self->SUPER::__import_safe_input();
-
   my $user_input_hr = $self->get_user_input();
-  my $x = $user_input_hr->{ '_' } or return {};
-  ### return $safe_input_hr if $x =~ /^~/; # this is encrypted data, skip it.
 
-  # FIXME: TODO: handle encrypted and hidden in separate params? _ and __ f.e.?
+  # FIXME: TODO: same as in Reactor and Reflex, must be moved to func
+  my $x  = $user_input_hr->{  '_' };
+  my $ax = $user_input_hr->{ '@_' };
 
-  # parse link session: link-sid.link-key
-  if( $e =~ /^([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)$/ )
+  my @ax = $ax ? @$ax : $x ? ( $x ) : ();
+  @ax or return {};
+
+  my %safe_input_hr;
+
+  for my $z ( @ax )
     {
-    my ( $link_sid, $link_key ) = ( $1, $2 );
-
-    my $link_session_hr = $self->ses->load( 'LINK', $link_sid );
-
-    if( $link_session_hr )
+    my $shr;
+    if( $z =~ s/^~// )
       {
-      my $ldhr = $link_session_hr->{ 'ARGS' }{ $link_key }; # link data hashref
-      # merge safe input if valid
-      %$safe_input_hr = ( %$safe_input_hr, %$ldhr ) if $ldhr;
+      $shr = $self->__import_encrypted_safe_input( $z );
+      }
+    elsif( $z =~ /^([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)$/ )
+      { # parse link session: link-sid.link-key
+      $shr = $self->__import_hidden_safe_input( $1, $2, $user_input_hr  );
+      }
+    elsif( $z ne '' )
+      {
+      $self->log( "warning: invalid hidden [_] safe input link session.key [$z], ignored" );
       }
 
-    # remap incoming parameter names and values, hidden by the FORMs engine
-    my $form_id = $safe_input_hr->{ 'FORM_ID' }; # FIXME: replace with _FRI
-    if( $form_id and $link_session_hr and exists $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id } )
-      {
-      my $rmn = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'NAME' }; # return map names
-      my $rmd = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'DATA' }; # return map data
+    %safe_input_hr = ( %safe_input_hr, %$shr ) if $shr;
+    }
 
-      # remap input data
-      for my $n ( keys %$user_input_hr )
+  return \%safe_input_hr;
+}
+
+
+sub __import_hidden_safe_input
+{
+  my $self = shift;
+  my $link_sid = shift;
+  my $link_key = shift;
+  my $user_input_hr = shift;
+
+  my %safe_input_hr;
+
+  my $link_session_hr = $self->ses->load( 'LINK', $link_sid );
+  return {} unless $link_session_hr;
+  my $ldhr = $link_session_hr->{ 'ARGS' }{ $link_key }; # link data hashref
+  return {} unless $ldhr;
+  %safe_input_hr = %$ldhr;
+
+  # remap incoming parameter names and values, hidden by the FORMs engine
+  my $form_id = $safe_input_hr{ 'FORM_ID' }; # FIXME: replace with _FRI
+  if( $form_id and exists $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id } )
+    {
+    my $rmn = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'NAME' }; # return map names
+    my $rmd = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'DATA' }; # return map data
+
+    # remap input data
+    for my $n ( keys %$user_input_hr )
+      {
+      my $nn = $n;
+      if( exists $rmn->{ $n } )
         {
-        my $nn = $n;
-        if( exists $rmn->{ $n } )
-          {
-          # remap names
-          $nn = $rmn->{ $n };
-          $user_input_hr->{ $nn } = $user_input_hr->{ $n };
-          delete $user_input_hr->{ $n };
-          }
-        if( exists $rmd->{ $nn } )
-          {
-          # remap values
-          $safe_input_hr->{ $nn } = $rmd->{ $nn }{ $user_input_hr->{ $nn } };
-          delete $user_input_hr->{ $nn };
-          }
+        # remap names
+        $nn = $rmn->{ $n };
+        $user_input_hr->{ $nn } = $user_input_hr->{ $n };
+        delete $user_input_hr->{ $n };
+        }
+      if( exists $rmd->{ $nn } )
+        {
+        # remap values
+        $safe_input_hr{ $nn } = $rmd->{ $nn }{ $user_input_hr->{ $nn } };
+        delete $user_input_hr->{ $nn };
         }
       }
     }
-  elsif( $e ne '' )
-    {
-    $self->log( "warning: invalid hidden safe input link session.key [$e], ignored" );
-    }
 
-  return $safe_input_hr || {};
+  return \%safe_input_hr;
 }
-
 ##############################################################################
 ##############################################################################
 ##############################################################################
@@ -397,43 +418,6 @@ sub __import_safe_input
 ##############################################################################
 ##############################################################################
 
-sub run
-{
-  my $self = shift;
-
-  srand();
-
-  my $res;
-  eval
-    {
-    $self->prepare_and_execute( @_ );
-    };
-  if( surface( 'RENDER' ) )
-    {
-    my $status  = $self->res_get_status() || 200;
-    my $headers = $self->res_get_headers_ar();
-    my $body    = $self->res_get_body();
-    $body = [ $body ] unless ref $body;
-    $res = [ $status, $headers, $body ];
-    }
-  elsif( surface( '*' ) )
-    {
-    $self->log( "error: prepare or execute code failed: $@" );
-    $res = [ 200, [ 'content-type' => 'text/plain' ], [ 'system is currently unavailable (*)' ] ];
-    }
-  else
-    {
-    $self->log( "error: unknown or empty result or exception" );
-    $res = [ 200, [ 'content-type' => 'text/plain' ], [ 'system is currently unavailable' ] ];
-    }
-
-  $self->save();
-
-  $self->run_print_final_debug() if $self->is_debug();
-
-  # $self->log_dumper( 'RUN RESULT, CODE, HEADERS, BODY_LENGTH:', $res->[0], $res->[1], length( $res->[2] ) );
-  return $res;
-}
 
 sub run_print_final_debug
 {
@@ -452,49 +436,6 @@ sub run_print_final_debug
     $self->log_dumper( "USER SESSION [$usid]---------------------------", $self->get_user_session() );
     my ( $ls, $lsid ) = $self->get_link_session();
     $self->log_dumper( "FINAL LINK SESSION  [$lsid]-----------------------------------", $ls );
-    }
-}
-
-sub prepare_and_execute
-{
-  my $self = shift;
-  my $args = @_;
-  my %args = @_;
-
-  my $cfg = $self->cfg();
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-
-=pod
-    # remap names
-    for my $n ( keys %$rmn )
-      {
-      next unless exists $input_user_hr->{ $n };
-      $input_user_hr->{ $rmn->{ $n } } = $input_user_hr->{ $n };
-      delete $input_user_hr->{ $n };
-      }
-
-    # remap data
-    for my $k ( keys %$rmd )
-      {
-      next unless exists $input_user_hr->{ $k };
-      $input_safe_hr->{ $k } = $rmd->{ $k }{ $input_user_hr->{ $k } };
-      delete $input_user_hr->{ $k };
-      }
-=cut
-
-    }
-
-
-  # 8. render output action/page
-  if( $action_name )
-    {
-    $self->render( ACTION => $action_name );
-    }
-  else
-    {
-    $self->render( PAGE => $page_name );
     }
 }
 

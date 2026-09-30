@@ -169,11 +169,11 @@ is( $o2->cfg->{ 'NAME' }, 'orig', 'CFG is cloned, later caller changes are not v
 is( $o2->cfg->{ 'CHARSET' }, 'UTF-8', 'CFG CHARSET is forced to UTF-8' );
 
 # ENV is copied too (shallow, file handles stay shared), the caller's hash is
-# never written to, not even the synthetic :CLIENT_IP key
+# never written to, not even the synthetic _CLIENT_IP key
 my $env = env();
 my $o3  = TestApp->new( $env, { DEBUG => 0 } );
-ok( ! exists $env->{ ':CLIENT_IP' }, 'caller ENV is not modified by the constructor' );
-is( $o3->env->{ ':CLIENT_IP' }, '127.0.0.1', 'object ENV carries :CLIENT_IP' );
+ok( ! exists $env->{ '_CLIENT_IP' }, 'caller ENV is not modified by the constructor' );
+is( $o3->env->{ '_CLIENT_IP' }, '127.0.0.1', 'object ENV carries _CLIENT_IP' );
 isnt( $o3->env, $env, 'object ENV is a copy, not the caller hash' );
 
 # flat config only, dclone cannot store code refs
@@ -217,7 +217,7 @@ is( app( $spoof, { CLOUDFLARE => 1, PROXY_REMOTE => 1 } )->get_client_ip(), '8.8
     'CLOUDFLARE wins over PROXY_REMOTE when both are set' );
 is( app( env( 'HTTP_X_REAL_IP' => '10.0.0.9' ), { CLOUDFLARE => 1 } )->get_client_ip(), '127.0.0.1',
     'CLOUDFLARE alone does not trust HTTP_X_REAL_IP' );
-is( $o->env()->{ ':CLIENT_IP' }, '127.0.0.1', 'ENV :CLIENT_IP is set at construction' );
+is( $o->env()->{ '_CLIENT_IP' }, '127.0.0.1', 'ENV _CLIENT_IP is set at construction' );
 
 # scheme: REQUEST_SCHEME is CGI only, PSGI servers provide psgi.url_scheme
 is( app( env( 'REQUEST_SCHEME' => undef, 'psgi.url_scheme' => 'https' ) )->get_request_scheme(), 'https',
@@ -260,7 +260,7 @@ ok( ! exists $h->{ 'psgi.input'      }, 'psgi.input is not a header'      );
 ok( ! exists $h->{ 'psgi.url-scheme' }, 'psgi.url_scheme is not a header' );
 ok( ! exists $h->{ 'remote-addr'     }, 'REMOTE_ADDR is not a header'     );
 ok( ! exists $h->{ 'script-name'     }, 'SCRIPT_NAME is not a header'     );
-ok( ! exists $h->{ ':client-ip'      }, ':CLIENT_IP is not a header'      );
+ok( ! exists $h->{ '-client-ip'      }, '_CLIENT_IP is not a header'      );
 is( scalar keys %$h, 6, 'exactly the six request headers are exposed' );
 
 # cookies

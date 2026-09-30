@@ -13,8 +13,7 @@ package Web::Reactor;
 use strict;
 
 use parent 'Web::Reactor::Reflex';
-
-use Storable qw( dclone freeze thaw ); # FIXME: move to Data::Tools (data_freeze/data_thaw)
+use Encode qw( encode decode );
 use Plack::Request;
 use Cookie::Baker;
 use MIME::Base64;
@@ -47,7 +46,7 @@ our @HTTP_VARS_SAVE  = qw(
                            REMOTE_PORT
                            REQUEST_METHOD
                            REQUEST_URI
-                           HTTP_REFERRER
+                           HTTP_REFERER
                            QUERY_STRING
                            HTTP_COOKIE
                            HTTP_USER_AGENT
@@ -81,6 +80,8 @@ sub new
   $class = ref( $class ) || $class;
   my $self = $class->SUPER::new( $env, $cfg );
 
+  $cfg->{ ':THIS IS THE NEW VERSION ++++++++++++++++++++++++++++++++++++++++++' } = 1;
+
   # FIXME: verify %env content! Data::Validate::Struct
   boom "fatal: configuration: request scheme [HTTP] does not match cookies security policy! either enable HTTPS scheme or set DISABLE_SECURE_COOKIES=1"
       if $self->get_request_scheme() eq 'http' and ! $cfg->{ 'DISABLE_SECURE_COOKIES' };
@@ -94,7 +95,7 @@ sub ses
 {
   my $self = shift;
 
-  return $self->{ "REO_SES" } ||= $self->__attach_module( 'SES', 'Web::Reactor::Sessions::Filesystem' );
+  return $self->{ "REO_SES" } ||= $self->__load_and_attach_module( 'SES', 'Web::Reactor::Sessions::Filesystem', $self, $self->cfg() );
 }
 
 # actually reactor uses only public part rsa, any private decoders are backend-related
@@ -130,7 +131,13 @@ sub process_request
 
   # 2. loading user session, setup new session and cookie if needed
   my $user_shr = {}; # user session hash ref
-  unless( $user_sid and $user_shr = $self->ses->load( 'USER', $user_sid ) )
+  if( $user_sid and $user_shr = $self->ses->load( 'USER', $user_sid ) )
+    {
+    $self->log_debug( "debug: status: user session ok [$user_sid]" );
+    $self->__set_session( 'USER', $user_sid, $user_shr );
+    $self->__update_session_fingerprint( 'USER', $user_sid, $user_shr );
+    }
+  else
     {
     $self->log( "warning: invalid user session [$user_sid]" );
     ( $user_sid, $user_shr ) = $self->__create_new_user_session();
@@ -175,8 +182,6 @@ sub process_request
   my $user_session_expire = $cfg->{ 'USER_SESSION_EXPIRE' } || 600; # 10 minutes
   $self->set_user_session_expire_time_in( $user_session_expire );
 
-  $self->save();
-
   my $user_input_hr = $self->get_user_input();
   my $safe_input_hr = $self->get_safe_input();
 
@@ -189,7 +194,11 @@ sub process_request
   # 4. loading page session
   my $page_sid = __input_sid_check( $safe_input_hr->{ '_P' } );
   my $page_shr = $self->ses->load( 'PAGE', $page_sid ); # user session hash ref
-  if( ! $page_shr )
+  if( $page_shr )
+    {
+    $self->__update_session_fingerprint( 'PAGE', $page_sid, $page_shr );
+    }
+  else
     {
     $self->log_debug( "warning: invalid page session [$page_sid]" ) if $page_sid;
     $page_sid = $self->ses->create( 'PAGE', 8 );
@@ -219,6 +228,8 @@ sub process_request
   #             even when only one of them will be used; cheap after the first
   #             call but no longer lazy. consider class-level check functions.
 
+  $self->save();
+
   if( $action_name )
     {
     $self->render_action( $action_name );
@@ -227,6 +238,7 @@ sub process_request
     {
     $self->render_page( $page_name );
     }
+
 }
 
 ### USER SESSION API #########################################################
@@ -256,13 +268,13 @@ sub __create_new_user_session
   $user_shr->{ ':CTIME'      } = time();
   $user_shr->{ ':CTIME_STR'  } = scalar localtime();
 
-  $self->set_user_session_expire_time_in( $user_session_expire );
-
   # read and save http environment data into user session, used for checks and info
   $user_shr->{ ":HTTP_CHECK_HR" } = { map { $_ => $self->{ 'IN' }{ 'ENV' }{ $_ } } @HTTP_VARS_CHECK };
   $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $self->{ 'IN' }{ 'ENV' }{ $_ } } @HTTP_VARS_SAVE  };
 
   $self->__set_session( 'USER', $user_sid, $user_shr );
+
+  $self->set_user_session_expire_time_in( $user_session_expire );
 
   return ( $user_sid, $user_shr );
 }
@@ -306,7 +318,7 @@ sub __rotate_user_session_id
   $user_shr->{ ':ID' } = $new_sid;
   $self->{ 'SESSIONS' }{ 'SID'  }{ 'USER' }             = $new_sid;
   $self->{ 'SESSIONS' }{ 'DATA' }{ 'USER' }{ $new_sid } = $user_shr;
-  $self->__update_session_fingerprint( 'USER', $new_sid, $user_shr );
+###########  $self->__update_session_fingerprint( 'USER', $new_sid, $user_shr );
 
   # reissue the cookie bound to the new id
   $self->__set_user_session_cookie( $new_sid );
@@ -321,57 +333,25 @@ sub __rotate_user_session_id
 
 ##############################################################################
 
-sub __import_safe_input
+sub __import_single_safe_entry
 {
   my $self = shift;
+  my $z    = shift;
 
-  my $user_input_hr = $self->get_user_input();
-
-  # FIXME: TODO: same as in Reactor and Reflex, must be moved to func
-  my $x  = $user_input_hr->{  '_' };
-  my $ax = $user_input_hr->{ '@_' };
-
-  my @ax = $ax ? @$ax : $x ? ( $x ) : ();
-  @ax or return {};
-
-  my %safe_input_hr;
-
-  for my $z ( @ax )
-    {
-    my $shr;
-    if( $z =~ s/^~// )
-      {
-      $shr = $self->__import_encrypted_safe_input( $z );
-      }
-    elsif( $z =~ /^([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)$/ )
-      { # parse link session: link-sid.link-key
-      $shr = $self->__import_hidden_safe_input( $1, $2, $user_input_hr  );
-      }
-    elsif( $z ne '' )
-      {
-      $self->log( "warning: invalid hidden [_] safe input link session.key [$z], ignored" );
-      }
-
-    %safe_input_hr = ( %safe_input_hr, %$shr ) if $shr;
-    }
-
-  return \%safe_input_hr;
+  return $self->__import_hidden_safe_input( $1, $2  ) if $z =~ /^([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)$/;
+  return $self->SUPER::__import_single_safe_entry( $z );
 }
-
 
 sub __import_hidden_safe_input
 {
   my $self = shift;
   my $link_sid = shift;
   my $link_key = shift;
-  my $user_input_hr = shift;
 
   my %safe_input_hr;
 
-  my $link_session_hr = $self->ses->load( 'LINK', $link_sid );
-  return {} unless $link_session_hr;
-  my $ldhr = $link_session_hr->{ 'ARGS' }{ $link_key }; # link data hashref
-  return {} unless $ldhr;
+  my $link_session_hr = $self->ses->load( 'LINK', $link_sid ) or return {};
+  my $ldhr = $link_session_hr->{ 'ARGS' }{ $link_key } or return {}; # link data hashref
   %safe_input_hr = %$ldhr;
 
   # remap incoming parameter names and values, hidden by the FORMs engine
@@ -381,6 +361,7 @@ sub __import_hidden_safe_input
     my $rmn = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'NAME' }; # return map names
     my $rmd = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'DATA' }; # return map data
 
+    my $user_input_hr = $self->get_user_input();
     # remap input data
     for my $n ( keys %$user_input_hr )
       {
@@ -595,22 +576,6 @@ sub get_top_page_session_id
   my $shr = $self->get_page_session( $level ) || {};
 
   return $shr->{ ':TOP_PAGE_SID' };
-}
-
-sub get_safe_input
-{
-  my $self  = shift;
-
-  my $input_safe_hr = $self->{ 'INPUT_SAFE_HR' };
-  return $input_safe_hr;
-}
-
-sub get_user_input
-{
-  my $self  = shift;
-
-  my $input_user_hr  = $self->{ 'INPUT_USER_HR'  };
-  return $input_user_hr;
 }
 
 sub get_input_button
@@ -882,8 +847,6 @@ sub __set_session
 
   $self->{ 'SESSIONS' }{ 'SID'  }{ $type }         = $sid; # keeps only main, USER, PAGE, etc. session IDs
   $self->{ 'SESSIONS' }{ 'DATA' }{ $type }{ $sid } = $hr;
-
-  $self->__update_session_fingerprint( $type, $sid, $hr );
 }
 
 sub __update_session_fingerprint
@@ -894,31 +857,37 @@ sub __update_session_fingerprint
   my $sid  = shift;
   my $hr   = shift;
 
-  $self->{ 'CACHE' }{ 'SESSION_DATA_SHA1' }{ $type }{ $sid } = sha1_hex( freeze( $hr ) );
+  $self->{ 'CACHE' }{ 'SESSION_DATA_SHA1' }{ $type }{ $sid } = hash_fingerprint( $hr );
 }
 
 sub save
 {
   my $self = shift;
 
-  my $mod_cache = $self->{ 'CACHE' }{ 'SESSION_DATA_SHA1' } ||= {};
+  my $mod_cache = $self->{ 'CACHE' }{ 'SESSION_DATA_SHA1' } ||= {}; # modify cache
   for my $type ( qw( USER PAGE LINK HOLD ) )
     {
-    next unless exists $self->{ 'SESSIONS' }{ 'DATA' }{ $type };
-    while( my ( $sid, $shr ) = each %{ $self->{ 'SESSIONS' }{ 'DATA' }{ $type } } )
+    my $type_hr = $self->{ 'SESSIONS' }{ 'DATA' }{ $type } or next;;
+    for my $sid ( keys %$type_hr )
       {
-      boom( "SESSION:DATA:$type:$sid is not hashref" ) unless ref( $shr ) eq 'HASH';
+      my $shr = $type_hr->{ $sid };
 
-      my $sha1   = sha1_hex( freeze( $shr ) );
+      my $sha1   = hash_fingerprint( $shr );
       my $cache1 = $mod_cache->{ $type }{ $sid };
 
       next if $sha1 eq $cache1;
 
       $self->log_debug( "saving session data [$type:$sid] --> $sha1 <> $cache1" );
 
-      $mod_cache->{ $type }{ $sid } = $sha1;
 
-      $self->ses->save( $type, $sid, $shr );
+      if( $self->ses->save( $type, $sid, $shr ) )
+        {
+        $mod_cache->{ $type }{ $sid } = $sha1;
+        }
+      else
+        {
+        $self->log( "error saving session state for [$type:$sid] --> new $sha1 <> old $cache1" );
+        }
       }
     }
 }
@@ -1680,10 +1649,6 @@ sub load_trans_file
 ##
 ## REO proxies
 ##
-
-sub ses { my $self = shift; return $self->{ 'REO_SES' } };
-sub pre { my $self = shift; return $self->{ 'REO_PRE' } };
-sub act { my $self = shift; return $self->{ 'REO_ACT' } };
 
 sub new_form
 {

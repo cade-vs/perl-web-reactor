@@ -17,6 +17,8 @@ use Data::Tools 1.24;
 
 use parent 'Web::Reactor::Base';
 
+my $MIN_SES_ID_LEN = 8;
+
 ##############################################################################
 ##
 ##  public interface methods, should be used via Reactor object, see specs
@@ -34,8 +36,8 @@ sub create
   my $type = uc shift;
   my $len  = shift || 73; # 21st prime :)
 
-  die "Web::Reactor::Sessions::create: invalid type, expected ALPHANUMERIC, got [$type]" unless $type =~ /^[A-Z0-9]+$/;
-  die "Web::Reactor::Sessions::create: invalid length, expected len > 0, got [$len]" unless $len > 0;
+  boom "Web::Reactor::Sessions::create: invalid type, expected ALPHANUMERIC, got [$type]" unless $type =~ /^[A-Z0-9]+$/;
+  boom "Web::Reactor::Sessions::create: invalid length, expected len >= $MIN_SES_ID_LEN, got [$len]" unless $len >= $MIN_SES_ID_LEN;
 
   my $cfg  = $self->cfg();
 
@@ -79,7 +81,7 @@ sub load
   my $type = shift;
   my $id   = shift;
 
-  return undef unless $id;
+  return undef unless __check_session_id( $id );
 
   my @key = $self->compose_key_from_id( $type, $id );
 
@@ -100,7 +102,7 @@ sub save
   my $id   = shift;
   my $data = shift;
 
-  return 0 unless $id;
+  return undef unless __check_session_id( $id );
 
   my @key = $self->compose_key_from_id( $type, $id );
 
@@ -119,7 +121,7 @@ sub delete
   my $type = shift;
   my $id   = shift;
 
-  return 0 unless $id;
+  return undef unless __check_session_id( $id );
 
   my @key = $self->compose_key_from_id( $type, $id );
 
@@ -138,7 +140,7 @@ sub exists
   my $type = shift;
   my $id   = shift;
 
-  return 0 unless $id;
+  return undef unless __check_session_id( $id );
 
   my @key = $self->compose_key_from_id( $type, $id );
 
@@ -231,7 +233,7 @@ sub compose_key_from_id
   my $type = uc shift;
   my $id   = shift;
 
-  boom "Web::Reactor::Sessions::compose_key_from_id: invalid type, expected ALPHANUMERIC" unless $type =~ /^[A-Z0-9]+$/;
+  boom "Web::Reactor::Sessions::compose_key_from_id: invalid type, expected ALPHA" unless $type =~ /^[A-Z]+$/;
 
   my @key;
 
@@ -256,6 +258,14 @@ sub get_user_sid
 
   return $user_sid;
 }
+
+### INTERNAL #################################################################
+
+sub __check_session_id
+{
+  return $_[0] =~ /^[A-Za-z0-9_]{$MIN_SES_ID_LEN,}$/o;
+}
+
 
 #sub DESTROY
 #{

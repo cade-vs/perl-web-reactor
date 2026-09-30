@@ -216,20 +216,22 @@ sub __import_safe_input
 
   for my $z ( @ax )
     {
-    my $shr;
-    if( $z =~ s/^~// )
-      {
-      $shr = $self->__import_encrypted_safe_input( $z );
-      }
-    elsif( $z ne '' )
-      {
-      $self->log( "warning: invalid hidden [_] safe input link session.key [$z], ignored" );
-      }
-
+    my $shr = $self->__import_single_safe_entry( $z );
     %safe_input_hr = ( %safe_input_hr, %$shr ) if $shr;
+    $self->log( "warning: invalid safe [_] input data [$z], ignored" ) unless $shr;
     }
 
   return \%safe_input_hr;
+}
+
+sub __import_single_safe_entry
+{
+  my $self = shift;
+  my $z    = shift;
+
+  return $self->__import_encrypted_safe_input( $z ) if $z =~ s/^~//;
+
+  return undef;
 }
 
 sub __import_encrypted_safe_input
@@ -263,8 +265,12 @@ sub argsx_type
   # type (here/back/new/none) is ignored: stateless reactor has no link/page
   # sessions, so "back" has nothing to return to and all types behave as "here"
 
-  return $self->args( @_ );
+  return $self->argsx( @_ );
 }
+
+
+*args      = *argsx;
+*args_type = *argsx_type;
 
 ### HTML HOLD ### CONTAINS PREPROCESSING CHUNKS OF HTML ######################
 
@@ -354,7 +360,7 @@ sub forward
 
   boom "expected even number of arguments" unless @_ % 2 == 0;
 
-  my $fw = $self->args( @_ );
+  my $fw = $self->argsx( @_ );
   return $self->forward_url( "?_=$fw" );
 }
 

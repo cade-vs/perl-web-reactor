@@ -86,7 +86,7 @@ isa_ok( 'Web::Reactor::Reflex', 'Web::Reactor::Core', 'Web::Reactor::Reflex' );
 
 for my $m ( qw( new act pre cry process_request render_action render_page
                 get_user_input_button get_lang get_app_name get_app_root
-                args args_type
+                args args_type argsx argsx_type
                 html_hold_set html_hold_get html_hold_del html_hold_clear html_hold_reset
                 html_hold_kit_add html_hold_kit_js html_hold_kit_css
                 forward require_post_method load_trans load_trans_file
@@ -530,15 +530,30 @@ is( body( req( get(  '_an=post' ) ) ), 'POST REQUIRED', 'require_post_method() r
 
 SKIP:
 {
-skip( 'Data::Tools::Crypto::Symmetric not installed', 20 ) unless $HAS_CRYPTO;
+skip( 'Data::Tools::Crypto::Symmetric not installed', 29 ) unless $HAS_CRYPTO;
 
 my $o = app();
 
-my $tok = $o->args( a => 1, Bee => 'x y' );
-like( $tok, qr/^~[A-Za-z0-9_\-]+$/, 'args() returns a ~ prefixed base64url token' );
-is_deeply( $o->cry->thaw_base64url( substr( $tok, 1 ) ), { A => 1, BEE => 'x y' }, 'token decrypts to the arguments with upper cased keys' );
-isnt( $o->args( a => 1 ), $o->args( a => 1 ), 'every token is different (random iv)' );
-is_deeply( $o->cry->thaw_base64url( substr( $o->args_type( 'back', z => 9 ), 1 ) ), { Z => 9 }, 'args_type() ignores the type and encodes the arguments' );
+# argsx() is the encrypted form, args() is the class default: in Reflex the two
+# are the same thing (aliases), Reactor overrides args() with hidden link args
+my $tok = $o->argsx( a => 1, Bee => 'x y' );
+like( $tok, qr/^~[A-Za-z0-9_\-]+$/, 'argsx() returns a ~ prefixed base64url token' );
+is_deeply( $o->cry->thaw_base64url( substr( $tok, 1 ) ), { A => 1, BEE => 'x y' }, 'argsx() token decrypts to the arguments with upper cased keys' );
+isnt( $o->argsx( a => 1 ), $o->argsx( a => 1 ), 'every argsx() token is different (random iv)' );
+is_deeply( $o->cry->thaw_base64url( substr( $o->argsx_type( 'back', z => 9 ), 1 ) ), { Z => 9 }, 'argsx_type() ignores the type and encodes the arguments' );
+
+like( $o->args( a => 1 ), qr/^~[A-Za-z0-9_\-]+$/, 'args() in Reflex is the encrypted form' );
+is_deeply( $o->cry->thaw_base64url( substr( $o->args( q => 'v' ), 1 ) ), { Q => 'v' }, 'args() token decrypts like argsx()' );
+is_deeply( $o->cry->thaw_base64url( substr( $o->args_type( 'new', z => 9 ), 1 ) ), { Z => 9 }, 'args_type() in Reflex is argsx_type()' );
+is( \&Web::Reactor::Reflex::args,      \&Web::Reactor::Reflex::argsx,      'args is an alias of argsx' );
+is( \&Web::Reactor::Reflex::args_type, \&Web::Reactor::Reflex::argsx_type, 'args_type is an alias of argsx_type' );
+
+# an encrypted token is decoded by the safe input importer, hidden link
+# tokens (sid.key) are a Reactor feature and are ignored here
+is_deeply( app( get( '_=' . $o->argsx( k => 'v' ) ) )->get_safe_input(), { K => 'v' }, 'get_safe_input() decodes an argsx() token' );
+is_deeply( app( get( '_=abcd.efgh' ) )->get_safe_input(), {}, 'a hidden sid.key token gives no safe input in Reflex' );
+ok( ( grep { /input data \[abcd\.efgh\], ignored/ } @LOG ), 'unsupported hidden token is logged' );
+is_deeply( app( env( 'QUERY_STRING' => '_=' . $o->argsx( a => 1 ), 'REQUEST_METHOD' => 'POST', 'CONTENT_LENGTH' => 0 ) )->get_safe_input(), { A => 1 }, 'token in the query of a POST' );
 
 # safe input drives the dispatch and overrides user input
 my $t = $o->args( _AN => 'input', X => 'safe' );
@@ -549,7 +564,7 @@ is( body( req( get( "_=$t2" ) ) ), 'USERS x=[from-token]', 'safe input selects t
 
 my $r = req( get( '_=~garbage' ) );
 is( body( $r ), 'MAIN foo=[FOO] inc=[INC] title=[]', 'a tampered token is ignored and the request proceeds' );
-like( logs(), qr/invalid or tampered safe input token/, 'a tampered token is logged' );
+like( logs(), qr/invalid or tampered encrypted \[_\] safe input token/, 'a tampered token is logged' );
 
 $r = req( get( '_=notatoken' ) );
 is( body( $r ), 'MAIN foo=[FOO] inc=[INC] title=[]', 'a _ value without ~ is ignored' );
@@ -576,6 +591,29 @@ like( logs(), qr/expected even number of arguments/, 'forward() argument error i
 $r = req( env(), {}, sub { $_[0]->forward_url( '/elsewhere' ) } );
 is( $r->[0], 302, 'forward_url() responds 302' );
 is( hdrs( $r->[1] )->{ 'location' }, '/elsewhere', 'forward_url() location' );
+}
+
+# Web::Reactor inherits argsx() unchanged and routes a ~ token through the same
+# importer; its own args() is the hidden link form and needs sessions, which
+# are exercised by t/test_reactor.pl
+SKIP:
+{
+skip( 'Data::Tools::Crypto::Symmetric not installed', 5 ) unless $HAS_CRYPTO;
+require_ok( 'Web::Reactor' );
+
+package Web::Reactor::TestStateful;
+our @ISA = ( 'Web::Reactor' );
+sub log { my $self = shift; push @main::LOG, join '', @_; print STDERR @_, "\n" if $VERBOSE; }
+package main;
+
+my $r = Web::Reactor::TestStateful->new( env(), cfg() );
+my $tx = $r->argsx( a => 1, b => 'two' );
+like( $tx, qr/^~[A-Za-z0-9_\-]+$/, 'Reactor argsx() returns a ~ prefixed token' );
+is_deeply( $r->cry->thaw_base64url( substr( $tx, 1 ) ), { A => 1, B => 'two' }, 'Reactor argsx() token decrypts' );
+isnt( \&Web::Reactor::args, \&Web::Reactor::Reflex::argsx, 'Reactor args() is its own (hidden link) implementation, not the alias' );
+
+my $r2 = Web::Reactor::TestStateful->new( get( "_=$tx" ), cfg() );
+is_deeply( $r2->get_safe_input(), { A => 1, B => 'two' }, 'Reactor safe input decodes an argsx() token through the shared importer' );
 }
 
 ##############################################################################

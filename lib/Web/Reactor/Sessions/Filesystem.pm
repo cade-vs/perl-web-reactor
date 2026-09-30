@@ -15,11 +15,12 @@ use Exception::Sink;
 use Web::Reactor::Sessions;
 use Web::Reactor::Utils;
 use POSIX;
-use Storable qw( lock_store lock_retrieve );
 use Data::Tools;
 use Data::Dumper;
 
 use parent 'Web::Reactor::Sessions';
+
+my $MIN_SES_ID_LEN = 8;
 
 ##############################################################################
 ##
@@ -74,7 +75,7 @@ sub _storage_load
   my $in_data;
   eval
     {
-    $in_data = lock_retrieve( $fn, 0 );
+    $in_data = hash_load_json( { FNAME => $fn, FLOCK => 1 } );
     boom "error: cannot retrieve session data from [$fn]" unless $in_data;
     };
   if( $@ )
@@ -103,7 +104,9 @@ sub _storage_save
 
 #print STDERR Dumper( "******* _storage_save [$fn] *******", $out_data );
 
-  return lock_store( $out_data, $fn );
+  my $tmp = "$fn.tmp.$$.part";
+  return undef unless hash_save_json( $tmp, $out_data );
+  return rename( $tmp, $fn );
 }
 
 # checks if session exists in the storage
@@ -171,7 +174,7 @@ sub _key_to_fn
   my @key  = @_;
 
   my $r = shift @key; # this should be type
-  boom "invalid key component 0, needs ALPHANUMERIC type, got [$r]" unless $r =~ /^[A-Z]+$/;
+  boom "invalid key component 0, needs ALPHA type, got [$r]" unless $r =~ /^[A-Z]+$/;
 
   my $cfg = $self->cfg();
 
@@ -188,7 +191,7 @@ sub _key_to_fn
   while( @key > 0 )
     {
     my $c = shift @key;
-    boom "invalid key component needs ALPHANUMERIC, got [$c]" unless $c =~ /^[A-Za-z0-9_]+$/;
+    boom "invalid key component needs ALPHANUMERIC with min length of [$MIN_SES_ID_LEN], got [$c]" unless length( $c ) >= $MIN_SES_ID_LEN and $c =~ /^[A-Za-z0-9_]+$/;
     $r .= '/' . $self->_split_dir_components( $c, 2, 2 );
     }
 
@@ -197,7 +200,7 @@ sub _key_to_fn
   $chk =~ s/\/[^\/]*$//;
   dir_path_ensure( $chk ) unless $opt->{ 'READONLY' };
 
-  return $dir . '.wrs';
+  return $dir . '.wrs2';
 }
 
 ##############################################################################

@@ -45,7 +45,7 @@ sub new
   $self->{ 'CFG' }                    = dclone( $cfg );
   $self->{ 'CFG' }{ 'CHARSET' }       = 'UTF-8'; # force UTF-8 always
   $self->{ 'IN'  }{ 'ENV'         }   = $env = { %$env }; # including headers
-  $self->{ 'IN'  }{ 'ENV'         }{ ':CLIENT_IP' } = $self->get_client_ip(); # this is always end-point client browser IP, reglardless of claudflare proxy etc.
+  $self->{ 'IN'  }{ 'ENV'         }{ '_CLIENT_IP' } = $self->get_client_ip(); # this is always end-point client browser IP, reglardless of claudflare proxy etc.
 
   $self->set_debug( $cfg->{ 'DEBUG' } );
 
@@ -67,6 +67,12 @@ sub DESTROY
   $self->log_debug( "\n\n\n\n\n" . ( '*' x 64 ) ) if $self->is_debug();
 }
 
+sub save
+{
+  # my $self = shift;
+  # nothing here, saves state in subclasses
+}
+
 ##############################################################################
 
 sub run
@@ -77,9 +83,11 @@ sub run
   eval
     {
     $self->process_request( @_ );
+    $self->save();
     };
   if( surface( 'RENDER' ) )
     {
+    $self->save();
     my $status  = $self->res_get_status() || 200;
     my $headers = $self->res_get_headers_ar();
     my $body    = $self->res_get_body();
@@ -286,58 +294,6 @@ sub get_user_postdata_body
 
   local $/ = undef;
   return <$fh>;
-}
-
-sub get_request_scheme
-{
-  my $self   = shift;
-
-  return $self->{ 'IN' }{ 'ENV' }{ 'REQUEST_SCHEME' };
-}
-
-sub get_request_uri
-{
-  my $self   = shift;
-
-  return $self->{ 'IN' }{ 'ENV' }{ 'REQUEST_URI' };
-}
-
-sub get_request_method
-{
-  my $self   = shift;
-
-  return $self->{ 'IN' }{ 'ENV' }{ 'REQUEST_METHOD' };
-}
-
-sub get_headers
-{
-  my $self  = shift;
-
-  return $self->{ 'IN' }{ 'HEADERS' } ||= { map { lc( $_ ) => $self->{ 'IN' }{ 'ENV' }{ $_ } } grep /^(HTTPS?_|SSL_)/, keys %{ $self->{ 'IN' }{ 'ENV' } } };
-}
-
-sub get_header
-{
-  my $self = shift;
-  my $name = shift;
-
-  return $self->get_headers->{ $name };
-}
-
-sub get_cookies
-{
-  my $self = shift;
-  return $self->{ 'IN' }{ 'COOKIES' } ||= crush_cookie( $self->get_header( 'http_cookie' ) );;
-}
-
-sub get_cookie
-{
-  my $self = shift;
-  my $name = shift;
-
-  my $cookie = $self->get_cookies->{ $name };
-  $self->log_debug( "get_cookie: name [$name] value [$cookie]" );
-  return $cookie;
 }
 
 ### RESULT/OUTPUT API ########################################################
@@ -781,7 +737,7 @@ catches to build the response.
 =item 1. C<new( $env, $cfg )>
 
 Copies the config (deep) and the PSGI environment (shallow), forces
-C<CHARSET> to C<UTF-8>, resolves the client IP into C<$env-E<gt>{':CLIENT_IP'}>,
+C<CHARSET> to C<UTF-8>, resolves the client IP into C<$env-E<gt>{'_CLIENT_IP'}>,
 sets the debug level from C<DEBUG> and creates the Plack::Request object.
 
 =item 2. C<run( @args )>
@@ -873,7 +829,7 @@ Non-negative integer, kept on the object. C<is_debug()> returns 0 when unset.
 =item C<get_client_ip()>
 
 Client address honouring the proxy flags above, falls back to C<REMOTE_ADDR>.
-Also available as C<env-E<gt>{':CLIENT_IP'}>.
+Also available as C<env-E<gt>{'_CLIENT_IP'}>.
 
 =item C<get_request_scheme()>
 

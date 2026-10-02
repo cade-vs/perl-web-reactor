@@ -17,7 +17,8 @@ use Data::Tools 1.24;
 
 use parent 'Web::Reactor::Base';
 
-my $MIN_SES_ID_LEN = 8;
+my $MIN_SES_ID_LEN = 4;
+sub get_min_ses_id_len { return $MIN_SES_ID_LEN; }
 
 ##############################################################################
 ##

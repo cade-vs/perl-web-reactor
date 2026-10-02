@@ -107,6 +107,8 @@ sub run
     $res = [ 200, [ 'content-type' => 'text/plain' ], [ 'system is currently unavailable (!)' ] ];
     }
 
+  $self->run_print_final_debug() if $self->is_debug() > 1;
+
   return $res;
 }
 
@@ -117,6 +119,12 @@ sub process_request
   my %args = @_;
 
   die "you need to subclass Web::Reactor::Core and reimplement Web::Reactor::Core::process_request";
+}
+
+sub run_print_final_debug
+{
+  # my $self = shift;
+
 }
 
 ### SET/GET INSTANCE STATE ###################################################
@@ -530,13 +538,6 @@ sub __input_param_name_check
 {
   return $_[0] =~ /^[A-Za-z0-9\-\_\.\:]+$/o ? $_[0] : undef;
 }
-
-sub __input_sid_check
-{
-  return $_[0] =~ /^[a-zA-Z0-9_]+$/o ? $_[0] : undef;
-}
-
-##############################################################################
 
 ### LOGGING ##################################################################
 

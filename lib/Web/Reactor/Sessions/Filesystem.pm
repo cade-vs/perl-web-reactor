@@ -20,7 +20,11 @@ use Data::Dumper;
 
 use parent 'Web::Reactor::Sessions';
 
-my $MIN_SES_ID_LEN = 8;
+my $SPLIT_PARTS_CNT = 2;
+my $SPLIT_PARTS_LEN = 2;
+my $MIN_SES_ID_LEN = $SPLIT_PARTS_CNT * $SPLIT_PARTS_LEN;
+
+sub get_min_ses_id_len { return $MIN_SES_ID_LEN; }
 
 ##############################################################################
 ##
@@ -150,10 +154,10 @@ sub _split_dir_components
   my $self = shift;
 
   my $s = shift;
-  my $c = shift; # parts count
-  my $l = shift || 2; # how long is each part
+  my $c = shift || $SPLIT_PARTS_CNT; # parts count
+  my $l = shift || $SPLIT_PARTS_LEN; # how long is each part
 
-  die "Web::Reactor::Sess::Filesystem:_split_dir_components: parts*length > length(s)-1" if $c * $l > length( $s ) - 1;
+  die "Web::Reactor::Sess::Filesystem:_split_dir_components: parts*length > length(s)-1" unless length( $s ) >= $MIN_SES_ID_LEN;
 
   my $r; # result
 
@@ -192,7 +196,7 @@ sub _key_to_fn
     {
     my $c = shift @key;
     boom "invalid key component needs ALPHANUMERIC with min length of [$MIN_SES_ID_LEN], got [$c]" unless length( $c ) >= $MIN_SES_ID_LEN and $c =~ /^[A-Za-z0-9_]+$/;
-    $r .= '/' . $self->_split_dir_components( $c, 2, 2 );
+    $r .= '/' . $self->_split_dir_components( $c );
     }
 
   my $dir = $vd . '/' . $r;

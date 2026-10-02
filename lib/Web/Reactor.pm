@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
+##  Copyright (c) 2013-2026 Vladi Belperchinov-Shabanski "Cade"
 ##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##  http://cade.noxrun.com
 ##
@@ -13,17 +13,12 @@ package Web::Reactor;
 use strict;
 
 use parent 'Web::Reactor::Reflex';
-use Encode qw( encode decode );
-use Plack::Request;
-use Cookie::Baker;
-use MIME::Base64;
 use Data::Tools 1.24;
 use Exception::Sink;
 use Data::Dumper;
-use Encode;
 use Crypt::PRNG;
 
-use Web::Reactor::Utils;
+#use Web::Reactor::Utils;
 use Web::Reactor::HTML::Form;
 
 our $VERSION = '3.33';
@@ -80,8 +75,6 @@ sub new
   $class = ref( $class ) || $class;
   my $self = $class->SUPER::new( $env, $cfg );
 
-  $cfg->{ ':THIS IS THE NEW VERSION ++++++++++++++++++++++++++++++++++++++++++' } = 1;
-
   # FIXME: verify %env content! Data::Validate::Struct
   boom "fatal: configuration: request scheme [HTTP] does not match cookies security policy! either enable HTTPS scheme or set DISABLE_SECURE_COOKIES=1"
       if $self->get_request_scheme() eq 'http' and ! $cfg->{ 'DISABLE_SECURE_COOKIES' };
@@ -119,6 +112,8 @@ sub process_request
   my $args = @_ / 2; # count of arg pairs
   my %args = @_;
 
+  hash_uc_ipl( \%args );
+
   my $cfg = $self->cfg();
 
   # 0. load/setup env/config defaults
@@ -139,7 +134,7 @@ sub process_request
     }
   else
     {
-    $self->log( "warning: invalid user session [$user_sid]" );
+    $self->log( "warning: invalid user session [$user_sid]" ) if $user_sid;
     ( $user_sid, $user_shr ) = $self->__create_new_user_session();
     }
 
@@ -149,7 +144,6 @@ sub process_request
     {
     $self->log( "status: user session expired or closed, sid [$user_sid]" );
     # not logged-in sessions dont expire
-    $user_shr->{ ':XTIME_STR'    } = scalar localtime() if time() > $user_shr->{ ':XTIME' };
     $user_shr->{ ':CLOSED'       } = 1;
     $user_shr->{ ':ETIME'        } = time();
     $user_shr->{ ':ETIME_STR'    } = scalar localtime();
@@ -212,21 +206,33 @@ sub process_request
   $page_shr->{ ':TOP_PAGE_SID' } = __input_sid_check( $safe_input_hr->{ '_T' } || $page_shr->{ ':TOP_PAGE_SID' } );
 
   # 6. get action from input (USER/CGI) or page session
-  my $action_name = lc( $safe_input_hr->{ '_AN' } || $user_input_hr->{ '_AN' } || $page_shr->{ ':ACTION_NAME' } );
+  my $action_name = lc( $safe_input_hr->{ '_AN' } || $user_input_hr->{ '_AN' } );
+  my $page_name   = lc( $safe_input_hr->{ '_PN' } || $user_input_hr->{ '_PN' } );
   if( $action_name )
     {
     $self->act->check_action_name( $action_name );
     $page_shr->{ ':ACTION_NAME' } = $action_name;
+    delete $page_shr->{ ':PAGE_NAME' };
     }
-
-  # 7. get page from input (USER/CGI) or page session
-  my $page_name = lc( $safe_input_hr->{ '_PN' } || $user_input_hr->{ '_PN' } || $page_shr->{ ':PAGE_NAME' } || { $self->get_page_session( 1 ) || {} }->{ ':PAGE_NAME' } || 'main' );
-  $self->pre->check_page_name( $page_name );
-  $page_shr->{ ':PAGE_NAME' } = $page_name;
-
-  # TODO/FIXME: the name checks below instantiate act() and pre() on every request,
-  #             even when only one of them will be used; cheap after the first
-  #             call but no longer lazy. consider class-level check functions.
+  elsif( $page_name )
+    {
+    $self->pre->check_page_name( $page_name );
+    $page_shr->{ ':PAGE_NAME' } = $page_name;
+    delete $page_shr->{ ':ACTION_NAME' };
+    }
+  elsif( $page_shr->{ ':ACTION_NAME' } )
+    {
+    $action_name = $page_shr->{ ':ACTION_NAME' };
+    }
+  elsif( $page_shr->{ ':PAGE_NAME' } )
+    {
+    $page_name = $page_shr->{ ':PAGE_NAME' };
+    }
+  else
+    {
+    my $rs = $self->get_page_session( 1 ) || {};
+    $page_name = $rs->{ ':PAGE_NAME' } || 'main';
+    }
 
   $self->save();
 
@@ -293,8 +299,9 @@ sub __set_user_session_cookie
   my $path = $cfg->{ 'COOKIE_PATH' };
   if( ! $path )
     {
-    $path = $self->get_request_uri();
-    $path =~ s/^([^\?]*\/)([^\?\/]*)(\?.*)?$/$1/; # remove args: ?...
+    # directory part of the request path, safe characters only (no ';', spaces,
+    # controls etc.), so REQUEST_URI cannot inject cookie attributes
+    ( $path ) = $self->get_request_uri() =~ m{^(/[A-Za-z0-9/._~%-]*/)};
     }
   $path ||= '/';
 
@@ -319,6 +326,9 @@ sub __rotate_user_session_id
   $self->{ 'SESSIONS' }{ 'SID'  }{ 'USER' }             = $new_sid;
   $self->{ 'SESSIONS' }{ 'DATA' }{ 'USER' }{ $new_sid } = $user_shr;
 ###########  $self->__update_session_fingerprint( 'USER', $new_sid, $user_shr );
+
+  # re-save all related link and page sessions, drop modification fingerprints
+  delete $self->{ 'CACHE' }{ 'SESSION_DATA_SHA1' }{ $_ } for qw( PAGE LINK );
 
   # reissue the cookie bound to the new id
   $self->__set_user_session_cookie( $new_sid );
@@ -384,21 +394,8 @@ sub __import_hidden_safe_input
 
   return \%safe_input_hr;
 }
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
 
+##############################################################################
 
 sub run_print_final_debug
 {
@@ -421,6 +418,20 @@ sub run_print_final_debug
 }
 
 ##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+
+##############################################################################
 #
 # usual user visible api
 #
@@ -432,7 +443,9 @@ sub get_user_hold
 {
   my $self = shift;
 
-  my $uid = $self->get_user_session()->{ ':USER_IDENT' };
+  my $uid = $self->get_user_session()->{ ':USER_IDENT' } or return undef; # logged-out session has no user hold
+
+  return $self->{ 'SESSIONS' }{ 'DATA' }{ 'HOLD' }{ $uid } if $self->{ 'SESSIONS' }{ 'DATA' }{ 'HOLD' }{ $uid };
 
   my $hold = $self->ses->load( 'HOLD', $uid ) || {};
 
@@ -509,43 +522,18 @@ sub get_link_session
 sub new_link_session_key
 {
   my $self = shift;
-  my $type = shift;
   my $len  = shift || 8;
-
-  # FRM is FORM RETURN MAP
-  boom( "cannot create LINK key: type must be ARGS" ) unless $type eq 'ARGS';
 
   my $link_shr = $self->get_link_session();
 
   my $link_key;
-  while(4)
+  my $limit = 137;
+  while( $limit-- )
     {
     $link_key = $self->ses->create_id( $len );
-    last if ! exists $link_shr->{ $type }{ $link_key };
+    return $link_key if ! exists $link_shr->{ 'ARGS' }{ $link_key };
     }
-  boom( "cannot create LINK key" ) unless $link_key;
-
-  return wantarray ? ( $link_key, $link_shr->{ $type }{ $link_key } ) : $link_key;
-}
-
-sub get_http_env
-{
-  my $self  = shift;
-
-  return $self->{ 'IN'  }{ 'ENV' };
-}
-
-sub get_client_ip
-{
-  my $self  = shift;
-
-  my $env = $self->get_http_env();
-
-  my $client_ip;
-
-  $client_ip ||= $env->{ $_ } for qw( HTTP_CF_CONNECTING_IP HTTP_X_REAL_IP REMOTE_ADDR );
-
-  return $client_ip;
+  boom( "cannot create LINK key" );
 }
 
 sub get_page_session_id
@@ -618,26 +606,7 @@ sub get_input_form_name
   return $form_name;
 }
 
-sub get_lang
-{
-  my $self  = shift;
-
-  return $self->cfg->{ 'LANG' };
-}
-
-sub get_app_name
-{
-  my $self  = shift;
-
-  return $self->cfg->{ 'APP_NAME' };
-}
-
-sub get_app_root
-{
-  my $self  = shift;
-
-  return $self->cfg->{ 'APP_ROOT' };
-}
+### ARGS #####################################################################
 
 sub args
 {
@@ -647,7 +616,7 @@ sub args
   hash_uc_ipl( \%args );
 
   my ( $link_shr, $link_sid ) = $self->get_link_session();
-  my $link_key = $self->new_link_session_key( 'ARGS' );
+  my $link_key = $self->new_link_session_key();
 
   $link_shr->{ 'ARGS' }{ $link_key } = \%args;
 
@@ -658,6 +627,8 @@ sub args_back
 {
   my $self = shift;
   my %args = @_;
+
+  hash_uc_ipl( \%args );
 
   $args{ '_P'  } = $self->get_ref_page_session_id();
 #  $args{ '_PN' } = 'main' unless $args{ '_P' }; # return to 'main' if no referer given
@@ -670,6 +641,8 @@ sub args_back_back
   my $self = shift;
   my %args = @_;
 
+  hash_uc_ipl( \%args );
+
   $args{ '_P' } = $self->get_ref_page_session_id( 1 );
 #  $args{ '_PN' } = 'main' unless $args{ '_P' }; # return to 'main' if no referer given
 
@@ -681,10 +654,12 @@ sub args_new
   my $self = shift;
   my %args = @_;
 
+  hash_uc_ipl( \%args );
+
   $args{ '_R' } = $self->get_page_session_id();
 
   my $page_shr = $self->get_page_session();
-  $args{ '_PN' } ||= $page_shr->{ ':PAGE_NAME' };
+  $args{ '_PN' } ||= $page_shr->{ ':PAGE_NAME' } || 'main' unless $args{ '_AN' };
 
   return $self->args( %args );
 }
@@ -695,6 +670,8 @@ sub args_new_fr
   my $self = shift;
   my %args = @_;
 
+  hash_uc_ipl( \%args );
+
   $args{ '_T' } = $self->get_page_session_id(); # top session (browser window one)
 
   return $self->args( %args );
@@ -704,6 +681,8 @@ sub args_here
 {
   my $self = shift;
   my %args = @_;
+
+  hash_uc_ipl( \%args );
 
   $args{ '_P' } = $self->get_page_session_id();
 
@@ -724,114 +703,6 @@ sub args_type
   boom( "unknown or not supported TYPE [$type]" );
 }
 
-
-### RESULT/OUTPUT API ########################################################
-
-sub res_set_status
-{
-  my $self   = shift;
-  my $status = shift;
-
-  return $self->{ 'OUT' }{ 'STATUS' } = $status;
-}
-
-sub res_get_status
-{
-  my $self   = shift;
-
-  return $self->{ 'OUT' }{ 'STATUS' };
-}
-
-#-----------------------------------------------------------------------------
-
-sub res_set_headers
-{
-  my $self = shift;
-  my %h    = @_;
-
-  hash_lc_ipl( \%h );
-
-  if( exists $h{ 'status' } )
-    {
-    $self->res_set_status( $h{ 'status' } );
-    delete $h{ 'status' };
-    }
-
-  return $self->{ 'OUT' }{ 'HEADERS' } = { %{ $self->{ 'OUT' }{ 'HEADERS' } || {} }, %h };
-}
-
-sub res_get_headers_ar
-{
-  my $self = shift;
-
-  my $headers;
-
-  $self->{ 'OUT' }{ 'HEADERS' }{ 'content-type' } ||= 'text/html';
-
-  # postprocess headers, custom logic, etc.
-  my %headers_out = %{ $self->{ 'OUT' }{ 'HEADERS' } };
-
-  if( exists $headers_out{ 'content-charset' } )
-    {
-    if( $headers_out{ 'content-type' } !~ /;\s*charset=/i )
-      {
-      $headers_out{ 'content-type' } .= '; charset=' . $headers_out{ 'content-charset' };
-      }
-    delete $headers_out{ 'content-charset' };
-    };
-
-  if( exists $headers_out{ 'location' } )
-    {
-    delete $headers_out{ 'content-type' };
-    }
-
-  my @headers;
-  while( my ( $k, $v ) = each %headers_out )
-    {
-    push @headers, $k, $v;
-    }
-
-  while( my ( $k, $v ) = each %{ $self->{ 'OUT' }{ 'COOKIES' } } )
-    {
-    push @headers, 'set-cookie', $v;
-    }
-
-  $self->log_dumper( 'RESULT HEADERS---------------------------------', \@headers );
-
-  return \@headers;
-}
-
-#-----------------------------------------------------------------------------
-
-sub res_set_cookie
-{
-  my $self = shift;
-  my $name = shift;
-  my %opt  = @_;
-
-  $self->log( "debug: creating new cookie [$name]" );
-  # FIXME: validate %opt  Data::Validate::Struct
-
-  $self->{ 'OUT' }{ 'COOKIES' }{ $name } = bake_cookie( $name, \%opt );
-}
-
-#-----------------------------------------------------------------------------
-
-sub res_set_body
-{
-  my $self = shift;
-  my $body = shift;
-
-  return $self->{ 'OUT' }{ 'BODY' } = $body;
-}
-
-sub res_get_body
-{
-  my $self = shift;
-  my $body = shift;
-
-  return $self->{ 'OUT' }{ 'BODY' };
-}
 
 ##############################################################################
 
@@ -892,377 +763,16 @@ sub save
     }
 }
 
-##############################################################################
-##
-##  CRYPTO api :)
-##
-
-sub __rsa_object
-{
-  my $self = shift;
-
-  return $self->{ 'RSAO' } if exists $self->{ 'RSAO' };
-
-  eval { require Data::Tool::Crypto::RSA; };
-  boom( "error: require Data::Tool::Crypto::RSA [$@]" ) if $@;
-
-  my $pub_key = $self->cfg()->{ 'RSA_PUB_KEY' }; # file name or, if reference, the actual pem data
-  my $pub = Data::Tool::Crypto::RSA->new( $pub_key );
-  $self->{ 'RSAO' } = $pub;
-
-  return $pub;
-}
-
-sub rsa_pub_encrypt
-{
-  my $self = shift;
-
-  return $self->__rsa_object()->encrypt_base64url( $_[0] );
-}
-
-## FIXME: move most to Data::Tools or separate module
-
+#sub discard_session_data
+#{
+#  my $self = shift;
+#
+#
+#  $self->{ 'CACHE' }{ 'SESSION_DATA_SHA1' } = {};
+#  $self->{ 'SESSIONS' } = {};
+#}
 
 ##############################################################################
-
-sub set_debug
-{
-  my $self  = shift;
-  my $level = abs(int(shift));
-
-  return $self->cfg->{ 'DEBUG' } = $level;
-}
-
-sub is_debug
-{
-  my $self = shift;
-
-  return $self->cfg->{ 'DEBUG' } || 0;
-}
-
-#-----------------------------------------------------------------------------
-
-sub log
-{
-  my $self = shift;
-
-  print STDERR @_, "\n";
-}
-
-sub log_debug
-{
-  my $self = shift;
-
-  return unless $self->is_debug();
-  my @args = @_;
-  chomp( @args );
-  my $msg = join( "\n", @args );
-  $msg = "debug: $msg" unless $msg =~ /^debug:/i;
-  $self->log( $msg );
-}
-
-sub log_debug2
-{
-  my $self = shift;
-
-  return unless $self->is_debug() > 1;
-  $self->log_debug( @_ );
-}
-
-sub log_stack
-{
-  my $self = shift;
-
-  $self->log_debug( @_, "\n", Exception::Sink::get_stack_trace() );
-}
-
-sub log_dumper
-{
-  my $self = shift;
-
-  return unless $self->is_debug();
-
-  local $Data::Dumper::Sortkeys = 1;
-
-  $self->log_debug( Dumper( @_ ) );
-}
-
-##############################################################################
-##
-## sanity policies
-## these are internal subs but are designed to be overriden if required
-##
-
-# fix/remove invalid parts of a CGI/input value
-sub __input_cgi_make_safe_value
-{
-  my $self = shift;
-  my $n = shift; # arg name
-  my $v = shift; # arg value
-
-  $v =~ s/[\000]//go;
-
-  return $v;
-}
-
-# must return 1 for values which must be removed from input or 0 for ok
-# this is called before __input_cgi_make_safe_value, default is pass all
-sub __input_cgi_skip_invalid_value
-{
-  my $self = shift;
-  # this is placeholder really
-  # my $n = shift; # arg name
-  # my $v = shift; # arg value
-  # if( ... )
-  #   {
-  #   $self->log( "error: invalid CGI/input value for parameter: [$n]" );
-  #   return 1; # skip it!
-  #   }
-  return 0;
-}
-
-##############################################################################
-
-sub html_content
-{
-  my $self = shift;
-  my %hc   = @_;
-
-  hash_lc_ipl( \%hc );
-  $self->{ 'HTML_CONTENT' } ||= {};
-  %{ $self->{ 'HTML_CONTENT' } } = ( %{ $self->{ 'HTML_CONTENT' } }, %hc );
-
-  return $self->{ 'HTML_CONTENT' };
-}
-
-sub html_content_clear
-{
-  my $self = shift;
-
-  $self->{ 'HTML_CONTENT' } ||= {};
-}
-
-sub html_content_set
-{
-  my $self = shift;
-
-  $self->html_content_clear();
-  return $self->html_content( @_ );
-}
-
-sub html_content_accumulator
-{
-  my $self = shift;
-  my $name = shift;
-  my $text = shift;
-
-  $self->{ 'HTML_CONTENT' } ||= {};
-  $self->{ 'HTML_CONTENT' }{ $name }{ $text }++;
-
-  $self->html_content_set( $name, join '', keys %{ $self->{ 'HTML_CONTENT' }{ $name } } );
-}
-
-sub html_content_accumulator_js
-{
-  my $self = shift;
-  my $text = shift;
-
-  $text = "<script type='text/javascript' src='$text'></script>";
-  $self->html_content_accumulator( "ACCUMULATOR_JS", $text );
-}
-
-sub html_content_accumulator_css
-{
-  my $self = shift;
-  my $css = shift;
-
-  my $text = qq{ <link href="$css" rel="stylesheet" type="text/css"> };
-  $self->html_content_accumulator( "ACCUMULATOR_HEAD", $text );
-}
-
-##############################################################################
-
-sub render_data
-{
-  my $self = shift;
-
-  return $self->render( DATA   => $self->portray( @_ ) );
-}
-
-sub render_action
-{
-  my $self   = shift;
-  my $action = shift;
-
-  return $self->render( ACTION => $action, @_ );
-}
-
-sub render_page
-{
-  my $self = shift;
-  my $page = shift;
-
-  return $self->render( PAGE   => $page, @_ );
-}
-
-sub render
-{
-  my $self = shift;
-  my %opt  = @_;
-
-  boom "too many nesting levels in rendering, probable bug in actions or pages" if (caller(128))[0] ne ''; # FIXME: config option for max level
-
-  my $action = $opt{ 'ACTION' };
-  my $page   = $opt{ 'PAGE'   };
-  my $data   = $opt{ 'DATA'   };
-
-  # FIXME: content vars handling set_content()/etc.
-  my $ah = $self->args_here();
-  $self->html_content( 'FORM_INPUT_SESSION_KEEPER' => "<input type=hidden name=_ value=$ah>" );
-  $self->html_content( %opt );
-
-  my $portray_data;
-
-  if( ref( $data ) eq 'HASH'  )
-    {
-    $portray_data = $data;
-    $page = $action = undef;
-    }
-  elsif( $action )
-    {
-    # FIXME: handle content type also!
-    $portray_data = $self->act->call( $action );
-    $page = undef;
-    }
-  elsif( $page )
-    {
-    $portray_data = $self->pre->load_page( $page );
-
-    $action = undef;
-    }
-  else
-    {
-    boom "render() needs PAGE or ACTION";
-    }
-
-  if( ref( $portray_data ) eq 'HASH' )
-    {
-    # as expected but no handling required
-    }
-  elsif( ref( $portray_data ) )
-    {
-    boom "expected portray data (i.e. HASHREF) but got different reference";
-    }
-  else
-    {
-    # default portray type is html
-    $portray_data = $self->portray( $portray_data, 'text/html' );
-    }
-
-  my $page_data = $portray_data->{ 'DATA'      };
-  my $page_fh   = $portray_data->{ 'FH'        }; # filehandle has priority
-  my $page_type = $portray_data->{ 'TYPE'      };
-  my $file_name = $portray_data->{ 'FILE_NAME' };
-  my $disp_type = $portray_data->{ 'DISPOSITION_TYPE' } || 'inline'; # default, rest must be handled as 'attachment', ref: rfc6266#section-4.2
-
-  # preparing headers --------------------------------------------------------
-  # FIXME: charset
-  $self->res_set_headers( 'content-type'        => $page_type );
-  if( $file_name )
-    {
-    # sanitize + RFC 6266 encode: strip CR/LF/controls (header injection),
-    # escape/quote the ASCII form, add RFC 5987 filename* for non-ASCII names
-    ( my $fn_ascii = $file_name ) =~ s/[\x00-\x1f\x7f]//g;   # strip control chars incl CR/LF/NUL
-    $fn_ascii =~ s/(["\\])/\\$1/g;                           # escape quote and backslash
-    $fn_ascii =~ s/[^\x20-\x7e]/_/g;                         # replace remaining non-ASCII
-    my $cd = qq{$disp_type; filename="$fn_ascii"};
-    if( $file_name =~ /[^\x20-\x7e]/ )
-      {
-      ( my $fn_utf8 = encode( 'UTF-8', $file_name ) ) =~ s/([^A-Za-z0-9_.~-])/sprintf '%%%02X', ord $1/ge;
-      $cd .= "; filename*=UTF-8''$fn_utf8";
-      }
-    $self->res_set_headers( 'content-disposition' => $cd );
-    }
-
-  # handling Content Security Policy (CSP) -- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
-  my $http_csp = $self->cfg->{ 'HTTP_CSP' }; # || " default-src 'self' ";
-  $self->res_set_headers( 'Content-Security-Policy' => $http_csp ) if $http_csp;
-
-  my $app_charset = uc $self->cfg->{ 'APP_CHARSET' } || 'UTF-8';
-
-  my $page_type_is_text = $page_type =~ /^text\//i;
-  if( $page_type_is_text )
-    {
-    # set charset for TEXT only
-    $self->res_set_headers( 'content-charset' => $app_charset );
-    }
-
-  # preparing body -----------------------------------------------------------
-
-  if( $page_fh )
-    {
-    $self->res_set_body( $page_fh );
-    }
-  elsif( lc $page_type =~ /^text\/html/ )
-    {
-    my $prep_opt1 = {};
-    $page_data = $self->pre->process( $page, $page_data, $prep_opt1 );
-
-    my $prep_opt2 = {};
-    $page_data = $self->pre->process( $page, $page_data, $prep_opt2 ) if $prep_opt1->{ 'SECOND_PASS_REQUIRED' };
-
-    # FIXME: translation
-    $self->load_trans();
-    my $tr = $self->{ 'TRANS' }{ $self->cfg->{ 'LANG' } } || {};
-    $page_data =~ s/\<~([^\<\>]*)\>/$tr->{ $1 } || $1/ge;
-    $page_data =~ s/\[~([^\[\]]*)\]/$tr->{ $1 } || $1/ge;
-
-    $self->res_set_body( encode( $app_charset, $page_data ) );
-    }
-  else
-    {
-    $self->res_set_body( $page_data );
-    }
-
-  sink 'RENDER';
-}
-
-my %SIMPLE_PORTRAY_TYPE_MAP = (
-                              html => 'text/html',
-                              text => 'text/plain',
-                              txt  => 'text/plain',
-                              jpeg => 'image/jpeg',
-                              png  => 'image/png',
-                              bin  => 'application/octet-stream',
-                              );
-
-sub portray
-{
-  my $self = shift;
-  my $data = shift;
-  my $type = lc shift; # mime type text/html
-  my %opt  = @_; # file name, charset, etc.
-
-  $type = $SIMPLE_PORTRAY_TYPE_MAP{ $type } || $type;
-
-  boom "portray needs mime type xxx/xxx as arg 2, got [$type]" unless $type =~ /^[a-z\-_0-9]+\/[a-z\-_0-9\.]+$/;
-
-  return { DATA => $data, TYPE => $type, @_ };
-}
-
-##############################################################################
-
-sub forward_url
-{
-  my $self = shift;
-  my $url  = shift;
-
-  # FIXME: use render+portray
-  $self->res_set_headers( status => 302, location => $url );
-  $self->res_set_body();
-
-  sink 'RENDER';
-}
 
 sub forward
 {
@@ -1466,15 +976,28 @@ sub login
   my $self = shift;
   my $user_ident = shift; # user identifier, login name, used for mapping of cross-login-session permanent data
 
-  # FIXME: CHECK ROTATION
-  # rotate session id on privilege elevation to defeat session fixation;
-  # anonymous user-session data is preserved (re-keyed under the new id)
   $self->__rotate_user_session_id();
 
   my $user_ident_s = $user_ident;
 
   $user_ident_s =~ s/[^a-z0-9_\-:]/_/gi; # human readable
-  $user_ident   = str_hex( $user_ident );
+  $user_ident   = str_hex_utf8( $user_ident );
+
+  # TODO: UNDECIDED: migrate to SHA1 pros and cons
+  #       i.e. $user_ident = sha1_hex( str_hex_utf8( $user_ident ) ) instead of padded hex
+  #       pros: fixed 40 chars id, no padding needed
+  #             any login length: hex doubles the name and a file name over 255
+  #             bytes (with ".wrs2" and ".tmp.PID.part") cannot be saved, so
+  #             logins over ~116 bytes fail now (e-mails may be up to 254 chars)
+  #             even spread over HOLD/xx/yy/ dirs, hex uses the first 2 login bytes
+  #             login names are not visible in HOLD file names (backups, dumps)
+  #       cons: one-time rename of existing HOLD files, new name is
+  #             sha1_hex( old id ) and goes under the new id's own HOLD/xx/yy/ dir
+  #             file names cannot be reversed to login names for audits,
+  #             hex ids reverse with str_unhex_utf8()
+
+  my $ml = $self->ses->get_min_ses_id_len();
+  $user_ident  .= '_' x ( $ml - length $user_ident ) if length $user_ident < $ml;
 
   my $user_shr = $self->get_user_session();
   $user_shr->{ ':LOGGED_IN'    } = 1;
@@ -1516,12 +1039,6 @@ sub set_user_session_expire_time
   my $self  = shift;
   my $xtime = shift;
 
-#use Exception::Sink;
-#my $xin = $xtime - time();
-#my $xtt = localtime( $xtime );
-#print STDERR "*********************************** set_user_session_expire_time($xtime)[$xtt]\n" . Exception::Sink::get_stack_trace();
-#print STDERR "*********************************** set_user_session_expire_time($xtime)[$xtt] in [$xin] seconds\n";
-
   my $user_shr = $self->get_user_session();
   $user_shr->{ ':XTIME'     } = $xtime; # FIXME: sanity?
   $user_shr->{ ':XTIME_STR' } = scalar localtime $user_shr->{ ':XTIME' };
@@ -1533,10 +1050,6 @@ sub set_user_session_expire_time_in
   my $self    = shift;
   my $seconds = shift;
 
-#use Exception::Sink;
-#print STDERR "************************************** set_user_session_expire_time_in($seconds)\n" . Exception::Sink::get_stack_trace();
-#print STDERR "************************************** set_user_session_expire_time_in($seconds) seconds\n";
-
   # FIXME: support for more user friendly time periods 10m 60s
   return $self->set_user_session_expire_time( time() + $seconds );
 }
@@ -1547,10 +1060,6 @@ sub get_user_session_expire_time
   my $self = shift;
 
   my $user_shr = $self->get_user_session();
-
-#use Exception::Sink;
-#my $xtt = localtime( $user_shr->{ ':XTIME' } );
-#print STDERR "get_user_session_expire_time($user_shr->{ ':XTIME' })[$xtt]\n" . Exception::Sink::get_stack_trace();
 
   return exists $user_shr->{ ':XTIME' } ? $user_shr->{ ':XTIME' } : undef;
 }
@@ -1570,8 +1079,8 @@ sub require_post_method
 
   return if $self->get_request_method() eq 'POST';
 
-  $self->logout();
-  $self->render( PAGE => 'epostrequired' );
+  # $self->logout();
+  $self->render_page( 'epostrequired' ); # or other nondescript error text
 }
 
 sub get_user_session_agent
@@ -1661,17 +1170,6 @@ sub new_form
 
 ##############################################################################
 
-sub set_browser_window_title
-{
-  my $self  = shift;
-  my $title = shift;
-
-  $title =~ s/<[^>]*>//g; # remove HTML if any
-  $self->html_content( 'BROWSER_WINDOW_TITLE', $title );
-}
-
-##############################################################################
-
 sub create_uniq_id
 {
   my $self = shift;
@@ -1680,7 +1178,6 @@ sub create_uniq_id
   my $cfg = $self->cfg();
   my $let = $cfg->{ 'SESS_LETTERS' } || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
-  my $nid;
   my $limit = 137;
   while( $limit-- )
     {
@@ -2156,12 +1653,12 @@ documentation, see the method source code and examples in the demo/ directory.
 
 =head2 HTML and Form Functions
 
-  html_content( %vars )   -- Set HTML template variables
+  html_hold_set( %vars )  -- Set HTML template variables
   new_form( %opt )        -- Create new form object
-  render( PAGE => $name ) -- Render page template
-  render( ACTION => $name ) -- Call and render action
-  render_page( $name )    -- Render page (shortcut)
-  render_action( $name )  -- Render action (shortcut)
+  render_page( $name )    -- Load, preprocess and render page template
+  render_action( $name )  -- Call action and render its result
+  render_data( $data, $type ) -- Render data with mime type, see portray()
+  render( $portray_hr )   -- Render portray data, i.e. render( portray( ... ) )
 
 =head2 Login/Logout Functions
 
@@ -2435,7 +1932,7 @@ When deploying Web::Reactor applications:
 
    if ( $reo->param('amount') < 0 ) {
      $reo->log("error: negative amount not allowed");
-     return $reo->render( PAGE => 'error_invalid' );
+     return $reo->render_page( 'error_invalid' );
    }
 
 4. HTML escape all output in templates to prevent XSS

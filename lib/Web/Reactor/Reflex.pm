@@ -155,6 +155,14 @@ sub render_page
   return $self->render( $self->portray( $text, 'text/html' ) );
 }
 
+sub render_data
+{
+  my $self = shift;
+
+  return $self->render( DATA   => $self->portray( @_ ) );
+}
+
+
 ### REQUEST/INPUT DATA & UPLOADS #############################################
 
 sub get_user_input_button

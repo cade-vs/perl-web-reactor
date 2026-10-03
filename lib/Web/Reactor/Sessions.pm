@@ -20,6 +20,15 @@ use parent 'Web::Reactor::Base';
 my $MIN_SES_ID_LEN = 4;
 sub get_min_ses_id_len { return $MIN_SES_ID_LEN; }
 
+my @HNS = qw(
+    Abby Ada Alexa Alfie Alia Alice Anna Aria Ava Axel Beau Bran Chanel Cali Calla Carys Cole Cruz Dash Dean Demi Dior Dora Drew Eira Eli
+    Elise Ella Elle Ellie Elsa Emma Enzo Eva Eve Evie Faye Fia Fifi Fox Freya Gabe Gaia Gia Greer Gwen Gogo Gyro Hugo Ilia Ilse Iris Isla
+    Indie Inez Ivan Jace James Joki Juko Juki Jack June Jimmy John Kaia Kali Kate Kaya Kent Kim Kitty Knox Lane Lani Leda Lexi Levi Liam
+    Liv Lola Lucia Lucy Luna Lyra Macy Maya Mimi Mia Milo Mina Mira Nash Neo Neve Noel Nola Nora Onyx Orla Owen Pearl Prue Reid Rhea Rhys
+    Rose Rimini Rome Rita Ruby Rumi Runa Ryla Siena Sofia Sage Shea Svea Tate Taya Thera Tori Tinko Tina Tupcho Tova Toto Trudi Trina Uma
+    Uber Una Uno Viki Vera Voom Veda Vidin Vida Vita Wells Willa Wren Xena Xylo Yael Zezo Zaza Zane Zuki Zooo Zana Zara Zeev Zeno Zera Zoro
+    );
+
 ##############################################################################
 ##
 ##  public interface methods, should be used via Reactor object, see specs
@@ -51,6 +60,8 @@ sub create
     {
     $c++;
     $id = $self->create_id( $len );
+
+    $id = $HNS[rand(@HNS)] . '_' . $id if $self->reo->is_debug();
 
     my @key = $self->compose_key_from_id( $type, $id );
     my $rc = $self->_storage_create( @key );

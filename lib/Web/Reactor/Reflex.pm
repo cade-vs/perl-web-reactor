@@ -159,7 +159,7 @@ sub render_data
 {
   my $self = shift;
 
-  return $self->render( DATA   => $self->portray( @_ ) );
+  return $self->render( $self->portray( @_ ) );
 }
 
 
@@ -623,6 +623,11 @@ Calls the action through C<act-E<gt>call()>. A plain string result is treated
 as HTML and processed like a page. A hashref result (see C<portray()> in Core)
 is rendered as is, processed only if its type is C<text/html>. Booms if the
 action returns nothing.
+
+=item C<render_data( $data, $type, %extra )>
+
+Renders C<$data> as mime C<$type> through C<portray()> and C<render()>, both
+in Core. The data is sent as is, it is not preprocessed.
 
 =item C<forward( %args )>
 

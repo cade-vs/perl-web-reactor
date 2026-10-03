@@ -157,7 +157,7 @@ sub _split_dir_components
   my $c = shift || $SPLIT_PARTS_CNT; # parts count
   my $l = shift || $SPLIT_PARTS_LEN; # how long is each part
 
-  die "Web::Reactor::Sess::Filesystem:_split_dir_components: parts*length > length(s)-1" unless length( $s ) >= $MIN_SES_ID_LEN;
+  die "Web::Reactor::Sessions::Filesystem::_split_dir_components: id [$s] is shorter than [$MIN_SES_ID_LEN] chars" unless length( $s ) >= $MIN_SES_ID_LEN;
 
   my $r; # result
 

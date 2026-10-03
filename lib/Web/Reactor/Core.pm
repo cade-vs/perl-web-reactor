@@ -325,6 +325,13 @@ sub res_get_status
 
 #-----------------------------------------------------------------------------
 
+sub res_clear_headers
+{
+  my $self = shift;
+
+  $self->{ 'OUT' }{ 'HEADERS' } = {};
+}
+
 ##
 ## TODO: response headers API extensions:
 ##
@@ -799,6 +806,12 @@ Returns the PSGI response array reference. Never dies.
 
 Abstract, see L</REQUEST LIFECYCLE>.
 
+=item C<run_print_final_debug()>
+
+Called by C<run()> after the response is built, when the debug level is 2 or
+more. Empty here, subclasses override it to log their final request state
+(Web::Reactor dumps input and sessions).
+
 =back
 
 =head2 Debug level
@@ -911,6 +924,10 @@ Records headers, names lowercased, later calls overwrite earlier ones for
 the same name. Booms on a CR or LF in a name or value. Two names are special:
 C<status> sets the HTTP status instead, C<content-charset> is appended to
 C<content-type> as C<; charset=...> when the response is built.
+
+=item C<res_clear_headers()>
+
+Drops all recorded headers. Status, cookies and body are kept.
 
 =item C<res_get_headers_ar()>
 

@@ -57,13 +57,6 @@ our %ENV_ALLOWED_KEYS = (
 
                         );
 
-my @HNS = qw( Abby Ada Alexa Alfie Alia Alice Anna Aria Ava Axel Beau Bran Chanel Cali Calla Carys Cole Cruz Dash Dean Demi Dior Dora Drew Eira Eli
-              Elise Ella Elle Ellie Elsa Emma Enzo Eva Eve Evie Faye Fia Fifi Fox Freya Gabe Gaia Gia Greer Gwen Gogo Gyro Hugo Ilia Ilse Iris Isla
-              Indie Inez Ivan Jace James Joki Juko Juki Jack June Jimmy John Kaia Kali Kate Kaya Kent Kim Kitty Knox Lane Lani Leda Lexi Levi Liam
-              Liv Lola Lucia Lucy Luna Lyra Macy Maya Mimi Mia Milo Mina Mira Nash Neo Neve Noel Nola Nora Onyx Orla Owen Pearl Prue Reid Rhea Rhys
-              Rose Rimini Rome Rita Ruby Rumi Runa Ryla Siena Sofia Sage Shea Svea Tate Taya Thera Tori Tinko Tina Tupcho Tova Toto Trudi Trina Uma
-              Uber Una Uno Viki Vera Voom Veda Vidin Vida Vita Wells Willa Wren Xena Xylo Yael Zezo Zaza Zane Zuki Zooo Zana Zara Zeev Zeno Zera Zoro );
-
 ##############################################################################
 
 sub new
@@ -196,7 +189,6 @@ sub process_request
     {
     $self->log_debug( "warning: invalid page session [$page_sid]" ) if $page_sid;
     $page_sid = $self->ses->create( 'PAGE', 8 );
-    $page_sid = $HNS[rand(@HNS)] . '_' . $page_sid if $self->is_debug();
     $self->log( "status: new page session created [$page_sid]" );
     $page_shr = { ':ID' => $page_sid };
     }
@@ -231,7 +223,9 @@ sub process_request
   else
     {
     my $rs = $self->get_page_session( 1 ) || {};
-    $page_name = $rs->{ ':PAGE_NAME' } || 'main';
+    $page_name = $rs->{ ':PAGE_NAME' } if $rs;
+    $page_name ||= 'main';
+    $page_shr->{ ':PAGE_NAME' } = $page_name if $page_name;
     }
 
   $self->save();
@@ -483,15 +477,18 @@ sub get_page_session
 
   while( $level-- )
     {
+    my $pre_page_shr = $page_shr; # save for cutting ref link if needed
     $page_sid = $page_shr->{ ':REF_PAGE_SID' };
     return undef unless $page_sid;
-    $page_shr = $self->{ 'SESSIONS' }{ 'DATA' }{ 'PAGE' }{ $page_sid };
+    next if $page_shr = $self->{ 'SESSIONS' }{ 'DATA' }{ 'PAGE' }{ $page_sid };
+    $page_shr = $self->ses->load( 'PAGE', $page_sid );
     if( ! $page_shr )
       {
-      $page_shr = $self->ses->load( 'PAGE', $page_sid );
-      $self->{ 'SESSIONS' }{ 'DATA' }{ 'PAGE' }{ $page_sid } = $page_shr;
-      $self->__update_session_fingerprint( 'PAGE', $page_sid, $page_shr );
+      delete $pre_page_shr->{ ':REF_PAGE_SID' };
+      return undef;
       }
+    $self->{ 'SESSIONS' }{ 'DATA' }{ 'PAGE' }{ $page_sid } = $page_shr;
+    $self->__update_session_fingerprint( 'PAGE', $page_sid, $page_shr );
     }
 
   return $page_shr;
@@ -983,6 +980,12 @@ sub login
   $user_ident_s =~ s/[^a-z0-9_\-:]/_/gi; # human readable
   $user_ident   = str_hex_utf8( $user_ident );
 
+  # NOTE: user names (login idents) are limited to 64 chars. the HOLD id is the
+  #       hex of the UTF-8 bytes and its file name, with ".wrs2" and the
+  #       ".tmp.PID.part" save suffix, must stay under 255 bytes, i.e. up to
+  #       ~116 UTF-8 bytes: 64 ASCII chars fit, 64 two-byte chars (Cyrillic etc.)
+  #       do not. SHA1 ids, see the TODO below, would have no such limit.
+
   # TODO: UNDECIDED: migrate to SHA1 pros and cons
   #       i.e. $user_ident = sha1_hex( str_hex_utf8( $user_ident ) ) instead of padded hex
   #       pros: fixed 40 chars id, no padding needed
@@ -1001,8 +1004,8 @@ sub login
 
   my $user_shr = $self->get_user_session();
   $user_shr->{ ':LOGGED_IN'    } = 1;
-  $user_shr->{ ':LTIME'        } = time();
-  $user_shr->{ ':LTIME_STR'    } = scalar localtime();
+  $user_shr->{ ':LITIME'       } = time();
+  $user_shr->{ ':LITIME_STR'   } = scalar localtime();
   $user_shr->{ ':USER_IDENT'   } = $user_ident;
   $user_shr->{ ':USER_IDENT_S' } = $user_ident_s;
   # FIXME: add more login info
@@ -1015,9 +1018,20 @@ sub logout
   my $user_shr = $self->get_user_session();
   $user_shr->{ ':LOGGED_IN'    } = 0;
   $user_shr->{ ':CLOSED'       } = 1;
+  $user_shr->{ ':LOTIME'       } = time();
+  $user_shr->{ ':LOTIME_STR'   } = scalar localtime();
   $user_shr->{ ':ETIME'        } = time();
   $user_shr->{ ':ETIME_STR'    } = scalar localtime();
   # FIXME: add more logout info
+  # FIXME: PAGE and LINK sessions are stored under the user sid that is current
+  #        at save() time, not the one they were loaded or created with. the
+  #        current page session (and any LINK made in this request) is saved
+  #        under the new anonymous user sid below, so its logged-in data, and
+  #        pre-logout links pointing to it, stay reachable after logout. a LINK
+  #        made before logout also leaves an empty file under the old user sid.
+  #        possible fix: $self->save() first, so everything goes to the old user
+  #        sid, then drop PAGE and LINK from $self->{ 'SESSIONS' } and their
+  #        fingerprints, so nothing reaches the anonymous user namespace.
   my ( $user_sid, $user_shr ) = $self->__create_new_user_session();
 }
 
@@ -1073,16 +1087,6 @@ sub get_user_session_expire_time_in
   return $xi > 0 ? $xi : undef;
 }
 
-sub require_post_method
-{
-  my $self = shift;
-
-  return if $self->get_request_method() eq 'POST';
-
-  # $self->logout();
-  $self->render_page( 'epostrequired' ); # or other nondescript error text
-}
-
 sub get_user_session_agent
 {
   my $self = shift;
@@ -1095,64 +1099,67 @@ sub get_user_session_agent
 
 ##############################################################################
 
-sub load_trans
-{
-  my $self = shift;
-
-  my $cfg = $self->cfg();
-
-  my $lang = lc $cfg->{ 'LANG' };
-
-  return 0 if $lang !~ /^[a-z][a-z]$/; # FIXME: move to init check! verofy hash etc. data::tools
-
-  $self->{ 'TRANS' }{ 'LANG' } = $lang;
-
-  return 1 if $self->{ 'TRANS' }{ $lang };
-
-  my $tr = $self->{ 'TRANS' }{ $lang } = {};
-
-  my $trans_dirs = $cfg->{ 'TRANS_DIRS' };
-  my $trans_file = $cfg->{ 'TRANS_FILE' };
-
-  my @tf;
-  if( -e $trans_file )
-    {
-    # quick select single translation file, if specified
-    @tf = ( $trans_file );
-    }
-  else
-    {
-    for my $dir ( @$trans_dirs )
-      {
-      push @tf, glob( "$dir/$lang/*.tr" );
-      push @tf, glob( "$dir/$lang/text/*.tr" );
-      }
-    }
-
-  for my $tf ( @tf )
-    {
-    my $hr = $self->load_trans_file( $tf );
-    # trim whitespace
-    my @temp = %$hr;
-    for( @temp )
-      {
-      s/^\s*//;
-      s/\s*$//;
-      }
-    %$hr = @temp;
-    @temp = ();
-    @{ $tr }{ keys %$hr } = values %$hr;
-    }
-
-  return 1;
-}
-
-sub load_trans_file
-{
-  my $self = shift;
-
-  return hash_load( shift );
-}
+# NOTE: translation handling lives in Web::Reactor::Reflex (load_trans(),
+#       load_trans_file()), these old copies are disabled
+#
+#sub load_trans
+#{
+#  my $self = shift;
+#
+#  my $cfg = $self->cfg();
+#
+#  my $lang = lc $cfg->{ 'LANG' };
+#
+#  return 0 if $lang !~ /^[a-z][a-z]$/; # FIXME: move to init check! verofy hash etc. data::tools
+#
+#  $self->{ 'TRANS' }{ 'LANG' } = $lang;
+#
+#  return 1 if $self->{ 'TRANS' }{ $lang };
+#
+#  my $tr = $self->{ 'TRANS' }{ $lang } = {};
+#
+#  my $trans_dirs = $cfg->{ 'TRANS_DIRS' };
+#  my $trans_file = $cfg->{ 'TRANS_FILE' };
+#
+#  my @tf;
+#  if( -e $trans_file )
+#    {
+#    # quick select single translation file, if specified
+#    @tf = ( $trans_file );
+#    }
+#  else
+#    {
+#    for my $dir ( @$trans_dirs )
+#      {
+#      push @tf, glob( "$dir/$lang/*.tr" );
+#      push @tf, glob( "$dir/$lang/text/*.tr" );
+#      }
+#    }
+#
+#  for my $tf ( @tf )
+#    {
+#    my $hr = $self->load_trans_file( $tf );
+#    # trim whitespace
+#    my @temp = %$hr;
+#    for( @temp )
+#      {
+#      s/^\s*//;
+#      s/\s*$//;
+#      }
+#    %$hr = @temp;
+#    @temp = ();
+#    @{ $tr }{ keys %$hr } = values %$hr;
+#    }
+#
+#  return 1;
+#}
+#
+#sub load_trans_file
+#{
+#  my $self = shift;
+#
+#  return hash_load( shift );
+#}
 
 ##############################################################################
 ##
@@ -1321,13 +1328,14 @@ Invalid input is logged and silently ignored.
 
 =head2 Data Encryption (Optional)
 
-Web::Reactor can encrypt sensitive data using AES-CBC encryption.
+Web::Reactor can encrypt sensitive data with ChaCha20-Poly1305, see cry()
+and argsx().
 See CRYPTOGRAPHY section below.
 
 =head2 Password Encryption (Optional)
 
-Password fields can be encrypted with RSA before sending to server.
-Configure with RSA_PUB_KEY file path or PEM data.
+Data such as passwords can be encrypted with an RSA public key through rsa().
+Configure RSA_PUB with the PEM text of the public key.
 
 =head2 Content Security Policy (Optional)
 
@@ -1586,11 +1594,9 @@ Upon creation, Web::Reactor instance gets hash with config entries/keys.
 =head2 Security Config Entries
 
   DISABLE_SECURE_COOKIES    -- Disable HTTPS enforcement (default: 0, NOT RECOMMENDED)
-  ENCRYPT_CIPHER            -- Encryption cipher (default: 'AES')
-  ENCRYPT_KEY               -- Encryption key (required if using encryption)
-  RSA_PUB_KEY               -- RSA public key for password encryption (optional)
+  CRY_KEY                   -- 32 raw bytes key for cry() and argsx() (required if used)
+  RSA_PUB                   -- RSA public key PEM text for rsa() (required if used)
   HTTP_CSP                  -- Content-Security-Policy header (optional)
-  NO_PASS_ENCRYPT           -- Disable password encryption (default: 0)
 
 =head2 Extension Config Entries
 
@@ -1669,102 +1675,67 @@ documentation, see the method source code and examples in the demo/ directory.
 
 =head2 Encryption Functions
 
-  encrypt( $data )        -- Encrypt data (binary output)
-  decrypt( $encrypted )   -- Decrypt binary data
-  encrypt_hex( $data )    -- Encrypt with hex encoding
-  decrypt_hex( $hex )     -- Decrypt hex-encoded data
-  encrypt_base64u( $data ) -- Encrypt with base64url encoding
-  decrypt_base64u( $b64 ) -- Decrypt base64url-encoded data
-  crypto_freeze_base64u( $ref ) -- Serialize and encrypt with base64url
-  crypto_thaw_base64u( $b64 )   -- Decrypt and deserialize from base64url
+  cry()                   -- Symmetric crypto object (CRY_KEY), see CRYPTOGRAPHY API
+  rsa()                   -- RSA public key object (RSA_PUB), see CRYPTOGRAPHY API
+  argsx( %args )          -- Encrypted safe input token, carries data in the link
 
 =head1 CRYPTOGRAPHY API
 
-Web::Reactor provides AES-CBC encryption for sensitive data. This is used
-internally to hide form data and page session IDs in URLs.
+Links and forms do not need encryption: args() keeps their data on the server,
+in LINK sessions, and the link carries only an opaque "sid.key" reference.
+Encryption is available through two plugs, loaded on first use, for
+application data and for the argsx() tokens inherited from Web::Reactor::Reflex.
 
 =head2 Configuration
 
-To enable encryption, set two config parameters:
-
   my %cfg = (
-            'ENCRYPT_CIPHER' => 'AES',  # cipher (default)
-            'ENCRYPT_KEY'    => 'your-secret-key-here',  # required
+            'CRY_KEY' => $key,  # exactly 32 raw bytes, for cry() and argsx()
+            'RSA_PUB' => $pem,  # RSA public key PEM text, for rsa()
             );
 
-The key must be between min and max key size for the chosen cipher:
+The plug classes can be replaced with REO_CRY_CLASS and REO_RSA_CLASS.
 
-  - AES: 16, 24, or 32 bytes (128, 192, or 256 bits)
+=head2 Symmetric Encryption: cry()
 
-=head2 Encryption Methods
+  my $cry = $reo->cry(); # Data::Tools::Crypto::Symmetric, ChaCha20-Poly1305
 
-=head3 Binary Encryption/Decryption
+  my $ctext  = $cry->encrypt( $ptext );          # binary
+  my $ptext  = $cry->decrypt( $ctext );          # undef if modified or wrong key
 
-  my $encrypted = $reo->encrypt( $data );
-  my $decrypted = $reo->decrypt( $encrypted );
+  my $hex    = $cry->encrypt_hex( $ptext );      # also _base64() and _base64url()
+  my $sealed = $cry->freeze_base64url( \%data ); # serialize and encrypt
+  my $hr     = $cry->thaw_base64url( $sealed );  # undef if modified or wrong key
 
-The encrypted data includes a random IV (initialization vector) prepended
-to the ciphertext.
+cry() booms if CRY_KEY is not configured. Encryption is authenticated:
+cryptotext modified in any way does not decrypt at all. See
+Data::Tools::Crypto::Symmetric and Data::Tools::Crypto for all methods.
 
-=head3 Hexadecimal Encoding
+=head2 Encrypted Safe Input: argsx()
 
-  my $hex_encrypted = $reo->encrypt_hex( $data );
-  my $decrypted     = $reo->decrypt_hex( $hex_encrypted );
+  my $token = $reo->argsx( _AN => 'transfer', ACCOUNT => $account_id );
+  $html .= "<a href='?_=$token'>Process Transfer</a>";
 
-Useful for URLs and database storage.
+  # on the next request the token is decrypted into the safe input
+  my $account_id = $reo->get_safe_input()->{ 'ACCOUNT' };
 
-=head3 Base64URL Encoding
+argsx() tokens start with "~" and carry the data itself, encrypted with
+CRY_KEY, so they need no server-side storage. args() tokens keep the data in
+a LINK session instead. Both arrive the same way in get_safe_input().
 
-  my $b64u_encrypted = $reo->encrypt_base64u( $data );
-  my $decrypted      = $reo->decrypt_base64u( $b64u_encrypted );
+=head2 Public Key Encryption: rsa()
 
-URL-safe base64 encoding, no padding.
+  my $rsa = $reo->rsa(); # Data::Tools::Crypto::RSA with the RSA_PUB key
 
-=head3 Serialization with Encryption
+  my $ctext = $rsa->encrypt_base64url( $secret ); # only the private key decrypts
+  my $ok    = $rsa->verify_base64url( $message, $signature );
 
-  my $b64u_data = $reo->crypto_freeze_base64u( { key => 'value' } );
-  my $hashref   = $reo->crypto_thaw_base64u( $b64u_data );
-
-Automatically serializes/deserializes data structures with encryption.
-
-=head3 Hexadecimal Serialization
-
-  my $hex_data = $reo->crypto_freeze_hex( { key => 'value' } );
-  my $hashref  = $reo->crypto_thaw_hex( $hex_data );
-
-Same as above but with hexadecimal encoding.
-
-=head2 Implementation Details
-
-  Algorithm:  AES (Advanced Encryption Standard)
-  Mode:       CBC (Cipher Block Chaining)
-  IV:         Random, generated per encryption, prepended to ciphertext
-  Padding:    PKCS#7 (handled by Crypt::Mode::CBC)
-  Key:        User-provided, validated against cipher key size requirements
-
-=head2 Example: Hiding Form Data
-
-  my $form_data = {
-                  'account_id' => $account_id,
-                  'action'     => 'transfer',
-                  'amount'     => $amount,
-                  };
-  my $encrypted_link = $reo->args(
-                                  '_SAFE_DATA' =>
-                                    $reo->crypto_freeze_base64u( $form_data ),
-                                  );
-  $html .= "<a href='?_=$encrypted_link'>Process Transfer</a>";
-
-  # On next request:
-  my $safe_input = $reo->get_safe_input();
-  my $form_data = $reo->crypto_thaw_base64u( $safe_input->{ '_SAFE_DATA' } );
+rsa() booms if RSA_PUB is not configured. The reactor holds only the public
+key, decrypting with the private key belongs to the backend.
 
 =head2 Security Considerations
 
-  - Keep ENCRYPT_KEY secret and secure
-  - Rotate encryption keys periodically
+  - Keep CRY_KEY secret, generate it with Crypt::PRNG::random_bytes( 32 )
   - Use different keys for different environments (dev, staging, production)
-  - Key should be at least 32 bytes (256 bits) for AES
   - Do NOT hardcode keys in source code, use environment variables or config files
 
 =head1 DEPLOYMENT, DIRECTORIES, FILESYSTEM STRUCTURE
@@ -1857,9 +1828,9 @@ When deploying Web::Reactor applications:
 
 =head2 Configuration Security
 
-1. Set ENCRYPT_KEY to a strong, random value (at least 32 bytes)
+1. Set CRY_KEY to exactly 32 random raw bytes, for example
 
-   Use: openssl rand -base64 32
+   Crypt::PRNG::random_bytes( 32 ), or decode_base64() of: openssl rand -base64 32
 
 2. Store sensitive config (keys, passwords) in environment variables,
    not in source code or version control
@@ -1939,11 +1910,12 @@ When deploying Web::Reactor applications:
 
 =head2 Password Security
 
-1. Use RSA encryption for password fields (optional):
+1. Encrypt passwords with an RSA public key if needed (optional):
 
-   'RSA_PUB_KEY' => '/path/to/public.key'
+   'RSA_PUB' => $public_key_pem_text
 
-   Passwords are encrypted in browser before sending to server
+   rsa() gives the key object, the framework does not encrypt password
+   fields in the browser by itself
 
 2. Never log passwords (application responsibility)
 
@@ -2017,9 +1989,8 @@ Web::Reactor requires the following Perl modules:
   * Cookie::Baker 0.001+   -- Cookie handling
   * Data::Tools 1.24+      -- Data manipulation utilities
   * Exception::Sink 0.01+  -- Exception handling
-  * Crypt::Cipher          -- Base class for encryption ciphers
-  * Crypt::Mode::CBC       -- AES encryption in CBC mode
-  * Crypt::PK::RSA         -- RSA encryption (for password fields)
+  * Crypt::PRNG            -- session and link ids (CryptX)
+  * Data::Tools::Crypto    -- cry() and rsa() plugs, ChaCha20-Poly1305 and RSA (CryptX)
 
 =head2 GitHub Repositories
 

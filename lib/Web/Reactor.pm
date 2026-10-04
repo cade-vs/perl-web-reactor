@@ -577,7 +577,8 @@ sub run_print_final_debug
 ## both cases the hash matches the storage, and save() writes only what changed
 ## later. tracked sessions are keyed by their own :TYPE, :PSID and :SID.
 ## the active sessions live in their own slots, see __set_*_session() and
-## get_*_session(), setting a slot also tracks the session.
+## get_*_session(). slots do not track: __sc_load() tracks what it loads and
+## every create() goes through sc_add() right away.
 ##
 
 sub __sc_key
@@ -672,11 +673,12 @@ sub save
     }
 }
 
-# active session slots, setting a slot also tracks the session, undef clears it
-sub __set_cookie_session { my $self = shift; $self->{ 'SESSIONS' }{ 'COOK' } = $_[0]; $self->sc_add( $_[0] ); }
-sub __set_user_session   { my $self = shift; $self->{ 'SESSIONS' }{ 'USER' } = $_[0]; $self->sc_add( $_[0] ); }
-sub __set_page_session   { my $self = shift; $self->{ 'SESSIONS' }{ 'PAGE' } = $_[0]; $self->sc_add( $_[0] ); }
-sub __set_link_session   { my $self = shift; $self->{ 'SESSIONS' }{ 'LINK' } = $_[0]; $self->sc_add( $_[0] ); }
+# active session slots, undef clears a slot. slots do not track, a session must
+# come from __sc_load() or sc_add( create() ), so it is tracked from the start
+sub __set_cookie_session { my $self = shift; $self->{ 'SESSIONS' }{ 'COOK' } = $_[0]; }
+sub __set_user_session   { my $self = shift; $self->{ 'SESSIONS' }{ 'USER' } = $_[0]; }
+sub __set_page_session   { my $self = shift; $self->{ 'SESSIONS' }{ 'PAGE' } = $_[0]; }
+sub __set_link_session   { my $self = shift; $self->{ 'SESSIONS' }{ 'LINK' } = $_[0]; }
 
 sub get_cookie_session
 {

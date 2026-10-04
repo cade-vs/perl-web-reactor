@@ -126,14 +126,14 @@ sub process_request
   $cookie_sid = __input_sid_check( $self->get_cookie( $cookie_name ) );
   $self->log_debug( "debug: incoming COOKIE SESSION cookie name [$cookie_name] cookie sid [$cookie_sid]" );
 
-  if( $cookie_sid and $cookie_shr = $self->__ses_load( 'COOK', $cookie_sid ) )
+  if( $cookie_sid and $cookie_shr = $self->__sc_load( 'COOK', $cookie_sid ) )
     {
-    $self->__ses_set_active( 'COOK', $cookie_shr );
+    $self->__set_cookie_session( $cookie_shr );
 
-    if( $user_sid = $cookie_shr->{ ':USER_SID' } and $user_shr = $self->__ses_load( 'USER', $user_sid ) and $user_shr->{ ':COOKIE_SID' } eq $cookie_sid )
+    if( $user_sid = $cookie_shr->{ ':USER_SID' } and $user_shr = $self->__sc_load( 'USER', $user_sid ) and $user_shr->{ ':COOKIE_SID' } eq $cookie_sid )
       {
       $self->log_debug( "debug: status: cookie session ok [$cookie_sid] and user session ok [$user_sid]" );
-      $self->__ses_set_active( 'USER', $user_shr );
+      $self->__set_user_session( $user_shr );
       }
     else
       {
@@ -143,7 +143,8 @@ sub process_request
       # session only, the user session is left untouched, and the new user
       # session below activates its own cookie session
       $self->log( "warning: discarding stale or orphan cookie session [$cookie_sid] of user session [$user_sid]" );
-      $self->__ses_delete( $cookie_shr );
+      $self->__set_cookie_session( undef );
+      $self->__sc_delete( $cookie_shr );
       }
     }
   else
@@ -219,15 +220,15 @@ sub process_request
   # *** loading page session *************************************************
 
   my $page_sid = __input_sid_check( $safe_input_hr->{ '_P' } );
-  my $page_shr = $page_sid ? $self->__ses_load( 'PAGE', $page_sid, $user_sid ) : undef;
+  my $page_shr = $page_sid ? $self->__sc_load( 'PAGE', $page_sid, $user_sid ) : undef;
   if( ! $page_shr )
     {
     $self->log_debug( "warning: invalid page session [$page_sid]" ) if $page_sid;
-    $page_shr = $self->__ses_create( 'PAGE', $user_sid, 8 );
+    $page_shr = $self->sc_add( $self->__ses->create( 'PAGE', $user_sid, 8 ) );
     $page_sid = $page_shr->{ ':SID' };
     $self->log( "status: new page session created [$page_sid]" );
     }
-  $self->__ses_set_active( 'PAGE', $page_shr );
+  $self->__set_page_session( $page_shr );
 
   $page_shr->{ ':REF_PAGE_SID' } = __input_sid_check( $safe_input_hr->{ '_R' } || $page_shr->{ ':REF_PAGE_SID' } );
   $page_shr->{ ':TOP_PAGE_SID' } = __input_sid_check( $safe_input_hr->{ '_T' } || $page_shr->{ ':TOP_PAGE_SID' } );
@@ -377,7 +378,7 @@ sub __create_new_cookie_session
 {
   my $self = shift;
 
-  my $cookie_shr = $self->__ses_create( 'COOK' );
+  my $cookie_shr = $self->sc_add( $self->__ses->create( 'COOK' ) );
   my $cookie_sid = $cookie_shr->{ ':SID' };
 
   $self->__set_cookie_session_cookie( $cookie_sid );
@@ -386,7 +387,7 @@ sub __create_new_cookie_session
   $cookie_shr->{ ':CTIME'      } = time();
   $cookie_shr->{ ':CTIME_STR'  } = scalar localtime();
 
-  $self->__ses_set_active( 'COOK', $cookie_shr );
+  $self->__set_cookie_session( $cookie_shr );
 
   return ( $cookie_sid, $cookie_shr );
 }
@@ -398,10 +399,11 @@ sub __discard_active_sessions
 {
   my $self = shift;
 
-  my $cookie_shr = $self->__ses_active( 'COOK' );
-  $self->__ses_delete( $cookie_shr ) if $cookie_shr;
+  my $cookie_shr = $self->get_cookie_session();
+  $self->__set_cookie_session( undef );
+  $self->__sc_delete( $cookie_shr ) if $cookie_shr;
 
-  $self->__ses_set_active( 'USER', undef );
+  $self->__set_user_session( undef );
 }
 
 sub __create_new_user_session
@@ -410,7 +412,7 @@ sub __create_new_user_session
 
   my $cfg = $self->cfg();
 
-  my $user_shr = $self->__ses_create( 'USER' );
+  my $user_shr = $self->sc_add( $self->__ses->create( 'USER' ) );
   my $user_sid = $user_shr->{ ':SID' };
 
   $self->log( "debug: creating new user session [$user_sid]" );
@@ -424,7 +426,7 @@ sub __create_new_user_session
   $user_shr->{ ":HTTP_CHECK_HR" } = { map { $_ => $self->{ 'IN' }{ 'ENV' }{ $_ } } @HTTP_VARS_CHECK };
   $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $self->{ 'IN' }{ 'ENV' }{ $_ } } @HTTP_VARS_SAVE  };
 
-  $self->__ses_set_active( 'USER', $user_shr );
+  $self->__set_user_session( $user_shr );
 
   $self->set_user_session_expire_time_in( $user_session_expire );
 
@@ -463,17 +465,18 @@ sub __rotate_cookie_session_id
 {
   my $self = shift;
 
-  my $old_cookie_shr = $self->__ses_active( 'COOK' );
+  my $old_cookie_shr = $self->get_cookie_session();
   my $old_cookie_sid = $old_cookie_shr ? $old_cookie_shr->{ ':SID' } : undef;
-  $self->__ses_delete( $old_cookie_shr ) if $old_cookie_shr;
+  $self->__set_cookie_session( undef );
+  $self->__sc_delete( $old_cookie_shr ) if $old_cookie_shr;
 
   # the link session of this request belongs to the old cookie session: it is
   # still saved there (its key comes from its own :PSID), but links made from
   # now on must go to a new link session under the new cookie session
-  $self->__ses_set_active( 'LINK', undef );
+  $self->__set_link_session( undef );
 
   my ( $cookie_sid, $cookie_shr ) = $self->__create_new_cookie_session();
-  my $user_shr = $self->__ses_active( 'USER' );
+  my $user_shr = scalar $self->get_user_session();
   my $user_sid = $user_shr->{ ':SID' };
   $cookie_shr->{ ':USER_SID'   } = $user_sid;
   $user_shr->{   ':COOKIE_SID' } = $cookie_sid; # the old cookie is dead even if its delete failed
@@ -502,8 +505,8 @@ sub __import_hidden_safe_input
 
   my %safe_input_hr;
 
-  my $cookie_shr      = $self->__ses_active( 'COOK' ) or return {};
-  my $link_session_hr = $self->__ses_load( 'LINK', $link_sid, $cookie_shr->{ ':SID' } ) or return {};
+  my $cookie_shr      = $self->get_cookie_session() or return {};
+  my $link_session_hr = $self->__sc_load( 'LINK', $link_sid, $cookie_shr->{ ':SID' } ) or return {};
   my $ldhr = $link_session_hr->{ 'ARGS' }{ $link_key } or return {}; # link data hashref
   %safe_input_hr = %$ldhr;
 
@@ -566,52 +569,127 @@ sub run_print_final_debug
 }
 
 ##############################################################################
+##
+## SESSION STATE & CACHE
+##
+## sc_add() tracks a session for save() and takes its fingerprint right away:
+## create() writes the initial data and load() returns the stored data, so in
+## both cases the hash matches the storage, and save() writes only what changed
+## later. tracked sessions are keyed by their own :TYPE, :PSID and :SID.
+## the active sessions live in their own slots, see __set_*_session() and
+## get_*_session(), setting a slot also tracks the session.
+##
 
+sub __sc_key
+{
+  my $type = shift;
+  my $sid  = shift;
+  my $psid = shift;
 
+  return "$type:" . ( $psid // '' ) . ":$sid";
+}
 
+sub __sc_key_shr
+{
+  return __sc_key( @{ $_[0] }{ ':TYPE', ':SID', ':PSID' } );
+}
 
+# tracks a session for save(), the first fingerprint is kept
+sub sc_add
+{
+  my $self = shift;
+  my $shr  = shift or return undef;
 
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
-##############################################################################
+  my $k = __sc_key_shr( $shr );
+  $self->{ 'SC' }{ $k } ||= { 'SHR' => $shr, 'FP' => hash_fingerprint( $shr ) };
 
-##############################################################################
-#
-# usual user visible api
-#
+  return $shr;
+}
 
-# user hold is data, which is preserved between login sessions, can carry anything
-# user hold is available only after login and only if login has username or other user identification
-
-sub get_user_hold
+# returns the tracked session or undef
+sub sc_get
 {
   my $self = shift;
 
-  my $uid = $self->get_user_session()->{ ':USER_IDENT' } or return undef; # logged-out session has no user hold
+  my $e = $self->{ 'SC' }{ __sc_key( @_ ) } or return undef;
+  return $e->{ 'SHR' };
+}
 
-  my $hold = $self->__ses_load( 'HOLD', $uid );
-  return $hold if $hold;
+# stops tracking a session, storage is not touched
+sub sc_remove
+{
+  my $self = shift;
+  my $shr  = shift or return;
 
-  # FIXME: Sessions::create() only makes random ids, but a HOLD session needs
-  #        the fixed id $uid, so a new hold is stamped here. a fixed-id option
-  #        in create() would keep :TYPE/:SID/:PSID stamping in one place.
-  return $self->__state_register( { ':TYPE' => 'HOLD', ':SID' => $uid, ':PSID' => undef } );
+  delete $self->{ 'SC' }{ __sc_key_shr( $shr ) };
+}
+
+# tracked session, or loaded from the storage and tracked, or undef
+sub __sc_load
+{
+  my $self = shift;
+  my $type = shift;
+  my $sid  = shift;
+  my $psid = shift;
+
+  return $self->sc_get( $type, $sid, $psid ) || $self->sc_add( $self->__ses->load( $type, $sid, $psid ) );
+}
+
+# stops tracking a session and deletes it from the storage
+sub __sc_delete
+{
+  my $self = shift;
+  my $shr  = shift or return;
+
+  $self->sc_remove( $shr );
+  $self->__ses->delete( $shr ) or $self->log( "error: cannot delete session [$shr->{ ':TYPE' }:$shr->{ ':SID' }]" );
+}
+
+# writes every tracked session which changed, must never raise
+sub save
+{
+  my $self = shift;
+
+  my %order = ( 'COOK' => 1, 'USER' => 2, 'PAGE' => 3, 'LINK' => 4, 'HOLD' => 5 );
+  my $sc    = $self->{ 'SC' } || {};
+
+  for my $k ( sort { ( $order{ $sc->{ $a }{ 'SHR' }{ ':TYPE' } } // 9 ) <=> ( $order{ $sc->{ $b }{ 'SHR' }{ ':TYPE' } } // 9 ) or $a cmp $b } keys %$sc )
+    {
+    my $e  = $sc->{ $k };
+    my $fp = hash_fingerprint( $e->{ 'SHR' } );
+    next if defined $fp and defined $e->{ 'FP' } and $fp eq $e->{ 'FP' };
+
+    $self->log_debug( "saving session data [$k]" );
+
+    if( eval { $self->__ses->save( $e->{ 'SHR' } ) } )
+      {
+      $e->{ 'FP' } = $fp;
+      }
+    else
+      {
+      $self->log( "error saving session state for [$k]" . ( $@ ? " ($@)" : '' ) );
+      }
+    }
+}
+
+# active session slots, setting a slot also tracks the session, undef clears it
+sub __set_cookie_session { my $self = shift; $self->{ 'SESSIONS' }{ 'COOK' } = $_[0]; $self->sc_add( $_[0] ); }
+sub __set_user_session   { my $self = shift; $self->{ 'SESSIONS' }{ 'USER' } = $_[0]; $self->sc_add( $_[0] ); }
+sub __set_page_session   { my $self = shift; $self->{ 'SESSIONS' }{ 'PAGE' } = $_[0]; $self->sc_add( $_[0] ); }
+sub __set_link_session   { my $self = shift; $self->{ 'SESSIONS' }{ 'LINK' } = $_[0]; $self->sc_add( $_[0] ); }
+
+sub get_cookie_session
+{
+  my $self = shift;
+
+  return $self->{ 'SESSIONS' }{ 'COOK' };
 }
 
 sub get_user_session_id
 {
   my $self = shift;
 
-  my $user_shr = $self->__ses_active( 'USER' ) or return undef;
+  my $user_shr = $self->{ 'SESSIONS' }{ 'USER' } or return undef;
   return $user_shr->{ ':SID' };
 }
 
@@ -619,7 +697,7 @@ sub get_user_session
 {
   my $self = shift;
 
-  my $user_shr = $self->__ses_active( 'USER' );
+  my $user_shr = $self->{ 'SESSIONS' }{ 'USER' };
   return wantarray ? ( ( $user_shr ? $user_shr->{ ':SID' } : undef ), $user_shr ) : $user_shr;
 }
 
@@ -628,14 +706,14 @@ sub get_page_session
   my $self  = shift;
   my $level = shift;
 
-  my $page_shr = $self->__ses_active( 'PAGE' );
+  my $page_shr = $self->{ 'SESSIONS' }{ 'PAGE' };
   my $user_sid = $self->get_user_session_id();
 
   while( $level-- )
     {
     my $pre_page_shr = $page_shr; # save for cutting ref link if needed
     my $page_sid = $page_shr->{ ':REF_PAGE_SID' } or return undef;
-    $page_shr = $self->__ses_load( 'PAGE', $page_sid, $user_sid );
+    $page_shr = $self->__sc_load( 'PAGE', $page_sid, $user_sid );
     if( ! $page_shr )
       {
       delete $pre_page_shr->{ ':REF_PAGE_SID' };
@@ -650,13 +728,13 @@ sub get_link_session
 {
   my $self  = shift;
 
-  my $link_shr = $self->__ses_active( 'LINK' );
+  my $link_shr = $self->{ 'SESSIONS' }{ 'LINK' };
 
   if( ! $link_shr )
     {
-    my $cookie_shr = $self->__ses_active( 'COOK' ) or boom "cannot create link session without active cookie session";
-    $link_shr = $self->__ses_create( 'LINK', $cookie_shr->{ ':SID' }, 8 );
-    $self->__ses_set_active( 'LINK', $link_shr );
+    my $cookie_shr = $self->get_cookie_session() or boom "cannot create link session without active cookie session";
+    $link_shr = $self->sc_add( $self->__ses->create( 'LINK', $cookie_shr->{ ':SID' }, 8 ) );
+    $self->__set_link_session( $link_shr );
     }
 
   return wantarray ? ( $link_shr->{ ':SID' }, $link_shr ) : $link_shr;
@@ -707,6 +785,42 @@ sub get_top_page_session_id
   my $shr = $self->get_page_session( $level ) || {};
 
   return $shr->{ ':TOP_PAGE_SID' };
+}
+
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+
+##############################################################################
+#
+# usual user visible api
+#
+
+# user hold is data, which is preserved between login sessions, can carry anything
+# user hold is available only after login and only if login has username or other user identification
+
+sub get_user_hold
+{
+  my $self = shift;
+
+  my $uid = $self->get_user_session()->{ ':USER_IDENT' } or return undef; # logged-out session has no user hold
+
+  my $hold = $self->__sc_load( 'HOLD', $uid );
+  return $hold if $hold;
+
+  # FIXME: Sessions::create() only makes random ids, but a HOLD session needs
+  #        the fixed id $uid, so a new hold is stamped here. a fixed-id option
+  #        in create() would keep :TYPE/:SID/:PSID stamping in one place.
+  return $self->sc_add( { ':TYPE' => 'HOLD', ':SID' => $uid, ':PSID' => undef } );
 }
 
 ##############################################################################
@@ -846,126 +960,6 @@ sub args_type
   return $self->args_back( @_ )    if $type eq 'back';
   return $self->args( @_ )         if $type eq 'none';
   boom( "unknown or not supported TYPE [$type]" );
-}
-
-
-##############################################################################
-
-sub save
-{
-  my $self = shift;
-
-  # must never raise: saves everything possible, logs what cannot be saved
-  my $all = $self->{ 'SESSIONS' }{ 'ALL' } || {};
-  my $fps = $self->{ 'SESSIONS' }{ 'FP'  } ||= {};
-  for my $type ( qw( COOK USER PAGE LINK HOLD ) )
-    {
-    my $type_hr = $all->{ $type } or next;
-    for my $k ( keys %$type_hr )
-      {
-      my $shr = $type_hr->{ $k };
-      my $fp  = hash_fingerprint( $shr );
-      next if defined $fp and $fp eq ( $fps->{ $type }{ $k } // '' );
-
-      $self->log_debug( "saving session data [$type:$k]" );
-
-      if( eval { $self->__ses->save( $shr ) } )
-        {
-        $fps->{ $type }{ $k } = $fp;
-        }
-      else
-        {
-        $self->log( "error saving session state for [$type:$k]" . ( $@ ? " ($@)" : '' ) );
-        }
-      }
-    }
-}
-
-### SESSION STATE ############################################################
-##
-## active sessions live in dedicated slots, $self->{ 'SESSIONS' }{ 'ACTIVE' }.
-## every session loaded or created in this request is registered in
-## $self->{ 'SESSIONS' }{ 'ALL' }, keyed by type and "psid/sid", and save()
-## writes the changed ones. fingerprints are taken only for loaded sessions,
-## so new sessions are always saved. the storage key of each session comes from
-## its own :TYPE, :SID and :PSID, never from the active slots.
-##
-
-sub __state_key
-{
-  my $shr = shift;
-  return ( $shr->{ ':PSID' } // '' ) . '/' . $shr->{ ':SID' };
-}
-
-# registers a session without fingerprint, so it will be saved
-sub __state_register
-{
-  my $self = shift;
-  my $shr  = shift or return undef;
-
-  $self->{ 'SESSIONS' }{ 'ALL' }{ $shr->{ ':TYPE' } }{ __state_key( $shr ) } = $shr;
-
-  return $shr;
-}
-
-# returns a session, from this request's registry or loaded from storage
-sub __ses_load
-{
-  my $self = shift;
-  my $type = shift;
-  my $sid  = shift;
-  my $psid = shift;
-
-  my $k   = ( $psid // '' ) . '/' . $sid;
-  my $shr = $self->{ 'SESSIONS' }{ 'ALL' }{ $type }{ $k };
-  return $shr if $shr;
-
-  $shr = $self->__ses->load( $type, $sid, $psid ) or return undef;
-
-  $self->__state_register( $shr );
-  $self->{ 'SESSIONS' }{ 'FP' }{ $type }{ $k } = hash_fingerprint( $shr );
-
-  return $shr;
-}
-
-sub __ses_create
-{
-  my $self = shift;
-
-  return $self->__state_register( $self->__ses->create( @_ ) );
-}
-
-# deletes a session from the storage and forgets it
-sub __ses_delete
-{
-  my $self = shift;
-  my $shr  = shift or return;
-
-  my $type = $shr->{ ':TYPE' };
-  my $k    = __state_key( $shr );
-
-  delete $self->{ 'SESSIONS' }{ 'ALL' }{ $type }{ $k };
-  delete $self->{ 'SESSIONS' }{ 'FP'  }{ $type }{ $k };
-  $self->{ 'SESSIONS' }{ 'ACTIVE' }{ $type } = undef if ( $self->{ 'SESSIONS' }{ 'ACTIVE' }{ $type } || 0 ) == $shr;
-
-  $self->__ses->delete( $shr ) or $self->log( "error: cannot delete session [$type:$k]" );
-}
-
-sub __ses_active
-{
-  my $self = shift;
-  my $type = shift;
-
-  return $self->{ 'SESSIONS' }{ 'ACTIVE' }{ $type };
-}
-
-sub __ses_set_active
-{
-  my $self = shift;
-  my $type = shift;
-  my $shr  = shift;
-
-  $self->{ 'SESSIONS' }{ 'ACTIVE' }{ $type } = $shr;
 }
 
 ##############################################################################
@@ -1225,12 +1219,12 @@ sub logout
   # page and link sessions of the logged-in user stay where they belong (their
   # keys come from their own :PSID) and are saved there, the new anonymous
   # user session gets a new cookie session and a fresh page session
-  $self->__ses_set_active( 'LINK', undef );
+  $self->__set_link_session( undef );
   $self->__discard_active_sessions();
   $self->__create_new_user_session();
 
-  my $page_shr = $self->__ses_create( 'PAGE', $self->get_user_session_id(), 8 );
-  $self->__ses_set_active( 'PAGE', $page_shr );
+  my $page_shr = $self->sc_add( $self->__ses->create( 'PAGE', $self->get_user_session_id(), 8 ) );
+  $self->__set_page_session( $page_shr );
 }
 
 # FIXME: s?

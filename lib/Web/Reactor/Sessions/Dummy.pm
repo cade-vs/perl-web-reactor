@@ -37,6 +37,11 @@ sub _storage_save
   return 1
 }
 
+sub _storage_delete
+{
+  return 1
+}
+
 sub _storage_exists
 {
   return 1

@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
+##  Copyright (c) 2013-2026 Vladi Belperchinov-Shabanski "Cade"
 ##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##  http://cade.noxrun.com
 ##
@@ -13,8 +13,7 @@ package Web::Reactor::Sessions::Filesystem;
 use strict;
 use Exception::Sink;
 use Web::Reactor::Sessions;
-use Web::Reactor::Utils;
-use POSIX;
+use Fcntl qw( O_CREAT O_EXCL O_WRONLY );
 use Data::Tools;
 use Data::Dumper;
 
@@ -37,22 +36,25 @@ sub get_min_ses_id_len { return $MIN_SES_ID_LEN; }
 # it must (and expected to) fail if session with the same key exists and never
 # overwrite existing session storage!
 # args:
-#       @key (i.e. @_) -- key components array, usually filled with 2 or 3 elements
-#                         when 2: TYPE, SESS7c87y32d78asa4
-#                         when 3: TYPE, SESS187yc5v87thccf, SESS2jdhfh74yc3847
-#                         usually it is simple to $key = join '.' @_;
-#
+#       key  -- key components array reference, from compose_key_from_sid():
+#               [ TYPE, SID ] or, for types with a parent, [ TYPE, PSID, SID ]
+#       shr  -- session hashref, written as the initial session data
 # returns:
-#       1 if successful or 0 or undef if not possible or session id already exists
+#       1 if created, 0 if the session id already exists, undef on storage error
 sub _storage_create
 {
   my $self = shift;
+  my $key  = shift;
+  my $shr  = shift;
 
-  my $fn = $self->_key_to_fn( {}, @_ );
+  my $fn = $self->_key_to_fn( {}, @$key );
   my $F;
-  if( sysopen $F, $fn, O_CREAT | O_EXCL, 0600 )
+  if( sysopen $F, $fn, O_CREAT | O_EXCL | O_WRONLY, 0600 )
     {
-    close $F;
+    my $j = hash2json( $shr );
+    return undef unless $j;
+    return undef unless print $F $j;
+    return undef unless close $F;
     return 1;
     }
   else
@@ -63,24 +65,25 @@ sub _storage_create
 
 # loads session data from the storage
 # args:
-#       @key (i.e. @_) -- key components array, example: $key = join '.' @_;
+#       key  -- key components array reference, see _storage_create()
 # returns:
 #       hashref of session data or undef if error
 sub _storage_load
 {
   my $self = shift;
+  my $key  = shift;
 
-  my $fn = $self->_key_to_fn( { READONLY => 1 }, @_ );
+  my $fn = $self->_key_to_fn( { READONLY => 1 }, @$key );
   if( ! -r $fn )
     {
-    $self->reo()->log( "error: session file not readable: $fn" );
+    $self->reo()->log_debug( "error: session file missing or not readable: $fn" );
     return undef;
     }
-  my $in_data;
+  my $shr;
   eval
     {
-    $in_data = hash_load_json( { FNAME => $fn, FLOCK => 1 } );
-    boom "error: cannot retrieve session data from [$fn]" unless $in_data;
+    $shr = hash_load_json( $fn );
+    boom "error: cannot retrieve session data from [$fn]" unless $shr;
     };
   if( $@ )
     {
@@ -90,39 +93,62 @@ sub _storage_load
 
 #print STDERR Dumper( "******* _storage_load [$fn] *******", $in_data );
 
-  return $in_data;
+  return $shr;
 }
 
 # saves session data to the storage
 # args:
-#       data -- hashref of session data
-#       @key (i.e. @_) -- key components array, example: $key = join '.' @_;
+#       key  -- key components array reference, see _storage_create()
+#       shr  -- session hashref to save
 # returns:
 #       1 if successful, 0 or undef if failed
 sub _storage_save
 {
   my $self = shift;
-  my $out_data = shift;
+  my $key  = shift;
+  my $shr  = shift;
 
-  my $fn = $self->_key_to_fn( {}, @_ );
+  my $fn = $self->_key_to_fn( {}, @$key );
 
 #print STDERR Dumper( "******* _storage_save [$fn] *******", $out_data );
 
+  # FIXME: the temp file is left behind when hash_save_json() fails part way
+  #        or rename() fails, unlink it on both failures
   my $tmp = "$fn.tmp.$$.part";
-  return undef unless hash_save_json( $tmp, $out_data );
+  return undef unless hash_save_json( $tmp, $shr );
+  chmod( 0600, $tmp ); # FIXME: must be moved to file_save()
   return rename( $tmp, $fn );
+}
+
+# deletes session data from the storage
+# args:
+#       key  -- key components array reference, see _storage_create()
+# returns:
+#       1 if deleted or it did not exist, undef if failed
+sub _storage_delete
+{
+  my $self = shift;
+  my $key  = shift;
+
+  my $fn = $self->_key_to_fn( { READONLY => 1 }, @$key );
+
+  return 1 if unlink( $fn ) or ! -e $fn;
+
+  $self->reo()->log( "error: cannot delete session file: $fn ($!)" );
+  return undef;
 }
 
 # checks if session exists in the storage
 # args:
-#       @key (i.e. @_) -- key components array, example: $key = join '.' @_;
+#       key  -- key components array reference, see _storage_create()
 # returns:
 #       1 if exists, 0 or undef if not
 sub _storage_exists
 {
   my $self = shift;
+  my $key  = shift;
 
-  my $fn = $self->_key_to_fn( { READONLY => 1 }, @_ );
+  my $fn = $self->_key_to_fn( { READONLY => 1 }, @$key );
 
   return -e $fn ? 1 : 0;
 }
@@ -140,7 +166,7 @@ sub _storage_debug_info
 
   my $vd = $cfg->{ 'SESS_VAR_DIR' };
 
-  return "Web::Reactor::Sess::Filesystem: session directory: [$vd]";
+  return "Web::Reactor::Sessions::Filesystem: session directory: [$vd]";
 }
 
 ##############################################################################
@@ -157,7 +183,7 @@ sub _split_dir_components
   my $c = shift || $SPLIT_PARTS_CNT; # parts count
   my $l = shift || $SPLIT_PARTS_LEN; # how long is each part
 
-  die "Web::Reactor::Sessions::Filesystem::_split_dir_components: id [$s] is shorter than [$MIN_SES_ID_LEN] chars" unless length( $s ) >= $MIN_SES_ID_LEN;
+  boom "Web::Reactor::Sessions::Filesystem::_split_dir_components: id [$s] is shorter than [$MIN_SES_ID_LEN] chars" unless length( $s ) >= $MIN_SES_ID_LEN;
 
   my $r; # result
 

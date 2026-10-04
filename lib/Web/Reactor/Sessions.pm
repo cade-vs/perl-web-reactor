@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
+##  Copyright (c) 2013-2026 Vladi Belperchinov-Shabanski "Cade"
 ##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##  http://cade.noxrun.com
 ##
@@ -29,21 +29,33 @@ my @HNS = qw(
     Uber Una Uno Viki Vera Voom Veda Vidin Vida Vita Wells Willa Wren Xena Xylo Yael Zezo Zaza Zane Zuki Zooo Zana Zara Zeev Zeno Zera Zoro
     );
 
+our %SESSION_TYPES = (
+                       'USER' => undef,
+                       'HOLD' => undef,
+                       'COOK' => undef,
+                       'LINK' => 'COOK',
+                       'PAGE' => 'USER',
+                     );
+
 ##############################################################################
 ##
 ##  public interface methods, should be used via Reactor object, see specs
 ##
 
-# create new session id of given type and length and allocate storage for it
+# creates a new session of given type, allocates its storage and writes the
+# initial session data, the only place where :TYPE, :SID and :PSID are set
 # args:
-#       type -- alphanumeric type name (selects storage only)
-#       len  -- session id length
+#       type -- session type, one of %SESSION_TYPES
+#       psid -- parent session id, required for types with a parent (PAGE,
+#               LINK), undef for the rest
+#       len  -- session id length (optional, default 73)
 # returns:
-#       new session id or undef when failed
+#       new session hashref with :TYPE, :SID and :PSID set, dies on failure
 sub create
 {
   my $self = shift;
   my $type = uc shift;
+  my $psid = shift; # parent sid
   my $len  = shift || 73; # 21st prime :)
 
   boom "Web::Reactor::Sessions::create: invalid type, expected ALPHANUMERIC, got [$type]" unless $type =~ /^[A-Z0-9]+$/;
@@ -51,114 +63,101 @@ sub create
 
   my $cfg  = $self->cfg();
 
-  my $id;
-  my $t  = time();
+  my $shr = { ':TYPE' => $type, ':SID' => '?', ':PSID' => $psid };
+
+  my $sid;
+  my $ts = time();
   my $to = $cfg->{ 'SESS_CREATE_TIMEOUT'       } ||    5; # seconds
   my $tc = $cfg->{ 'SESS_CREATE_TIMEOUT_COUNT' } || 1023; # count, should not be reached anyway
-  my $c;
-  while(4)
+  while( $tc-- and time() - $ts < $to )
     {
-    $c++;
-    $id = $self->create_id( $len );
+    $sid = $self->create_id( $len );
+    $sid = $HNS[rand(@HNS)] . '_' . $sid if $self->reo->is_debug();
+    $shr->{ ':SID' } = $sid;
 
-    $id = $HNS[rand(@HNS)] . '_' . $id if $self->reo->is_debug();
-
-    my @key = $self->compose_key_from_id( $type, $id );
-    my $rc = $self->_storage_create( @key );
-    last if $rc;
-
-    die "Web::Reactor::Sessions::create: cannot create new session, system error, key[@key], " . $self->_storage_debug_info() unless defined $rc;
-
-    if ( $c >= $tc or time() - $t > $to )
-      {
-      $id = undef;
-      # FIXME: report error
-      die "Web::Reactor::Sessions::create: cannot create new session: timeout, after $c tries, key[@key], " . $self->_storage_debug_info();
-      return undef;
-      }
+    my $key = $self->compose_key_from_sid( $type, $sid, $psid );
+    my $rc = $self->_storage_create( $key, $shr );
+    return $shr if $rc;
+    next if defined $rc;
+    $self->_storage_delete( $key );
+    boom "Web::Reactor::Sessions::create: storage error creating session type [$type] parent sid [$psid], key [@$key], " . $self->_storage_debug_info();
     }
 
-  return $id;
+  boom "Web::Reactor::Sessions::create: no free id for session type [$type] parent sid [$psid] in time, " . $self->_storage_debug_info();
 };
 
 # loads session data from the storage
 # args:
-#       type -- alphanumeric type name (selects storage only)
-#       id   -- session id
+#       type -- session type, one of %SESSION_TYPES
+#       sid  -- session id
+#       psid -- parent session id, required for types with a parent
 # returns:
-#       hashref of session data or undef if error
+#       session hashref or undef if missing, invalid or not readable
 sub load
 {
   my $self = shift;
-  my $type = shift;
-  my $id   = shift;
+  my $type = uc shift;
+  my $sid  = shift;
+  my $psid = shift;
 
-  return undef unless __check_session_id( $id );
+  my $key = $self->compose_key_from_sid( $type, $sid, $psid );
 
-  my @key = $self->compose_key_from_id( $type, $id );
-
-  return $self->_storage_load( @key );
+  return $self->_storage_load( $key );
 }
 
-# saves session data to the storage
+# saves session data to the storage, under the key built from the session's
+# own :TYPE, :SID and :PSID
 # args:
-#       type -- alphanumeric type name (selects storage only)
-#       id   -- session id
-#       data -- hashref of session data
+#       shr  -- session hashref, as returned by create() or load()
 # returns:
 #       1 if successful, undef if failed
 sub save
 {
   my $self = shift;
-  my $type = shift;
-  my $id   = shift;
-  my $data = shift;
+  my $shr  = shift; # session hashref
 
-  return undef unless __check_session_id( $id );
-
-  my @key = $self->compose_key_from_id( $type, $id );
-
-  return $self->_storage_save( $data, @key );
+  return $self->_storage_save( $self->__shr_to_key( $shr ), $shr );
 }
 
 # deletes a session from the storage
 # args:
-#       type -- alphanumeric type name (selects storage only)
-#       id   -- session id
+#       shr  -- session hashref, as returned by create() or load()
 # returns:
-#       1 if successful, undef if failed
+#       1 if deleted or already missing, undef if failed
 sub delete
 {
   my $self = shift;
-  my $type = shift;
-  my $id   = shift;
+  my $shr  = shift; # session hashref
 
-  return undef unless __check_session_id( $id );
-
-  my @key = $self->compose_key_from_id( $type, $id );
-
-  return $self->_storage_delete( @key );
+  return $self->_storage_delete( $self->__shr_to_key( $shr ) );
 }
 
 # checks if session exists in the storage
 # args:
-#       type -- alphanumeric type name (selects storage only)
-#       id   -- session id
+#       shr  -- session hashref, as returned by create() or load()
 # returns:
-#       1 if exists, undef if not
+#       1 if exists, 0 if not
 sub exists
 {
   my $self = shift;
-  my $type = shift;
-  my $id   = shift;
+  my $shr  = shift; # session hashref
 
-  return undef unless __check_session_id( $id );
-
-  my @key = $self->compose_key_from_id( $type, $id );
-
-  return $self->_storage_exists( @key );
+  return $self->_storage_exists( $self->__shr_to_key( $shr ) );
 }
 
+##############################################################################
+
+sub __shr_to_key
+{
+  my $self = shift;
+  my $shr  = shift; # session hashref
+
+  my $type = $shr->{ ':TYPE' };
+  my $sid  = $shr->{ ':SID'  };
+  my $psid = $shr->{ ':PSID' };
+
+  return $self->compose_key_from_sid( $type, $sid, $psid );
+}
 
 ##############################################################################
 ##
@@ -171,50 +170,48 @@ sub exists
 # it must (and expected to) fail if session with the same key exists and never
 # overwrite existing session storage!
 # args:
-#       @key (i.e. @_) -- key components array, usually filled with 2 or 3 elements
-#                         when 2: TYPE, SESS7c87y32d78asa4
-#                         when 3: TYPE, SESS187yc5v87thccf, SESS2jdhfh74yc3847
-#                         usually it is simple to $key = join '.' @_;
-#
+#       key  -- key components array reference, from compose_key_from_sid():
+#               [ TYPE, SID ] or, for types with a parent, [ TYPE, PSID, SID ]
+#       shr  -- session hashref, written as the initial session data
 # returns:
-#       1 if successful or 0 or undef if not possible or session id already exists
-sub _storage_create { die "Web::Reactor::Sessions::*::_storage_create() is not implemented!"; }
+#       1 if created, 0 if the session id already exists, undef on storage error
+sub _storage_create { boom "Web::Reactor::Sessions::*::_storage_create() is not implemented!"; }
 
 # delete session data from the storage
 # args:
-#       @key (i.e. @_) -- key components array, example: $key = join '.' @_;
+#       key  -- key components array reference, see _storage_create()
 # returns:
-#       hashref of session data or undef if error
-sub _storage_delete   { die "Web::Reactor::Sessions::*::_storage_delete() is not implemented!"; }
+#       1 if deleted or already missing, undef if failed
+sub _storage_delete   { boom "Web::Reactor::Sessions::*::_storage_delete() is not implemented!"; }
 
 # loads session data from the storage
 # args:
-#       @key (i.e. @_) -- key components array, example: $key = join '.' @_;
+#       key  -- key components array reference, see _storage_create()
 # returns:
 #       hashref of session data or undef if error
-sub _storage_load   { die "Web::Reactor::Sessions::*::_storage_load() is not implemented!"; }
+sub _storage_load   { boom "Web::Reactor::Sessions::*::_storage_load() is not implemented!"; }
 
 # saves session data to the storage
 # args:
-#       data -- hashref of session data
-#       @key (i.e. @_) -- key components array, example: $key = join '.' @_;
+#       key  -- key components array reference, see _storage_create()
+#       shr  -- session hashref to save
 # returns:
 #       1 if successful, undef if failed
-sub _storage_save   { die "Web::Reactor::Sessions::*::_storage_save() is not implemented!"; }
+sub _storage_save   { boom "Web::Reactor::Sessions::*::_storage_save() is not implemented!"; }
 
 # checks if session exists in the storage
 # args:
-#       @key (i.e. @_) -- key components array, example: $key = join '.' @_;
+#       key  -- key components array reference, see _storage_create()
 # returns:
-#       1 if exists, undef if not
-sub _storage_exists { die "Web::Reactor::Sessions::*::_storage_exists() is not implemented!"; }
+#       1 if exists, 0 if not
+sub _storage_exists { boom "Web::Reactor::Sessions::*::_storage_exists() is not implemented!"; }
 
 # return information about storage configuration, i.e. file path for Filesystem, etc.
 # args:
 #       none
 # returns:
 #       information text
-sub _storage_debug_info { die "Web::Reactor::Sessions::*::_storage_debug_info() is not implemented!"; }
+sub _storage_debug_info { boom "Web::Reactor::Sessions::*::_storage_debug_info() is not implemented!"; }
 
 ##############################################################################
 ##
@@ -239,37 +236,206 @@ sub create_id
   return Crypt::PRNG::random_string_from( $let, $len );
 };
 
-sub compose_key_from_id
+sub compose_key_from_sid
 {
   my $self = shift;
   my $type = uc shift;
-  my $id   = shift;
+  my $sid  = shift;
+  my $psid = shift;
 
-  boom "Web::Reactor::Sessions::compose_key_from_id: invalid type, expected ALPHA" unless $type =~ /^[A-Z]+$/;
+  boom "invalid session type [$type]" unless exists $SESSION_TYPES{ $type };
+  boom "invalid SID [$sid]"   unless __check_session_id( $sid   );
+  boom "invalid PSID [$psid]" if $psid and ! __check_session_id( $psid  );
+
+  if( $SESSION_TYPES{ $type } )
+    {
+    boom "missing PSID for SID [$sid] type [$type]" unless $psid;
+    }
+  else
+    {
+    boom "PSID not applicable for session type [$type]" if $psid;
+    }
 
   my @key;
 
   push @key, $type;
-  push @key, $self->get_user_sid() unless $type eq 'USER' or $type eq 'HOLD'; # USER and HOLD data are not tied to current session
-  push @key, $id;
+  push @key, $psid if $psid; # this line is the only reason for this func but yet it checks session attrs
+  push @key, $sid;
 
-  return @key;
+  return \@key;
 }
 
 ##############################################################################
 ##
-##  helpers
+##  helpers for session in-memory state (cache)
 ##
 
-sub get_user_sid
+
+=pod
+
+# sets current cache session
+sub state_set_active
 {
   my $self = shift;
-  my $user_sid = $self->{ 'REO_REACTOR' }->{ 'SESSIONS' }{ 'SID'  }{ 'USER' };
 
-  boom "missing USER SESSION" unless $user_sid;
+  my $type = shift;
+  my $sid  = shift;
+  my $shr  = shift;
 
-  return $user_sid;
+  boom "invalid session type [$type]" unless exists $PARENT_SESSION_TYPES{ $type };
+
+  my $cid = $self->{ 'SID' }{ $type };
+
+  boom( "active [$type] session already set to [$cid] <-- [$sid]" ) if $cid;
+
+  $self->{ 'SID' }{ $type }         = $sid;
+  $self->{ 'SHR' }{ $type }{ $sid } = $shr;
+
+  1;
 }
+
+# get current session ID by TYPE
+sub state_get_sid
+{
+  my $self = shift;
+
+  my $type = shift;
+
+  boom "invalid session type [$type]" unless exists $PARENT_SESSION_TYPES{ $type };
+
+  return $self->{ 'SID' }{ $type };
+}
+
+# gets any cached session
+sub state_get_ses
+{
+  my $self = shift;
+
+  my $type = shift;
+  my $sid  = shift; # if not specified will return active session
+
+  boom "invalid session type [$type]" unless exists $PARENT_SESSION_TYPES{ $type };
+
+  $sid ||= $self->{ 'SID' }{ $type };
+  my $shr = $self->{ 'SHR' }{ $type }{ $sid };
+
+  return wantarray ? ( $sid, $shr ) : $shr;
+}
+
+# adds session to the cache
+sub state_add
+{
+  my $self = shift;
+
+  my $type = shift;
+  my $sid  = shift;
+  my $shr  = shift;
+
+  boom "invalid session type [$type]" unless exists $PARENT_SESSION_TYPES{ $type };
+
+  boom( "session [$type:$sid] already added" ) if $self->{ 'SHR' }{ $type }{ $sid };
+
+  $self->{ 'SHR' }{ $type }{ $sid } = $shr;
+
+  1;
+}
+
+# deactivates current session of given TYPE, the session data stays in the
+# cache and is still saved by state_save(), so a new session can be activated
+sub state_deactivate
+{
+  my $self = shift;
+
+  my $type = shift;
+
+  boom "invalid session type [$type]" unless exists $PARENT_SESSION_TYPES{ $type };
+
+  $self->{ 'SID' }{ $type } = undef;
+
+  1;
+}
+
+# removes all cached sessions of given TYPE without saving them
+sub state_remove_all
+{
+  my $self = shift;
+
+  my $type = shift;
+
+  boom "invalid session type [$type]" unless exists $PARENT_SESSION_TYPES{ $type };
+
+  $self->{ 'SID' }{ $type } = undef;
+  delete $self->{ 'SHR'   }{ $type };
+  delete $self->{ 'STATE' }{ $type };
+
+  1;
+}
+
+# remove session without saving
+sub state_remove
+{
+  my $self = shift;
+
+  my $type = shift;
+  my $sid  = shift;
+
+  boom "invalid session type [$type]" unless exists $PARENT_SESSION_TYPES{ $type };
+
+  $self->{ 'SID' }{ $type } = undef if $self->{ 'SID' }{ $type } eq $sid;
+  delete $self->{ 'SHR'   }{ $type }{ $sid };
+  delete $self->{ 'STATE' }{ $type }{ $sid };
+
+  1;
+}
+
+# updates
+sub state_update_fingerprint
+{
+  my $self = shift;
+
+  my $type = shift;
+  my $sid  = shift;
+  my $shr  = shift;
+
+  boom "invalid session type [$type]" unless exists $PARENT_SESSION_TYPES{ $type };
+
+  $shr ||= $self->{ 'SHR'   }{ $type }{ $sid };
+
+  $self->{ 'STATE' }{ $type }{ $sid } = hash_fingerprint( $shr );
+}
+
+sub state_save
+{
+  my $self = shift;
+
+  my $state = $self->{ 'STATE' } ||= {}; # get or init state cache
+  for my $type ( keys %PARENT_SESSION_TYPES )
+    {
+    my $type_hr = $self->{ 'SHR' }{ $type } or next;
+    for my $sid ( keys %$type_hr )
+      {
+      my $shr = $type_hr->{ $sid };
+
+      my $newfp  = hash_fingerprint( $shr );
+      my $lastfp = $state->{ $type }{ $sid };
+
+      next if $newfp eq $lastfp;
+
+      $self->reo->log_debug( "saving session data [$type:$sid] --> new $newfp <> $lastfp" );
+
+      if( $self->save( $type, $sid, $shr ) )
+        {
+        $state->{ $type }{ $sid } = $newfp;
+        }
+      else
+        {
+        $self->reo->log( "error saving session state for [$type:$sid] --> new $newfp <> $lastfp" );
+        }
+      }
+    }
+}
+
+=cut
 
 ### INTERNAL #################################################################
 

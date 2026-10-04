@@ -547,7 +547,7 @@ $app->run();
   is( $app->get_user_session()->{ ':ID' }, $app->get_user_session_id(), 'rotated session carries the new :ID' );
   is( $app->get_user_session()->{ ':USER_IDENT_S' }, 'joe_example_com', 'login() stores a readable user ident' );
   ok( $app->get_user_session()->{ ':USER_IDENT' } =~ /^[0-9a-f]+$/i, 'login() stores a hex encoded user ident' );
-  ok( $app->get_user_session()->{ ':LTIME' } > 0, 'login() stores a login time' );
+  ok( $app->get_user_session()->{ ':LITIME' } > 0, 'login() stores a login time' );
 
   my $old = $app->ses->load( 'USER', $before );
   is( $old->{ ':CLOSED' }, 1, 'login() closes the pre-login session in storage' );

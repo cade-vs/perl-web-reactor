@@ -274,7 +274,7 @@ function element_absolute_position( el )
 
 /***************************************************************************/
 
-// TABs support with browser localStorage persistence
+// TABs support with browser sessionStorage persistence (per browser tab)
 
 function reactor_tab_activate_id( tab_id )
   {
@@ -286,6 +286,18 @@ function reactor_tab_activate_id( tab_id )
   if( ! tab ) return false;
 
   return reactor_tab_activate( tab );
+  }
+
+// removes the classes in "rm" and adds the ones in "add" (space separated),
+// other classes of the element are kept
+function reactor_class_swap( el, rm, add )
+  {
+  if( ! el ) return;
+  var r = ( rm  || "" ).split( /\s+/ );
+  var a = ( add || "" ).split( /\s+/ );
+  var z;
+  for( z = 0; z < r.length; z++ ) if( r[z] ) el.classList.remove( r[z] );
+  for( z = 0; z < a.length; z++ ) if( a[z] ) el.classList.add( a[z] );
   }
 
 function reactor_tab_activate( tab )
@@ -302,11 +314,12 @@ function reactor_tab_activate( tab )
   for( z = 0; z < tabs.length; z++ )
     {
     var t = q( tabs[z] );
+    if( ! t ) continue;
     t.style.display = "none";
-    q( t.dataset.handleId ).className = coff;
+    reactor_class_swap( q( t.dataset.handleId ), con, coff );
     }
 
-  q( tab.dataset.handleId ).className = con;
+  reactor_class_swap( q( tab.dataset.handleId ), coff, con );
   if( pkey )
     {
     sessionStorage.setItem( 'TABSET_ACTIVE_' + pkey, tab.id );

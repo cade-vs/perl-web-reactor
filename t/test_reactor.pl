@@ -108,7 +108,6 @@ my @MODULES = qw(
                 Web::Reactor::HTML::Utils
                 Web::Reactor::HTML::Layout
                 Web::Reactor::HTML::Form
-                Web::Reactor::HTML::FormEngine
                 Web::Reactor::HTML::Tab
                 );
 
@@ -116,7 +115,6 @@ require_ok( $_ ) for @MODULES;
 
 Web::Reactor::HTML::Utils->import();
 Web::Reactor::HTML::Layout->import();
-Web::Reactor::HTML::FormEngine->import();
 
 ok( $Web::Reactor::VERSION, "Web::Reactor::VERSION is set [$Web::Reactor::VERSION]" );
 
@@ -275,21 +273,6 @@ sub set_cookie_header
     }
 
   return undef;
-}
-
-# a plain Web::Reactor (not the test subclass) after a full request, for code
-# which checks the exact class
-sub plain_reo
-{
-  my %opt = @_;
-
-  my %env;
-  $env{ 'QUERY_STRING' } = $opt{ 'QS' } if defined $opt{ 'QS' };
-
-  my $r = Web::Reactor->new( make_env( %env ), make_cfg() );
-  $r->run();
-
-  return $r;
 }
 
 # returns 1 if any log message collected since the given mark matches
@@ -1170,6 +1153,10 @@ my ( $APP ) = request( COOKIE => $COOKIE );
 
   my $vtabs = html_tabs_table( $APP, [ { LABEL => 'L', TEXT => 'T' } ], VERTICAL => 1 );
   like( $vtabs, qr/WIDTH=50%/, 'html_tabs_table() vertical layout' );
+
+  my $ctabs = html_tabs_table( $APP, [ { LABEL => 'L1', TEXT => 'T1', ON => 1, LABEL_TD_ARGS => "class='lbl'" } ] );
+  unlike( $ctabs, qr/<TD [^>]*class=[^>]*class=/i, 'html_tabs_table() gives a label TD only one class attribute' );
+  like( $ctabs, qr/class='lbl'/, 'html_tabs_table() keeps the LABEL_TD_ARGS class on the handle' );
 }
 
 ##############################################################################
@@ -1190,6 +1177,7 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   my $g = html_layout_grid( [ [ '1', '2' ], [ '3', '4' ] ] );
   like( $g, qr/<table border=0/, 'html_layout_grid()' );
   like( $g, qr/<td[^>]*>1<\/td>/, 'html_layout_grid() renders cells' );
+  like( html_layout_grid( [ [ { ARGS => 'class=x', DATA => 'cell' } ] ] ), qr/<td class=x>cell<\/td>/, 'html_layout_grid() takes { ARGS, DATA } cells' );
 
   like( html_layout_hbox( [ 'a', 'b' ] ), qr/valign=top/, 'html_layout_hbox()' );
   like( html_layout_vbox( [ 'a', 'b' ] ), qr/(<tr.*){2}/s, 'html_layout_vbox() stacks rows' );
@@ -1202,6 +1190,8 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( html_layout_2lr( 'L', 'R' ), qr/L/, 'html_layout_2lr() renders the left side'  );
   like( html_layout_2lr( 'L', 'R' ), qr/R/, 'html_layout_2lr() renders the right side' );
   like( html_layout_2lr_flex( 'L', 'R' ), qr/display:\s*flex/, 'html_layout_2lr_flex() uses flex' );
+  like( html_layout_2lr_flex( 'L', 'R' ), qr/flex: 99;.*flex: 1;/s, 'html_layout_2lr_flex() without a format: left takes the room' );
+  like( html_layout_2lr_flex( 'L', 'R', '>20=>' ), qr/flex: 20;.*flex: 80;/s, 'html_layout_2lr_flex() honours the format' );
 
   my $hb = html_hbox( 'ctl:<10,70 x3,20', 'a', 'b', 'c' );
   like( $hb, qr/flex-direction: row/, 'html_hbox() is a row' );
@@ -1298,63 +1288,31 @@ my ( $APP ) = request( COOKIE => $COOKIE );
 
   $tab->finish();
   like( $APP->html_hold_get( 'kit_html' ), qr/reactor_tab_controller[^>]*id='\Q$tab->{ 'TAB_CONTROLLER_ID' }\E'/, 'tab->finish() puts the controller into the kit_html hold' );
+
+  eval { $tab->add( 'X', TYPE => 'DIV' ) };
+  like( $@, qr/already finished/, 'tab->add() booms after finish()' );
+  my $kit = $APP->html_hold_get( 'kit_html' );
+  $tab->finish();
+  is( $APP->html_hold_get( 'kit_html' ), $kit, 'a second tab->finish() does nothing' );
+  is( $tab->cfg(), $APP->cfg(), 'tab->cfg() is the reactor config' );
+  like( $tab->{ 'TAB_CONTROLLER_ID' }, qr/^RE_TAB_\Q@{[ $APP->get_uniq_id_scope() ]}\E_tabset$/, 'a named tab set id is scope and name' );
+
+  my $un = Web::Reactor::HTML::Tab->new( REO_REACTOR => $APP );
+  like( $un->{ 'TAB_CONTROLLER_ID' }, qr/^RE_TAB_\Q@{[ $APP->get_uniq_id_scope() ]}\E\.\d+$/, 'an unnamed tab set id is RE_TAB_ and a uniq id, the scope once' );
+
+  eval { $un->add( 'X', TYPE => 'SPAN' ) };
+  like( $@, qr/invalid tab TYPE \[SPAN\]/, 'tab->add() names the invalid TYPE' );
+
+  my ( $uh ) = $un->add( 'A', TYPE => 'DIV', HANDLE_CLASS => 'keep' );
+  $un->add( 'B', TYPE => 'DIV' );
+  like( $uh, qr/class='keep'/, 'tab->add() puts HANDLE_CLASS on the handle' );
+  $un->finish();
+  like( $APP->html_hold_get( 'kit_html' ), qr/getItem\( 'TABSET_ACTIVE_\Q$un->{ 'TAB_CONTROLLER_ID' }\E' \) \|\| "\Q$un->{ 'TABS_LIST' }[ 0 ]\E"/, 'without an ON tab the first tab is shown by default' );
 }
 
 ##############################################################################
 ##
-##  section 16 -- HTML::FormEngine
-##
-
-{
-  my $form_def = [
-                 { NAME => 'name',  TYPE => 'STRING', LABEL => 'Name'  },
-                 { NAME => 'age',   TYPE => 'STRING', LABEL => 'Age', RE => '^\d+$', RE_HELP => 'digits only' },
-                 { NAME => 'note',  TYPE => 'TEXT',   LABEL => 'Note'  },
-                 { NAME => 'ok',    TYPE => 'CB',     LABEL => 'Ok'    },
-                 { NAME => 'go',    TYPE => 'BUTTON', LABEL => '', VALUE => 'Go' },
-                 ];
-
-  # the form engine accepts Web::Reactor and its subclasses
-  {
-    my ( $sub ) = request( COOKIE => $COOKIE, QS => 'NAME=cade' );
-    my ( $sd ) = html_form_engine_import_input( $sub, $form_def, NAME => 'F' );
-    is( $sd->{ 'NAME' }, 'cade', 'form engine accepts a Web::Reactor subclass' );
-  }
-
-  my $r = plain_reo( QS => 'NAME=cade&AGE=42&NOTE=hi' );
-
-  my ( $data, $errors ) = html_form_engine_import_input( $r, $form_def, NAME => 'F' );
-  is( $data->{ 'NAME' }, 'cade', 'form engine imported a plain field' );
-  is( $data->{ 'AGE' },  '42',   'form engine imported a field matching its RE' );
-  is( $errors, undef, 'form engine reported no errors' );
-
-  my $r2 = plain_reo( QS => 'NAME=cade&AGE=old' );
-  my ( $d2, $e2 ) = html_form_engine_import_input( $r2, $form_def, NAME => 'F' );
-  is( $e2->{ 'AGE' }, 1, 'form engine flags a field failing its RE' );
-  ok( ! exists $d2->{ 'AGE' }, 'form engine drops the invalid value' );
-  is( $r2->get_page_session()->{ 'FORM_INPUT_DATA' }{ 'F' }{ 'NAME' }, 'cade',
-      'form engine caches imported data in the page session' );
-
-  eval { html_form_engine_import_input( 'not a reactor', $form_def ) };
-  ok( $@, 'html_form_engine_import_input() booms without a reactor object' );
-  eval { html_form_engine_display( $APP, 'not an arrayref' ) };
-  ok( $@, 'html_form_engine_display() booms on a bad form definition' );
-
-  # new_form() is broken (see the TODO in the HTML::Form section), so the
-  # display is checked with a form object made directly
-  {
-    no warnings 'redefine';
-    local *Web::Reactor::TestReactor::new_form = sub { my $reo = shift; return Web::Reactor::HTML::Form->new( $reo, $reo->cfg() ) };
-    my ( $rd ) = request( COOKIE => $COOKIE );
-    my $html = html_form_engine_display( $rd, [ { NAME => 'a', TYPE => 'STRING', LABEL => 'A' } ], NAME => 'F' );
-    like( $html, qr{<table border=0><tr><td align=right>A</td>}, 'html_form_engine_display() opens each row with <tr>' );
-    unlike( $html, qr{<table border=0></tr>}, 'html_form_engine_display() does not start a row with </tr>' );
-  }
-}
-
-##############################################################################
-##
-##  section 17 -- alternate session backend
+##  section 16 -- alternate session backend
 ##
 
 {
@@ -1378,7 +1336,7 @@ my ( $APP ) = request( COOKIE => $COOKIE );
 
 ##############################################################################
 ##
-##  section 18 -- Web::Reactor::Base
+##  section 17 -- Web::Reactor::Base
 ##
 
 {

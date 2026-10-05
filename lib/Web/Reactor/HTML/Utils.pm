@@ -542,7 +542,12 @@ sub html_tabs_table
       $label_args .= " WIDTH=$w%";
       }
 
-    my ( $tab_handle, $tab_html ) = $tab->add( "<TD $text_args>$text</td>", TYPE => 'TR', ON => $on, TAB_ID => $tab_id );
+    # a class in LABEL_TD_ARGS goes to the handle classes, so the label TD gets
+    # only one class attribute and the class is kept when the tab is switched
+    my $handle_class;
+    $handle_class = $2 if $label_args =~ s/\bclass\s*=\s*(['"])(.*?)\1//i or $label_args =~ s/\bclass\s*=\s*()([^\s>'"]+)//i;
+
+    my ( $tab_handle, $tab_html ) = $tab->add( "<TD $text_args>$text</td>", TYPE => 'TR', ON => $on, TAB_ID => $tab_id, HANDLE_CLASS => $handle_class );
 
     push @label_td, "<TD $label_args $tab_handle>$label</TD>";
     push @text_td,  $tab_html;

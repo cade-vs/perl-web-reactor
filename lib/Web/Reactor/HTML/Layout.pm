@@ -164,7 +164,6 @@ sub html_table
     else
       {
       boom "invalid row type, expected HASH or ARRAY reference";
-      next;
       }
 
     $r_args .= qq{ data-cid='$cid' $display } if $cid;
@@ -196,16 +195,9 @@ sub html_table
         }
       elsif( ref( $cell ) eq 'ARRAY' )
         {
-        my $fmt;
-        
-        $fmt = $cell->[ 0 ];
+        # FIXME: [ format, value ] cells, the format (first element) is not
+        #        implemented yet, only the value is used
         $val = $cell->[ 1 ];
-        
-        
-        #$val     = $cell->{ 'DATA' };
-        #$c_args  = $cell->{ 'ARGS' };
-        #$c_args .= " class='" . $cell->{ 'CLASS' } . "'" if $cell->{ 'CLASS' };
-        #$c_args .= " width='" . $cell->{ 'WIDTH' } . "'" if $cell->{ 'WIDTH' };
         }
       else
         {
@@ -255,7 +247,7 @@ sub html_layout_grid
     for my $col ( @$row )
       {
       my $col_args;
-      if( ref( $row ) eq 'HASH' )
+      if( ref( $col ) eq 'HASH' )
         {
         $col_args = $col->{ 'ARGS' };
         $col      = $col->{ 'DATA' };
@@ -277,19 +269,10 @@ sub html_layout_hbox
   return html_layout_grid( [ { DATA => $data, ARGS => "valign=top" } ] );
 }
 
-sub html_layout_vbox
-{
-  my $data = shift;
-  
-  my @data;
-  push @data, [ $_ ] for @$data;
-
-  return html_layout_grid( \@data );
-}
-
 sub html_layout_hbox_flex
 {
-  my $opt = ${ shift() } if ref( $_[0] ) eq 'SCALAR';
+  my $opt;
+  $opt = ${ shift() } if ref( $_[0] ) eq 'SCALAR';
   my @data = @_;
   
   my @opt = split /,/, $opt;
@@ -389,10 +372,11 @@ sub html_layout_2lr_flex
 {
   my $ld = shift; # left data
   my $rd = shift; # right data
-  my $fm = shift || '<=>'; # format: '[<>]nn%=nn%[<>]'
+  my $fm = shift; # format: '[<>]nn%=nn%[<>]', see html_layout_2lr()
 
-  return "<div style='display: flex;'><div style='flex: 99; text-align: left; align-content: center;'>$ld</div><div style='flex: 1; text-align: right; white-space: nowrap; align-content: center;'>$rd</div></div>";
-  
+  # without a format: left takes the room, right is as narrow as its content
+  return "<div style='display: flex;'><div style='flex: 99; text-align: left; align-content: center;'>$ld</div><div style='flex: 1; text-align: right; white-space: nowrap; align-content: center;'>$rd</div></div>" unless defined $fm;
+
   my $la;  # left  align
   my $ra;  # right align
   my $lw;  # left  width

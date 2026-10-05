@@ -24,11 +24,6 @@ our $VERSION = '3.33';
 
 ##############################################################################
 
-#minimum config:
-#my %cfg = (
-#          '' => ,
-#          );
-
 our @HTTP_VARS_CHECK = qw(
                            _CLIENT_IP
                            HTTP_USER_AGENT

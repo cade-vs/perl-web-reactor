@@ -78,7 +78,9 @@ for my $m ( qw( new run process_request set_debug is_debug inc_debug cfg plack
                 get_user_uploads get_user_postdata_fh get_user_postdata_body
                 res_set_status res_get_status res_set_headers res_get_headers_ar
                 res_set_cookie res_set_body res_get_body render portray forward_url
-                log log_debug log_debug2 log_stack log_dumper ) )
+                log log_debug log_debug2 log_stack log_dumper
+                res_clear_headers run_print_final_debug save
+                start_time get_uniq_id_scope create_uniq_id ) )
   {
   can_ok( 'Web::Reactor::Core', $m );
   }
@@ -588,6 +590,42 @@ like( $res4->[2][0], qr/currently unavailable/, 'no render gets the generic erro
 my $o = Web::Reactor::Core->new( env(), { DEBUG => 0 } );
 eval { $o->process_request() };
 like( $@, qr/subclass Web::Reactor::Core/, 'process_request() must be implemented by a subclass' );
+}
+
+##############################################################################
+##
+##  section 12b -- res_clear_headers(), run_print_final_debug()
+##
+
+{
+my $o = app( env() );
+$o->res_set_headers( 'X-One' => 'a' );
+$o->res_clear_headers();
+my %h = @{ $o->res_get_headers_ar() };
+ok( ! exists $h{ 'x-one' }, 'res_clear_headers() drops the headers set before' );
+ok( eval { $o->run_print_final_debug(); 1 }, 'run_print_final_debug() is a no-op in Core' );
+}
+
+##############################################################################
+##
+##  section 12a -- start time and html ids
+##
+
+{
+my $o  = app( env() );
+my $o2 = app( env() );
+
+ok( $o->start_time() > 0, 'start_time() is set by new()' );
+like( $o->start_time(), qr/^\d+(\.\d+)?$/, 'start_time() is unix time, with fractions' );
+
+my $scope = $o->get_uniq_id_scope();
+like( $scope, qr/^\Q$$\E_\d+_[A-Za-z0-9]{8}$/, 'get_uniq_id_scope() is pid, start time in microseconds and a random part' );
+is( $o->get_uniq_id_scope(), $scope, 'get_uniq_id_scope() is the same within the object' );
+isnt( $o2->get_uniq_id_scope(), $scope, 'another object gets another scope' );
+
+is( $o->create_uniq_id(), "$scope.1", 'create_uniq_id() is scope.1 first' );
+is( $o->create_uniq_id(), "$scope.2", 'create_uniq_id() counts up' );
+is( $o2->create_uniq_id(), $o2->get_uniq_id_scope() . '.1', 'the counter is per object' );
 }
 
 ##############################################################################

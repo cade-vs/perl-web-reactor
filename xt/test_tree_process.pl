@@ -14,7 +14,7 @@
 ##  smallest possible call of Web::Reactor::Preprocessor::Tree::process():
 ##  one reactor, one hold value, one tag, one assertion. no files, no HTTP.
 ##
-##  usage: perl xt/test_tree_process_min.pl
+##  usage: perl xt/test_tree_process.pl
 ##
 ##############################################################################
 use strict;
@@ -22,6 +22,7 @@ use strict;
 use lib '../lib'; # when run from inside xt/
 use lib 'lib';    # when run from the distribution root
 
+use Test::More;
 use File::Temp qw( tempdir );
 
 use Web::Reactor::Reflex;
@@ -49,10 +50,7 @@ my $reo = Web::Reactor::TestMin->new(
 
 $reo->html_hold_set( foo => '123' );
 
-# is( $reo->pre->process( 'main', 'a[<$$foo>]b' ), 'a[123]b', 'process() replaces a hold tag' );
+is( $reo->pre->process( 'main', 'a[<$$foo>]b' ), 'a[123]b', 'process() replaces a hold tag' );
 
-print $reo->pre->process( 'main', 'a[<$$$$foo>]b' );
-
-
-print "\n\n\n";
+done_testing();
 ###EOF########################################################################

@@ -101,7 +101,7 @@ sub _storage_load
 #       key  -- key components array reference, see _storage_create()
 #       shr  -- session hashref to save
 # returns:
-#       1 if successful, 0 or undef if failed
+#       1 if successful, undef or 0 if failed
 sub _storage_save
 {
   my $self = shift;
@@ -142,7 +142,7 @@ sub _storage_delete
 # args:
 #       key  -- key components array reference, see _storage_create()
 # returns:
-#       1 if exists, 0 or undef if not
+#       1 if exists, 0 if not
 sub _storage_exists
 {
   my $self = shift;
@@ -162,9 +162,7 @@ sub _storage_debug_info
 {
   my $self = shift;
 
-  my $cfg = $self->cfg();
-
-  my $vd = $cfg->{ 'SESS_VAR_DIR' };
+  my $vd = $self->__sess_var_dir();
 
   return "Web::Reactor::Sessions::Filesystem: session directory: [$vd]";
 }
@@ -174,7 +172,17 @@ sub _storage_debug_info
 ##  helpers
 ##
 
-# i.e.: _split_dir_components( '1234567890', 3, 3 ) returns '123/456/789/0'
+# session storage directory: SESS_VAR_DIR or, by default, APP_ROOT/var
+sub __sess_var_dir
+{
+  my $self = shift;
+
+  my $cfg = $self->cfg();
+
+  return $cfg->{ 'SESS_VAR_DIR' } || "$cfg->{ 'APP_ROOT' }/var";
+}
+
+# i.e.: _split_dir_components( '1234567890', 3, 3 ) returns '123/456/789/1234567890'
 sub _split_dir_components
 {
   my $self = shift;
@@ -208,13 +216,12 @@ sub _key_to_fn
 
   my $cfg = $self->cfg();
 
-  my $vd = $cfg->{ 'SESS_VAR_DIR' };
-  if( ! $vd )
+  if( ! $cfg->{ 'SESS_VAR_DIR' } )
     {
     my $app_root = $cfg->{ 'APP_ROOT' };
     boom "missing APP_ROOT" unless -d $app_root; # FIXME: function? get_app_root()
-    $vd = "$app_root/var";
     }
+  my $vd = $self->__sess_var_dir();
   dir_path_ensure( $vd ) unless -d $vd;
   boom "missing SESS_VAR_DIR or APP_ROOT/var [$vd]" unless -d $vd;
 

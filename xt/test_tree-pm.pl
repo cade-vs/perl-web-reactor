@@ -204,7 +204,7 @@ is( proc( $reo, 'main', 'a:[<$$late>] b:[<$foo>]' ), 'a:[LATE] b:[FOO]', '<$$tag
 
 my $opt = {};
 proc( $reo, 'main', '<$$late>', $opt );
-ok( ! $opt->{ ':REPEAT_PROCESSING_REQESTED' }, 'repeat flag is not left set in caller options after process()' );
+ok( ! $opt->{ ':REPEAT_PROCESSING_REQUESTED' }, 'repeat flag is not left set in caller options after process()' );
 
 is_deeply( $reo->pre->{ 'TAG_ID_STACK' } || [], [], 'tag id stack is empty after deferred tags' );
 }
@@ -245,6 +245,7 @@ is( proc( $reo, 'main', '<&echo>' ),                     'echo()id[undef]',     
 is( proc( $reo, 'main', '<&echo a=1>' ),                 'echo(A=1)id[undef]',       'bare argument, key uppercased' );
 is( proc( $reo, 'main', q{<&echo a='x y' b="p q">} ),    'echo(A=x y,B=p q)id[undef]', 'single and double quoted arguments' );
 is( proc( $reo, 'main', '<&echo flag>' ),                'echo(FLAG=1)id[undef]',    'argument without value is 1' );
+is( proc( $reo, 'main', q{<&echo n=0 s="" q='0' e=>} ),   'echo(E=,N=0,Q=0,S=)id[undef]', 'argument values 0 and empty are kept' );
 is( proc( $reo, 'main', '<&echo:tag7 z=3>' ),            'echo(Z=3)id[tag7]',        '<&action:id> exposes the tag id via tagid_peek' );
 like( proc( $reo, 'main', '<&&echo>' ),   qr{^<div class="?vframe"?>echo\(\)id\[undef\]</div>$}, '<&&action> is wrapped in a vframe div' );
 is( proc( $reo, 'main', '<&ECHO>' ),                     'echo()id[undef]',          '<&ACTION> is case insensitive' );

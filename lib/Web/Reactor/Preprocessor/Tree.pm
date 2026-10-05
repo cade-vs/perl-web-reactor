@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
+##  Copyright (c) 2013-2026 Vladi Belperchinov-Shabanski "Cade"
 ##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##  http://cade.noxrun.com
 ##
@@ -31,12 +31,11 @@ sub new
 
   my $cfg = $self->cfg();
 
-  # FIXME: this code is the same, move to base function vvvvvvvvvvvvvvvv
+  # FIXME: the same directories setup code is in Web::Reactor::Actions::new(),
+  #        move it to a common function
   my $dirs = $cfg->{ 'HTML_DIRS' };
   my $root = $self->reo->get_app_root();
-  my $lang = $self->reo->get_lang();
 
-  # FIXME: common directories setup code?
   # single directory (scalar) specified, convert to list
   $dirs = [ $dirs ] if ! ref( $dirs ) and $dirs;
   # nothing specified, set default
@@ -59,6 +58,16 @@ sub load_page
   return $self->load_file( shift, 'index' );
 }
 
+# constructs real filesystem/storage file name and loads the file text, used
+# by load_page() and for <#include> tags, not part of the preprocessor api
+# args:
+#       $page_name  -- page name (path), it should be sanitized, the file is
+#                      looked up for this page in the file, storage, or sth.
+#       $file_name  -- file name inside the page (no path, no extension),
+#                      'index' is the page itself, other names are includes
+#
+# returns:
+#       file text or undef if not found
 sub load_file
 {
   my $self = shift;
@@ -75,7 +84,6 @@ sub load_file
   $self->check_page_name( $pn );
   $self->check_page_file_name( $fn );
 
-  my $cfg  = $self->cfg();
   my $lang = $self->reo->get_lang();
 
   if( exists $self->{ 'FILE_CACHE' }{ $lang }{ $pn }{ $fn } )
@@ -88,7 +96,7 @@ sub load_file
 
   if( exists $self->{ 'DIRS_CACHE' }{ $lang }{ $pn } )
     {
-    # FIXME: log: debug: file cache hit
+    # FIXME: log: debug: dirs cache hit
     $dirs = $self->{ 'DIRS_CACHE' }{ $lang }{ $pn };
     }
   else
@@ -188,7 +196,8 @@ sub process_single_pass
 
 #print STDERR Dumper( 'PROCESS PRE --- ' x 7, $pn, $text );
 
-  # FIXME: cache here? moje bi ne, zaradi modulite
+  # FIXME: cache here? probably not, because of the modules: action tags
+  #        produce different output on each call
   $text =~ s/<([\$\&\#]|\$\$+|\&\&)([a-zA-Z_\-0-9]+)(:([a-zA-Z_\-0-9]+))?(\s*[^>]*)?>/$self->__process_tag( $pn, $1, $2, $4, $5, $opt, $ctx )/ge;
   $text =~ s/reactor_((new|back|here|none)_)?(href|src)=(["'])?([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"'#]*)(#[a-z_0-9\.]+)?(\4)?/$self->__process_href( $2, $3, $5, $7, $8 )/gie;
 
@@ -249,7 +258,8 @@ sub __process_tag
     while( $args =~ /\s*([a-zA-Z_0-9]+)(=('([^']*)'|"([^"]*)"|(\S*)))?/g ) # "' # fix string colorization
       {
       my $k = uc $1;
-      my $v = $4 || $5 || $6 || 1;
+      # name=value keeps the value as given, also "0" and "", a bare name is a flag
+      my $v = defined $2 ? $4 // $5 // $6 : 1;
       $args{ $k } = $v;
       }
     # FIXME: action calls may return non-text data, however the preprocessor expects text data for now...
@@ -338,7 +348,7 @@ sub check_page_name
 sub check_page_file_name
 {
   my $self = shift;
-  boom "invalid page name [$_[0]]" unless $_[0] =~ /^[a-z0-9_\-]+$/o;
+  boom "invalid page file name [$_[0]]" unless $_[0] =~ /^[a-z0-9_\-]+$/o;
 }
 
 ##############################################################################

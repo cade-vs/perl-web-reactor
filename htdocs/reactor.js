@@ -278,9 +278,12 @@ function element_absolute_position( el )
 
 function reactor_tab_activate_id( tab_id )
   {
-  if( ! tab_id ) return;
+  if( ! tab_id ) return false;
 
+  // the id may be a stale one restored from sessionStorage, i.e. the tab set
+  // has fewer tabs now, then there is nothing to activate
   var tab = q( tab_id );
+  if( ! tab ) return false;
 
   return reactor_tab_activate( tab );
   }
@@ -288,6 +291,7 @@ function reactor_tab_activate_id( tab_id )
 function reactor_tab_activate( tab )
   {
   var tab_ctrl = q( tab.dataset.controllerId );
+  if( ! tab_ctrl ) return false; // no tab controller in the page, see HTML::Tab finish()
 
   var tabs = tab_ctrl.dataset.tabsList.split( "," );
   var con  = tab_ctrl.dataset.classOn;
@@ -309,6 +313,8 @@ function reactor_tab_activate( tab )
     }
   if( tab.tagName == 'TR' )
     tab.style.display = "table-row";
+  else if( tab.tagName == 'TD' )
+    tab.style.display = "table-cell";
   else
     tab.style.display = "block";
 

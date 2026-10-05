@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
+##  Copyright (c) 2013-2026 Vladi Belperchinov-Shabanski "Cade"
 ##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##  http://cade.noxrun.com
 ##
@@ -53,9 +53,12 @@ sub new
 #       name   -- function/action name
 #       %args  -- array used as named hash arguments
 # args hash keys:
-#       ARGS   -- hash reference of attributes/arguments passed to the action
+#       HTML_ARGS -- hash reference of the action tag arguments, set by
+#                    Web::Reactor::Preprocessor::Tree for <&action ...> tags,
+#                    other callers may pass any named arguments
 # returns:
-#       result text to be replaced in output
+#       action result: text to be replaced in output, or portray data (see
+#       Web::Reactor::Core::portray()), undef if the action failed
 sub call
 {
   my $self  = shift;
@@ -84,7 +87,6 @@ sub call
   elsif( surface( '*' ) )
     {
     my $reo = $self->reo();
-    my @args = %args;
     $reo->log( "error: action code call failed: $name: $@\nwith args: " . Dumper( \%args ) );
     return undef;
     }
@@ -96,7 +98,7 @@ sub call
 
 sub __find_code_by_name
 {
-  boom "Web::Reactor::Actions::__find_code_by_name() must be implemented in subclasses!";
+  boom "Web::Reactor::Actions::*::__find_code_by_name() is not implemented!";
 }
 
 #sub DESTROY
@@ -111,7 +113,7 @@ sub __find_code_by_name
 sub check_action_name
 {
   my $self = shift;
-  boom "invalid action name [$_[0]]" unless $_[0] =~ /^[a-z0-9_]*$/;
+  boom "invalid action name [$_[0]]" unless $_[0] =~ /^[a-z0-9_]+$/;
 }
 
 ##############################################################################

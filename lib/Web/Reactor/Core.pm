@@ -23,6 +23,8 @@ use Data::Tools 1.24;
 use Exception::Sink;
 use Data::Dumper;
 use Encode;
+use Crypt::PRNG;
+use Time::HiRes;
 
 our $VERSION = '3.33';
 
@@ -35,17 +37,18 @@ sub new
   my $env   = shift;
   my $cfg   = shift;
 
-  die "expected first  argument to be ENV hash reference" unless ref $env eq 'HASH';
-  die "expected second argument to be CFG hash reference" unless ref $cfg eq 'HASH';
+  boom "expected first  argument to be ENV hash reference" unless ref $env eq 'HASH';
+  boom "expected second argument to be CFG hash reference" unless ref $cfg eq 'HASH';
 
   $class = ref( $class ) || $class;
   my $self = {};
   bless $self, $class;
 
+  $self->{ 'START_TIME' }             = Time::HiRes::time(); # see start_time()
   $self->{ 'CFG' }                    = dclone( $cfg );
   $self->{ 'CFG' }{ 'CHARSET' }       = 'UTF-8'; # force UTF-8 always
   $self->{ 'IN'  }{ 'ENV'         }   = $env = { %$env }; # including headers
-  $self->{ 'IN'  }{ 'ENV'         }{ '_CLIENT_IP' } = $self->get_client_ip(); # this is always end-point client browser IP, reglardless of claudflare proxy etc.
+  $self->{ 'IN'  }{ 'ENV'         }{ '_CLIENT_IP' } = $self->get_client_ip(); # this is always end-point client browser IP, regardless of cloudflare proxy etc.
 
   $self->set_debug( $cfg->{ 'DEBUG' } );
 
@@ -115,10 +118,8 @@ sub run
 sub process_request
 {
   my $self = shift;
-  my $args = @_ / 2; # count of arg pairs
-  my %args = @_;
 
-  die "you need to subclass Web::Reactor::Core and reimplement Web::Reactor::Core::process_request";
+  boom "you need to subclass Web::Reactor::Core and reimplement Web::Reactor::Core::process_request";
 }
 
 sub run_print_final_debug
@@ -128,6 +129,46 @@ sub run_print_final_debug
 }
 
 ### SET/GET INSTANCE STATE ###################################################
+
+# returns the time this reactor object was created, i.e. the request start time,
+# unix time with fractions of a second (Time::HiRes)
+sub start_time
+{
+  my $self  = shift;
+
+  return $self->{ 'START_TIME' };
+}
+
+# scope of the html ids made by create_uniq_id(), without sessions it is the
+# process id, the start time (in microseconds) of this reactor object and a
+# random part, so requests do not share it. it is made once per reactor
+# object, all ids of the request use it. Web::Reactor uses the page session
+# id instead
+sub get_uniq_id_scope
+{
+  my $self  = shift;
+
+  return $self->{ 'UNIQ_ID_SCOPE' } ||= join '_', $$, int( $self->start_time() * 1_000_000 ), Crypt::PRNG::random_string_from( 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', 8 );
+}
+
+# next number of the html id counter, here it lives in the reactor object, so
+# it counts the ids of this request
+sub __next_uniq_id_counter
+{
+  my $self  = shift;
+
+  return ++$self->{ 'UNIQ_ID_COUNTER' };
+}
+
+# returns new html id "scope.N", N counts the ids made in the scope
+# args:
+#       case -- not used, ids are scope and number, kept for the old callers
+sub create_uniq_id
+{
+  my $self = shift;
+
+  return $self->get_uniq_id_scope() . '.' . $self->__next_uniq_id_counter();
+}
 
 sub set_debug
 {
@@ -165,7 +206,7 @@ sub plack
 {
   my $self = shift;
 
-  return ( $self->{ 'PLACK' } || die "missing PLACK object" );
+  return ( $self->{ 'PLACK' } || boom "missing PLACK object" );
 }
 
 sub env
@@ -385,7 +426,7 @@ sub res_get_headers_ar
       $ho->{ 'content-type' } .= '; charset=' . $ho->{ 'content-charset' };
       }
     delete $ho->{ 'content-charset' };
-    };
+    }
 
   if( exists $ho->{ 'location' } )
     {
@@ -674,7 +715,7 @@ sub portray
 
   boom "portray needs mime type xxx/xxx as arg 2, got [$type]" unless $type =~ /^[a-z\-_0-9]+\/[a-z\-_0-9\.\+]+$/;
 
-  return { DATA => $data, TYPE => $type, @_ };
+  return { DATA => $data, TYPE => $type, %opt };
 }
 
 ##############################################################################
@@ -761,8 +802,10 @@ replace the message with their own error page.
 
 =item 3. C<process_request( @args )>
 
-Must be implemented by the subclass. The base version dies. C<@args> is an
-optional list of name/value pairs a caller may force into the request.
+Must be implemented by the subclass. The base version booms. C<@args> is an
+optional list of name/value pairs a caller may force into the request, a
+subclass decides what to do with them (Web::Reactor merges them into the
+user and the safe input).
 
 =back
 
@@ -796,7 +839,7 @@ sending those headers directly.
 
 =item C<new( \%env, \%cfg )>
 
-Dies unless both arguments are hash references.
+Booms unless both arguments are hash references.
 
 =item C<run( @args )>
 
@@ -868,6 +911,25 @@ One header by name, case insensitive.
 
 Parsed C<Cookie> header, via Cookie::Baker. Cookie names are case sensitive.
 
+=item C<start_time()>
+
+Time the reactor object was created, i.e. the request start time, unix time
+with fractions of a second.
+
+=item C<get_uniq_id_scope()>
+
+Scope of the html ids made by C<create_uniq_id()>: here the process id, the
+start time in microseconds and a random part, made once per object, so
+requests do not share it. Web::Reactor returns the page session id instead,
+so all requests of a page instance share the scope.
+
+=item C<create_uniq_id()>
+
+New html id C<scope.N>, N counts the ids in the scope. The counter lives in
+the object here, in the page session in Web::Reactor, so later requests of
+the same page continue the numbers. An argument (the old case option) is
+ignored.
+
 =back
 
 =head2 Request input
@@ -894,7 +956,8 @@ C<@NAME>, a single one as a scalar under C<NAME>
 =item C<get_safe_input()>
 
 Hash reference of trusted input. Empty in the base class; Reflex fills it from
-the encrypted C<_> token.
+the encrypted C<_> token, Web::Reactor also from C<_> link tokens resolved in
+its link sessions.
 
 =item C<get_user_uploads()>
 

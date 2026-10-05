@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
+##  Copyright (c) 2013-2026 Vladi Belperchinov-Shabanski "Cade"
 ##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##  http://cade.noxrun.com
 ##
@@ -292,6 +292,7 @@ DEMO:
 
 =cut
 
+# FIXME: not implemented yet, returns nothing
 sub html_ctable
 {
   my $data = shift;
@@ -307,96 +308,6 @@ sub html_ctable
     }
 }
 
-
-my $ctable_item_id;
-sub html_ctable2
-{
-  my $data = shift;
-  my %opt  = @_;
-
-  my $t_args;
-  $t_args ||= $opt{ 'ARGS' };
-  $t_args ||= 'class=' . $opt{ 'CLASS' } if $opt{ 'CLASS' };
-
-  $ftree_item_id++;
-
-  my $ftree_table_id = "FTREE_TABLE_$ftree_item_id";
-
-  my $html;
-
-  $html .= "\n";
-  $html .= "<table id=$ftree_table_id $t_args>";
-
-  $html .= __html_ctable_branch2( $data, $ftree_table_id, $ftree_table_id . '.', 0, \%opt );
-
-  $html .= "</table>";
-  $html .= "\n";
-
-  return $html;
-}
-
-sub __html_ctable_branch2
-{
-  my $data           = shift;
-  my $ftree_table_id = shift;
-  my $branch_id      = shift;
-  my $level          = shift;
-  my $opt            = shift;
-
-  my $html;
-
-  $html .= "\n";
-
-  for my $row ( @$data )
-    {
-    my $label;
-    my $data;
-
-    my $r_args; # row  args
-    my $c_args; # cell args
-
-    if( ref( $row ) eq 'HASH' )
-      {
-      $label = $row->{ 'LABEL' };
-      $data  = $row->{ 'DATA'  };
-
-      $r_args ||= $row->{ 'ARGS' };
-      $r_args ||= 'class=' . $row->{ 'CLASS' } if $row->{ 'CLASS' };
-      }
-    else
-      {
-      $label = $row;
-      }
-
-    $r_args ||= $opt->{ 'ARGS_TR' };
-    $c_args ||= $opt->{ 'ARGS_TD' };
-
-    $ftree_item_id++;
-
-    my $row_id = $branch_id . $ftree_item_id . '.';
-
-    # $label = "($row_id) $label"; # DEBUG
-
-    my $hidden = $level > 0 ? "style='display: none'" : undef;
-    my $pad = $level * 6 + 1;
-    my $cell = html_layout_2lr( '&nbsp;', $label, "$pad=<" );
-
-    if( ref( $data ) eq 'ARRAY' )
-      {
-      my $open_code = qq{ onclick='ftree_click( "$ftree_table_id", "$row_id" )' };
-      $html .= "<tr id=$row_id $open_code $r_args $hidden><td $c_args>$cell</td></tr>";
-      $html .= __html_ftree_branch( $data, $ftree_table_id, $row_id, $level + 1, $opt );
-      }
-    else
-      {
-      $html .= "<tr id=$row_id $hidden $r_args><td $c_args>$cell</td></tr>";
-      }
-
-    $html .= "\n";
-    }
-
-  return $html;
-}
 
 ##############################################################################
 
@@ -431,12 +342,12 @@ sub html_hover_layer
 
   if ( wantarray )
     {
-    # will not use ACCUMULATOR_HTML
+    # will not use the KIT_HTML hold
     return ( $handle, $html );
     }
   else
     {
-    $reo->html_content_accumulator( 'ACCUMULATOR_HTML', $html );
+    $reo->html_hold_kit_add( 'KIT_HTML', $html ); # pages show it with <$$kit_html>
     return $handle;
     }
 }
@@ -484,12 +395,12 @@ sub html_popup_layer
 
   if ( wantarray )
     {
-    # will not use ACCUMULATOR_HTML
+    # will not use the KIT_HTML hold
     return ( $handle, $html );
     }
   else
     {
-    $reo->html_content_accumulator( 'ACCUMULATOR_HTML', $html );
+    $reo->html_hold_kit_add( 'KIT_HTML', $html ); # pages show it with <$$kit_html>
     return $handle;
     }
 }
@@ -523,8 +434,8 @@ sub html_alink
     $hint = undef; # remove button hints for disabled buttons
     }
 
-  $tag_args .= '  ' . "ID='$tag_id'";
-  $tag_args .= '  ' . "class='$class'";
+  $tag_args .= '  ' . "ID='$tag_id'"  if $tag_id ne '';
+  $tag_args .= '  ' . "class='$class'" if $class  ne '';
   if( $hint )
     {
     my $hint_tag_arg = html_hover_layer( $reo, VALUE => $hint, DELAY => 1000 );
@@ -549,7 +460,7 @@ sub html_alink
 
 sub html_tabs_table
 
-arguments: array_ref, opt_hash
+arguments: reactor, array_ref, opt_hash
 
 array_ref is list of hash refs with this content:
 
@@ -562,16 +473,18 @@ array_ref is list of hash refs with this content:
 
 opt_hash is inline with the following items:
 
-    LABELS_TABLE_ARGS -- args for the table containing labels
-    TEXT_TABLE_ARGS   -- same as above
+    LABELS_TABLE_ARGS -- args for the table holding the labels, horizontal only
 
     LABEL_CLASS_ON    -- active TD class for tab handle labels
     LABEL_CLASS_OFF   -- inactive TD class for tab handle labels
 
     ARGS              -- args for containing TABLE element
     VERTICAL          -- if true, tabs will be vertical
+    VERT_LABEL_TD_ARGS -- args for the TD holding the labels, vertical only
+    VERT_TEXT_TD_ARGS  -- args for the TD holding the tabs, vertical only
 
-    ACTIVE_TAB_FORM_FEEDBACK_ID -- html INPUT element to hold active tab id
+    ACTIVE_TAB_FORM_FEEDBACK_ID -- html INPUT element to hold active tab id,
+                                   passed to HTML::Tab, not implemented yet
 
 example:
 
@@ -587,7 +500,7 @@ example:
                 };
     }
 
-  $html = html_tabs_table( \@tabs, ARGS => "width=70% border=2", VERTICAL => 1 );
+  $html = html_tabs_table( $reo, \@tabs, ARGS => "width=70% border=2", VERTICAL => 1 );
 
 =cut
 
@@ -705,4 +618,4 @@ sub html_check_attr_name_boom
 ##############################################################################
 1;
 ##############################################################################
-
+###EOF########################################################################

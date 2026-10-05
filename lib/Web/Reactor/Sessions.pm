@@ -50,7 +50,7 @@ our %SESSION_TYPES = (
 #               LINK), undef for the rest
 #       len  -- session id length (optional, default 73)
 # returns:
-#       new session hashref with :TYPE, :SID and :PSID set, dies on failure
+#       new session hashref with :TYPE, :SID and :PSID set, booms on failure
 sub create
 {
   my $self = shift;
@@ -84,7 +84,7 @@ sub create
     }
 
   boom "Web::Reactor::Sessions::create: no free id for session type [$type] parent sid [$psid] in time, " . $self->_storage_debug_info();
-};
+}
 
 # loads session data from the storage
 # args:
@@ -92,7 +92,8 @@ sub create
 #       sid  -- session id
 #       psid -- parent session id, required for types with a parent
 # returns:
-#       session hashref or undef if missing, invalid or not readable
+#       session hashref or undef if missing or not readable, booms on an
+#       invalid type or malformed sid, see compose_key_from_sid()
 sub load
 {
   my $self = shift;
@@ -110,7 +111,7 @@ sub load
 # args:
 #       shr  -- session hashref, as returned by create() or load()
 # returns:
-#       1 if successful, undef if failed
+#       1 if successful, undef or 0 if failed
 sub save
 {
   my $self = shift;
@@ -196,7 +197,7 @@ sub _storage_load   { boom "Web::Reactor::Sessions::*::_storage_load() is not im
 #       key  -- key components array reference, see _storage_create()
 #       shr  -- session hashref to save
 # returns:
-#       1 if successful, undef if failed
+#       1 if successful, undef or 0 if failed
 sub _storage_save   { boom "Web::Reactor::Sessions::*::_storage_save() is not implemented!"; }
 
 # checks if session exists in the storage
@@ -234,7 +235,7 @@ sub create_id
   my $let = shift() || $cfg->{ 'SESS_LETTERS' } || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
   return Crypt::PRNG::random_string_from( $let, $len );
-};
+}
 
 sub compose_key_from_sid
 {

@@ -1,4 +1,10 @@
 #!/usr/bin/perl
+##############################################################################
+##
+##  prints the html directories Web::Reactor::Preprocessor::Tree::load_file()
+##  searches for a page, same expansion as there, for checking by eye
+##
+##############################################################################
 use strict;
 
 my $pn = 'users/admin/prefs';
@@ -19,7 +25,7 @@ for my $ln ( @lang )
   my $pp;
   for my $p ( undef, @pn )
     {
-    $pp .= $p . '/';
+    $pp .= $p . '/' if $p;
     for my $dir ( reverse @$dirs )
       {
       push @dx, "$dir/$ln/$pp";

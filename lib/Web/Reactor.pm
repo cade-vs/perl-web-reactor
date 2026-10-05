@@ -16,7 +16,6 @@ use parent 'Web::Reactor::Reflex';
 use Data::Tools 1.24;
 use Exception::Sink;
 use Data::Dumper;
-use Crypt::PRNG;
 
 #use Web::Reactor::Utils;
 use Web::Reactor::HTML::Form;
@@ -77,7 +76,8 @@ sub new
 
 ### FUNC PLUGS ###############################################################
 
-# the session object is internal to Reactor, it is just a storage implementation with caching, all visible API is inside Reactor.
+# the session object is internal to Reactor, it is just a storage implementation (create, load, save, delete),
+# the session state cache and all visible API are inside Reactor, see SESSION STATE & CACHE.
 sub __ses
 {
   my $self = shift;
@@ -110,13 +110,9 @@ sub process_request
 
   my $cfg = $self->cfg();
 
-  # *** load/setup env/config defaults
-
-  my $app_name = $self->get_app_name();
-
   # *** loading cookie session + user session ********************************
 
-  my $cookie_name = lc( $cfg->{ 'COOKIE_NAME' } || "$app_name\_cookie" );
+  my $cookie_name = $self->__get_cookie_name();
 
   my $cookie_sid;
   my $cookie_shr;
@@ -137,32 +133,19 @@ sub process_request
       }
     else
       {
-      $user_shr = undef; # stale or missing, a new user session is created below
       # cookie session points to a missing user session, or the user session
       # has moved on to another cookie session (stale): discard the cookie
       # session only, the user session is left untouched, and the new user
-      # session below activates its own cookie session
+      # session activates its own cookie session
       $self->log( "warning: discarding stale or orphan cookie session [$cookie_sid] of user session [$user_sid]" );
       $self->__set_cookie_session( undef );
       $self->__sc_delete( $cookie_shr );
+      ( $user_sid, $user_shr ) = $self->__create_new_user_session();
       }
     }
   else
     {
     $self->log( "warning: invalid cookie session [$cookie_sid]" ) if $cookie_sid;
-    ( $user_sid, $user_shr ) = $self->__create_new_user_session();
-    }
-
-
-  # *** loading user session, setup new session and cookie if needed *********
-
-  if( $user_shr )
-    {
-    $self->log_debug( "debug: status: user session ok [$user_sid]" );
-    }
-  else
-    {
-    $self->log( "warning: invalid cookie [$cookie_sid] or user [$user_sid] session" ) unless $user_sid and $cookie_sid;
     ( $user_sid, $user_shr ) = $self->__create_new_user_session();
     }
 
@@ -282,90 +265,74 @@ sub process_request
 
 ##############################################################################
 ##
-## TODO: DESIGN: cookie sessions (to be implemented after the refactoring)
+## DESIGN: cookie sessions
 ##
-## problem: PAGE and LINK sessions are stored under the user session id, which
-##          is also the cookie value. login rotation changes it, so everything
-##          not loaded in the login request is left behind (referrers, other
-##          tabs, links) and logout carries page data into the anonymous
-##          namespace (see FIXME in logout()).
+## the cookie value is the id of a COOK session, never the user session id.
+## the COOK session is used only on connect to find the user session, so the
+## internal user session id never leaves the server.
 ##
-## design:  the cookie value is not the user session id anymore, but the id of
-##          a separate COOKIE session, in the same session storage, used only
-##          on connect to discover the user session. the internal user session
-##          id never leaves the server.
-##
-##   namespaces (split):
-##     - PAGE sessions are stored under the internal user session id, which
-##       never changes on login, so the page tree (:REF_PAGE_SID chains, page
-##       state, back links) survives rotation and gives a full audit of user
-##       and page actions
-##     - LINK sessions are stored under the COOKIE session id, so a new cookie
+##   session types and parents (%SESSION_TYPES in Web::Reactor::Sessions):
+##     - USER, COOK and HOLD have no parent
+##     - PAGE sessions are stored under the user session id, which never
+##       changes on login, so the page tree (:REF_PAGE_SID chains, page state,
+##       back links) survives login and gives a full audit of user and page
+##       actions
+##     - LINK sessions are stored under the COOK session id, so a new cookie
 ##       is a new LINK namespace: links made before login die at rotation by
 ##       construction (session fixation / CSRF guard), no extra check needed.
 ##       old LINK files stay on disk, unreachable, for audits
-##     - compose_key_from_id(): PAGE pushes the user session id, LINK pushes
-##       the cookie session id, both known on the reactor after connect
+##     - every session is keyed by its own :TYPE, :PSID and :SID, set only by
+##       Sessions::create(), so a session is always saved where it was created
 ##
-##   COOKIE session:
-##     - created with ses->create( 'COOKIE', 73 ) and written once with
-##       { ':USER' => $internal_user_sid }, never saved again
-##     - not namespaced: in compose_key_from_id() COOKIE is excluded like USER
-##       and HOLD (no user sid is known on connect)
-##     - loaded on connect but kept out of $self->{ 'SESSIONS' }, so save()
-##       never touches it
-##     - discarded (deleted) when a new cookie replaces it, needs
-##       _storage_delete() in Filesystem and Dummy, a failed delete is only
-##       logged
+##   COOK session:
+##     - created with create( 'COOK' ) (73 chars id), holds :USER_SID and
+##       :CTIME, tracked and saved like the other sessions
+##     - deleted when a new cookie replaces it (login, logout, expired,
+##       einvalid, stale), a failed delete is only logged
 ##
 ##   user session:
-##     - :COOKIE_SID holds the current cookie session id, a cookie whose COOKIE
+##     - :COOKIE_SID holds the current COOK session id, a cookie whose COOK
 ##       session points to a user session with a different :COOKIE_SID is
 ##       rejected (guards a failed delete and login races)
-##     - keeps the history of cookie session ids with times, for audits, since
-##       COOKIE files are deleted
+##     - :COOKIE_SID_HISTORY keeps every COOK session id linked to it, with
+##       time and reason (new, login), for audits, since COOK files are deleted
 ##
-##   connect: cookie -> COOKIE session -> :USER -> user session, check
+##   connect: cookie -> COOK session -> :USER_SID -> user session, check
 ##            :COOKIE_SID, then the usual :XTIME, :CLOSED and :HTTP_CHECK_HR
-##            checks. a missing or rejected COOKIE gives a new user session.
+##            checks. a missing COOK session gives a new user session, a stale
+##            one is deleted first, its user session is left untouched.
 ##
-##   login (rotation):
-##     - create the new COOKIE session pointing to the same user session
-##     - set :COOKIE_SID in the user session to it, add it to the history
-##     - delete the old COOKIE session, set the new cookie
+##   login (rotation, __rotate_cookie_session_id()):
+##     - delete the old COOK session and clear the LINK slot, the LINK session
+##       of this request is still saved under the old cookie
+##     - create the new COOK session, link it both ways with the same user
+##       session, set the new cookie
 ##     - PAGE sessions stay where they are, nothing is re-keyed or copied
-##     - LINK sessions of the old cookie become unreachable: other tabs opened
-##       before login keep their page sessions but must navigate fresh, forms
-##       opened before login (FORM_RET_MAP lives in LINK) cannot be submitted.
-##       the login form itself works, its token is resolved before rotation
-##     - a LINK session created in the login request before login() is keyed
-##       at save() time, so it would be saved under the new cookie id and leave
-##       an empty file under the old one: save() first in the rotation, or bind
-##       each session to the namespace it was created in
+##     - other tabs opened before login keep their page sessions but must
+##       navigate fresh, forms opened before login (FORM_RET_MAP lives in LINK)
+##       cannot be submitted. the login form itself works, its token is
+##       resolved before rotation
 ##
 ##   logout:
 ##     - close the user session (:LOGGED_IN 0, :CLOSED, :LOTIME, :ETIME)
-##     - save() first, then drop PAGE and LINK from $self->{ 'SESSIONS' } and
-##       their fingerprints, so nothing reaches the new anonymous namespace,
-##       create a fresh page session if links are rendered after logout
-##     - delete the COOKIE session
-##     - create a new user session and a new COOKIE session, so both the PAGE
-##       and the LINK namespaces are new
+##     - delete the COOK session, clear the LINK and the user slots.
+##       the closed user session, its PAGE and LINK sessions stay tracked and
+##       are saved under their own keys
+##     - create a new user session, a new COOK session and a fresh PAGE
+##       session, so both the PAGE and the LINK namespaces are new
 ##     - HOLD stays, it is keyed by the login ident
 ##
-##   expired or einvalid user session: a new user session and a new COOKIE
-##            session, the old COOKIE session is deleted.
+##   expired or einvalid user session: close it, delete the COOK session,
+##            create a new user session and a new COOK session.
 ##
 ##   parallel requests: an in-flight request with the old cookie after login
-##            gets a new anonymous session and may overwrite the login cookie
-##            (the same race exists now). optional: a few seconds of grace for
-##            the old cookie on login only, never on logout. the grace also
-##            keeps the old LINK namespace reachable for that time.
+##            gets a new anonymous session and may overwrite the login cookie.
+##            TODO: optional: a few seconds of grace for the old cookie on
+##            login only, never on logout. the grace would also keep the old
+##            LINK namespace reachable for that time.
 ##
-##   migration: existing cookies are user session ids without COOKIE sessions,
-##            either fall back once and create a COOKIE session on the spot, or
-##            let the periodic session storage reset start everyone fresh. a
-##            permanent fallback would let internal ids work as cookies again.
+##   old cookies, which were user session ids, do not load as COOK sessions
+##            and get a new anonymous session, there is no fallback.
 ##
 ##############################################################################
 
@@ -382,7 +349,7 @@ sub __create_new_cookie_session
   my $cookie_sid = $cookie_shr->{ ':SID' };
 
   $self->__set_cookie_session_cookie( $cookie_sid );
-  $self->log( "debug: creating new cookie session [$cookie_sid]" );
+  $self->log_debug( "debug: creating new cookie session [$cookie_sid]" );
 
   $cookie_shr->{ ':CTIME'      } = time();
   $cookie_shr->{ ':CTIME_STR'  } = scalar localtime();
@@ -395,6 +362,9 @@ sub __create_new_cookie_session
 # before new user and cookie sessions are created for a closed user session:
 # the cookie session is deleted, so the old cookie cannot reach anything, the
 # closed user session only leaves the active slot and is still saved
+# the link session belongs to the deleted cookie session: it leaves its slot,
+# it is still saved there (its key comes from its own :PSID), new links go to
+# a new link session under the new cookie session
 sub __discard_active_sessions
 {
   my $self = shift;
@@ -403,6 +373,7 @@ sub __discard_active_sessions
   $self->__set_cookie_session( undef );
   $self->__sc_delete( $cookie_shr ) if $cookie_shr;
 
+  $self->__set_link_session( undef );
   $self->__set_user_session( undef );
 }
 
@@ -413,12 +384,15 @@ sub __create_new_user_session
   my $cfg = $self->cfg();
 
   my $user_shr = $self->sc_add( $self->__ses->create( 'USER' ) );
+  $self->__set_user_session( $user_shr );
+
   my $user_sid = $user_shr->{ ':SID' };
 
-  $self->log( "debug: creating new user session [$user_sid]" );
+  $self->log_debug( "debug: creating new user session [$user_sid]" );
 
   my $user_session_expire = $cfg->{ 'USER_SESSION_EXPIRE' } || 600; # 10 minutes
 
+  # create time
   $user_shr->{ ':CTIME'      } = time();
   $user_shr->{ ':CTIME_STR'  } = scalar localtime();
 
@@ -426,18 +400,42 @@ sub __create_new_user_session
   $user_shr->{ ":HTTP_CHECK_HR" } = { map { $_ => $self->{ 'IN' }{ 'ENV' }{ $_ } } @HTTP_VARS_CHECK };
   $user_shr->{ ":HTTP_ENV_HR"   } = { map { $_ => $self->{ 'IN' }{ 'ENV' }{ $_ } } @HTTP_VARS_SAVE  };
 
-  $self->__set_user_session( $user_shr );
-
   $self->set_user_session_expire_time_in( $user_session_expire );
 
   my ( $cookie_sid, $cookie_shr ) = $self->__create_new_cookie_session();
-  $cookie_shr->{ ':USER_SID'   } = $user_sid;
-  $user_shr->{   ':COOKIE_SID' } = $cookie_sid; # only this cookie session may reach the user session
+
+  $self->__link_cookie_session( $user_shr, $cookie_shr, 'new' );
 
   return ( $user_sid, $user_shr );
 }
 
-# (re)issue the user session cookie bound to the given session id
+# links a cookie session and a user session both ways and records the cookie
+# session id in the user session history, COOK files are deleted when replaced
+# so the history is the only audit trail of the cookies of a user session
+sub __link_cookie_session
+{
+  my $self       = shift;
+  my $user_shr   = shift;
+  my $cookie_shr = shift;
+  my $reason     = shift; # new, login
+
+  my $cookie_sid = $cookie_shr->{ ':SID' };
+
+  $cookie_shr->{ ':USER_SID'   } = $user_shr->{ ':SID' };
+  $user_shr->{   ':COOKIE_SID' } = $cookie_sid; # only this cookie session may reach the user session
+
+  push @{ $user_shr->{ ':COOKIE_SID_HISTORY' } }, { 'SID' => $cookie_sid, 'TIME' => time(), 'TIME_STR' => scalar localtime(), 'REASON' => $reason };
+}
+
+# name of the cookie which carries the cookie session id
+sub __get_cookie_name
+{
+  my $self = shift;
+
+  return lc( $self->cfg()->{ 'COOKIE_NAME' } || $self->get_app_name() . '_cookie' );
+}
+
+# (re)issue the cookie which carries the given cookie session id
 sub __set_cookie_session_cookie
 {
   my $self       = shift;
@@ -445,8 +443,7 @@ sub __set_cookie_session_cookie
 
   my $cfg = $self->cfg();
 
-  my $app_name    = $cfg->{ 'APP_NAME' } or boom( "missing APP_NAME" );
-  my $cookie_name = lc( $cfg->{ 'COOKIE_NAME' } || "$app_name\_cookie" );
+  my $cookie_name = $self->__get_cookie_name();
 
   my $path = $cfg->{ 'COOKIE_PATH' };
   if( ! $path )
@@ -476,10 +473,10 @@ sub __rotate_cookie_session_id
   $self->__set_link_session( undef );
 
   my ( $cookie_sid, $cookie_shr ) = $self->__create_new_cookie_session();
-  my $user_shr = scalar $self->get_user_session();
+  my $user_shr = $self->get_user_session();
   my $user_sid = $user_shr->{ ':SID' };
-  $cookie_shr->{ ':USER_SID'   } = $user_sid;
-  $user_shr->{   ':COOKIE_SID' } = $cookie_sid; # the old cookie is dead even if its delete failed
+
+  $self->__link_cookie_session( $user_shr, $cookie_shr, 'login' ); # the old cookie is dead even if its delete failed
 
   $self->log( "status: rotated cookie session id on login [$old_cookie_sid] -> [$cookie_sid] for user session [$user_sid]" );
 
@@ -488,6 +485,16 @@ sub __rotate_cookie_session_id
 
 ##############################################################################
 
+# imports one "_" safe input entry, called by Reflex::__import_safe_input()
+# for each "_" (or "@_") value, the returned hashes are merged in order.
+# "sid.key" is a hidden token made by args(): the data stays on the server in
+# a LINK session, the link carries only the reference. anything else goes to
+# Reflex, which handles "~..." encrypted tokens (argsx()) and returns undef
+# for unknown entries (logged there as invalid)
+# args:
+#       z -- one "_" entry value
+# returns:
+#       safe input hashref, undef if the entry is not recognised
 sub __import_single_safe_entry
 {
   my $self = shift;
@@ -497,6 +504,30 @@ sub __import_single_safe_entry
   return $self->SUPER::__import_single_safe_entry( $z );
 }
 
+# resolves a hidden "sid.key" token to the link data stored by args():
+#   - the LINK session is loaded under the active cookie session, so tokens
+#     made under another cookie (before login, another browser, old cookie)
+#     do not resolve. the LINK session is cached but not put in the LINK
+#     slot, new links of this request go to a new LINK session
+#   - ARGS{ key } holds the args() hash, which becomes the safe input
+#   - if the link data has FORM_ID (forms made by Web::Reactor::HTML::Form)
+#     the FORM_RET_MAP of that form is applied to the user input:
+#       NAME{ visible_name } = real_name -- the html element had a random
+#                                          name, it is renamed back in the
+#                                          user input
+#       DATA{ real_name }{ visible_value } = real_value -- the html element
+#                                          had stand-in values (combo,
+#                                          checkbox, etc.), the real value
+#                                          goes to the safe input and the
+#                                          name is removed from user input
+#     so the real names and values never reach the browser and cannot be
+#     forged
+# args:
+#       link_sid -- LINK session id
+#       link_key -- key inside the LINK session ARGS
+# returns:
+#       safe input hashref, empty if the token does not resolve (dropped
+#       silently, not logged as invalid)
 sub __import_hidden_safe_input
 {
   my $self = shift;
@@ -547,25 +578,29 @@ sub run_print_final_debug
 {
   my $self = shift;
 
-=pod
+  # runs after the final save(), so it only reads the active slots and never
+  # creates, loads into the cache or changes sessions (get_link_session() would
+  # create a new LINK file, get_page_session( 1 ) may cut :REF_PAGE_SID)
+  my $sess = $self->{ 'SESSIONS' } || {};
+  my $page_shr = $sess->{ 'PAGE' };
+  my $user_shr = $sess->{ 'USER' };
+  my $link_shr = $sess->{ 'LINK' };
 
-  my $psid = $self->get_page_session_id( 0 ) || 'empty';
-  my $rsid = $self->get_page_session_id( 1 ) || 'empty';
-  my $usid = $self->get_user_session_id(   ) || 'empty';
+  my $psid = $page_shr ? $page_shr->{ ':SID' } : 'empty';
+  my $rsid = $page_shr ? $page_shr->{ ':REF_PAGE_SID' } || 'empty' : 'empty';
+  my $usid = $user_shr ? $user_shr->{ ':SID' } : 'empty';
+  my $lsid = $link_shr ? $link_shr->{ ':SID' } : 'empty';
+
   $self->log_dumper( "USER INPUT-------------------------------------", $self->get_user_input()   );
   $self->log_dumper( "SAFE INPUT-------------------------------------", $self->get_safe_input()   );
-  $self->log_dumper( "PAGE SESSION [$psid]-----------------------------------", $self->get_page_session() );
-  $self->log_dumper( "REF  SESSION [$rsid]-----------------------------------", $self->get_page_session( 1 ) );
+  $self->log_dumper( "PAGE SESSION [$psid]-----------------------------------", $page_shr );
+  $self->log_dumper( "REF  SESSION [$rsid]-----------------------------------", $self->sc_get( 'PAGE', $rsid, $usid ) ) if $page_shr and $page_shr->{ ':REF_PAGE_SID' };
 
   if( $self->is_debug() > 2 )
     {
-    $self->log_dumper( "USER SESSION [$usid]---------------------------", $self->get_user_session() );
-    my ( $ls, $lsid ) = $self->get_link_session();
-    $self->log_dumper( "FINAL LINK SESSION  [$lsid]-----------------------------------", $ls );
+    $self->log_dumper( "USER SESSION [$usid]---------------------------", $user_shr );
+    $self->log_dumper( "FINAL LINK SESSION  [$lsid]-----------------------------------", $link_shr );
     }
-
-=cut
-
 }
 
 ##############################################################################
@@ -595,14 +630,17 @@ sub __sc_key_shr
   return __sc_key( @{ $_[0] }{ ':TYPE', ':SID', ':PSID' } );
 }
 
-# tracks a session for save(), the first fingerprint is kept
+# tracks a session for save(), the first fingerprint is kept. a different hash
+# with the key of a tracked session booms: it would never be saved, so changes
+# made to it would be lost silently
 sub sc_add
 {
   my $self = shift;
   my $shr  = shift or return undef;
 
   my $k = __sc_key_shr( $shr );
-  $self->{ 'SC' }{ $k } ||= { 'SHR' => $shr, 'FP' => hash_fingerprint( $shr ) };
+  my $e = $self->{ 'SC' }{ $k } ||= { 'SHR' => $shr, 'FP' => hash_fingerprint( $shr ) };
+  boom "session [$k] is already tracked with another hash" unless $e->{ 'SHR' } == $shr;
 
   return $shr;
 }
@@ -827,33 +865,49 @@ sub get_user_hold
 
 ##############################################################################
 
+# returns ( button, button_id ) of the clicked button: a BUTTON (and BUTTON_ID)
+# in the safe input, i.e. from args() links, wins over a BUTTON:NAME[:ID] form
+# button in the user input, see Reflex::get_user_input_button()
+sub __get_input_button
+{
+  my $self  = shift;
+
+  my $input_safe_hr = $self->get_safe_input();
+  return ( $input_safe_hr->{ 'BUTTON' }, $input_safe_hr->{ 'BUTTON_ID' } ) if $input_safe_hr->{ 'BUTTON' };
+  return $self->get_user_input_button();
+}
+
 sub get_input_button
 {
   my $self  = shift;
 
-  my $input_user_hr = $self->get_user_input();
-  my $input_safe_hr = $self->get_safe_input();
-  return $input_safe_hr->{ 'BUTTON' } || $input_user_hr->{ 'BUTTON' };
+  my ( $button ) = $self->__get_input_button();
+  return $button;
 }
 
 sub get_input_button_id
 {
   my $self  = shift;
 
-  my $input_user_hr = $self->get_user_input();
-  my $input_safe_hr = $self->get_safe_input();
-  return $input_safe_hr->{ 'BUTTON_ID' } || $input_user_hr->{ 'BUTTON_ID' };
+  my ( undef, $button_id ) = $self->__get_input_button();
+  return $button_id;
 }
 
+# returns the clicked button and removes all buttons from the input, so later
+# get_input_button*() calls in the same request see no button. a repeated
+# button parameter is kept only as "@BUTTON:NAME", it is removed too
 sub get_input_button_and_remove
 {
   my $self  = shift;
 
+  my ( $button ) = $self->__get_input_button();
+
   my $input_user_hr = $self->get_user_input();
   my $input_safe_hr = $self->get_safe_input();
-  my $button = $input_safe_hr->{ 'BUTTON' } || $input_user_hr->{ 'BUTTON' };
-  delete $input_user_hr->{ 'BUTTON' };
-  delete $input_safe_hr->{ 'BUTTON' };
+  delete $input_safe_hr->{ 'BUTTON'    };
+  delete $input_safe_hr->{ 'BUTTON_ID' };
+  delete @$input_user_hr{ grep { /^\@?BUTTON:/i } keys %$input_user_hr };
+
   return $button;
 }
 
@@ -1221,7 +1275,6 @@ sub logout
   # page and link sessions of the logged-in user stay where they belong (their
   # keys come from their own :PSID) and are saved there, the new anonymous
   # user session gets a new cookie session and a fresh page session
-  $self->__set_link_session( undef );
   $self->__discard_active_sessions();
   $self->__create_new_user_session();
 
@@ -1371,28 +1424,24 @@ sub new_form
 
 ##############################################################################
 
-sub create_uniq_id
+# html ids made by create_uniq_id() (Web::Reactor::Core) are scoped by the
+# page session id: html of the same page instance, also loaded later into the
+# shown page, shares the scope
+sub get_uniq_id_scope
 {
   my $self = shift;
-  my $case = shift;
 
-  my $cfg = $self->cfg();
-  my $let = $cfg->{ 'SESS_LETTERS' } || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  return $self->get_page_session_id() || $self->SUPER::get_uniq_id_scope();
+}
 
-  my $limit = 137;
-  while( $limit-- )
-    {
-    my $nid = Crypt::PRNG::random_string_from( $let, 16 );
-    $nid = uc $nid if $case == 1;
-    $nid = lc $nid if $case == 2;
-    next if $self->{ 'CREATE_UNIQ_ID' }{ $nid }++;
-    my $psid = $self->get_page_session_id();
-    # my $tsid = $self->get_top_page_session_id();
-    $self->{ 'CREATE_UNIQ_ID' }{ ':COUNT' }++;
-    return $psid . '.' . $nid;
-    }
-  boom "cannot create new uniq html id";
-  return undef;
+# the html id counter of a page scope lives in the page session, so later
+# requests of the same page continue the numbers instead of repeating them
+sub __next_uniq_id_counter
+{
+  my $self = shift;
+
+  my $page_shr = $self->get_page_session() or return $self->SUPER::__next_uniq_id_counter();
+  return ++$page_shr->{ ':UNIQ_ID_COUNTER' };
 }
 
 ##############################################################################
@@ -1406,29 +1455,26 @@ Web::Reactor perl-based web application machinery.
 
 =head1 SYNOPSIS
 
-Startup CGI script example (LEGACY):
+Startup CGI script example (LEGACY), the same PSGI app run by Plack's CGI
+handler:
 
   #!/usr/bin/perl
   use strict;
   use lib '/opt/perl/reactor/lib';
   use Web::Reactor;
+  use Plack::Handler::CGI;
 
   my %cfg = (
             'APP_NAME'     => 'demo',
-            'APP_ROOT'     =>   '/opt/reactor/demo/',
-            'LIB_DIRS'     => [ '/opt/reactor/demo/lib/'  ],
+            'APP_ROOT'     => '/opt/reactor/demo/',
             'HTML_DIRS'    => [ '/opt/reactor/demo/html/' ],
-            'SESS_VAR_DIR' =>   '/opt/reactor/demo/var/sess/',
-            'ACTIONS_SETS' => [ 'demo', 'Base', 'Core' ],
+            'SESS_VAR_DIR' => '/opt/reactor/demo/var/sess/',
             'DEBUG'        => 4,
             );
 
-  eval { new Web::Reactor( %cfg )->run(); };
-  if( $@ )
-    {
-    print STDERR "REACTOR CGI EXCEPTION: $@";
-    print "content-type: text/html\n\nsystem is temporary unavailable";
-    }
+  my $app = sub { return Web::Reactor->new( shift(), \%cfg )->run() };
+
+  Plack::Handler::CGI->new()->run( $app );
 
 Startup PLACK/PSGI script example (RECOMMENDED):
 
@@ -1440,8 +1486,6 @@ Startup PLACK/PSGI script example (RECOMMENDED):
   my %cfg = (
             'APP_NAME'     => 'demo',
             'APP_ROOT'     => '/opt/reactor/demo/',
-            'LIB_DIRS'     => [ '/opt/reactor/demo/lib/'  ],
-            'ACTIONS_SETS' => [ 'demo', 'Base', 'Core' ],
             'HTML_DIRS'    => [ '/opt/reactor/demo/html/' ],
             'SESS_VAR_DIR' => '/opt/reactor/demo/var/sess/',
             'DEBUG'        => 0,
@@ -1500,12 +1544,19 @@ Session validity is checked on each request:
   - Client IP address is tracked and validated
   - User-Agent is tracked and validated
 
-If either changes, the session is invalidated and a new one created. This
-protects against session fixation and hijacking attacks.
+If either changes, the user session is closed, a new one is created and the
+"einvalid" page is shown. This protects against session hijacking.
+
+The cookie carries only the id of a cookie session, which points to the user
+session. The user session id itself never leaves the server. On login the
+cookie session is replaced with a new one (new cookie value), which protects
+against session fixation: a cookie known before login is useless after it.
 
 =head2 Session Expiration
 
-User sessions can expire after a configurable timeout (default: 600 seconds):
+Logged-in user sessions expire after a configurable time of inactivity
+(default: 600 seconds), the "eexpired" page is shown and a new anonymous
+session is created. Anonymous (not logged-in) sessions do not expire:
 
   'USER_SESSION_EXPIRE' => 600,  # 10 minutes
 
@@ -1518,7 +1569,8 @@ All input parameters are validated:
   - Action names: lowercase alphanumeric, underscore
   - Session IDs: alphanumeric, underscore
 
-Invalid input is logged and silently ignored.
+Invalid input is logged and silently ignored. Malformed session ids, which
+only client tampering produces, raise an error.
 
 =head2 Data Encryption (Optional)
 
@@ -1553,9 +1605,9 @@ HTML page file example:
 
   <#html_footer>
 
-Action module example:
+Action module example, file APP_ROOT/actions/test.pm (see ACTIONS below):
 
-  package Reactor::Actions::demo::test;
+  package reactor::actions::test;
   use strict;
   use Data::Dumper;
   use Web::Reactor::HTML::Form;
@@ -1574,7 +1626,7 @@ Action module example:
       }
 
     # add some html content
-    $text .= "<p>Reactor::Actions::demo::test here!<p>";
+    $text .= "<p>reactor::actions::test here!<p>";
 
     # create link and hide its data. only accessible from inside web app.
     my $grid_href = $reo->args_new( _PN => 'grid', TABLE => 'testtable', );
@@ -1619,55 +1671,64 @@ end user browser. It has (i.e. uses) the following attributes:
 
 All of those represent "page instance" and produce end user html visible page.
 
-"Page names" are strictly limited to be alphanumeric and are mapped to file
-(or other storage) html content:
+"Page names" are limited to lowercase letters, digits, "_" and "-", with "/"
+between path parts, and are mapped to a directory with an index.html file
+(Web::Reactor::Preprocessor::Tree):
 
-                   page name: example
-  html file template will be: page_example.html
+                   page name: admin/users
+  html file template will be: HTML_DIRS/<lang>/admin/users/index.html
+                              or HTML_DIRS/default/admin/users/index.html
 
-HTML content may include other files (also limited to be alphanumeric):
+HTML content may include other files (limited the same way, no path):
 
           include text: <#other_file>
          file included: other_file.html
-  directories searched: 'HTML_DIRS' from Web::Reactor parameters.
+  directories searched: the page directory and its parents, up to the
+                        HTML_DIRS root, in HTML_DIRS/<lang>/ then
+                        HTML_DIRS/default/
 
 Page names may be requested from the end user side, but include html files may
 be used only from the pages already requested.
 
 =head1 ACTIONS/MODULES/CALLBACKS
 
-Actions are loaded and executed by package names. In the HTML source files they
+Actions are perl modules with a main() function. In the HTML source files they
 can be called this way:
 
   <&test_action arg1=val1 arg2=val2 flag1 flag2...>
   <&test_action>
 
-This will instruct Reactor action handler to look for this package name inside
-standard or user-added library directories:
+The default action loader (Web::Reactor::Actions::Files) looks for a file with
+the action name in the ACTIONS_DIRS directories (default: APP_ROOT/actions):
 
-  Web/Reactor/Actions/*/test_action.pm
+  APP_ROOT/actions/test_action.pm
 
-Asterisk will be replaced with the name of the used "action sets" give in config
-hash:
+and expects the package ACTIONS_PKGS . name inside (default prefix
+"reactor::actions::"), i.e. reactor::actions::test_action. Action files are
+loaded again on their first call in each request, so changed actions are used
+without a restart.
+
+The other loader, Web::Reactor::Actions::Packages (REO_ACT_CLASS), finds action
+packages through @INC (LIB_DIRS are added there) by "action sets":
 
   'ACTIONS_SETS' => [ 'demo', 'Base', 'Core' ],
 
-So the result list in this example will be:
+So the packages tried in this example will be:
 
-  Web/Reactor/Actions/demo/test_action.pm
-  Web/Reactor/Actions/Base/test_action.pm
-  Web/Reactor/Actions/Core/test_action.pm
+  Web::Reactor::Actions::demo::test_action
+  Web::Reactor::Actions::Base::test_action
+  Web::Reactor::Actions::Core::test_action
 
-This is used to allow overriding of standard modules or modules you dont have
-write access to.
+The first set which has the action wins, this is used to allow overriding of
+standard modules or modules you dont have write access to.
 
 Another way to call a module is directly from another module code with:
 
   $reo->act->call( 'test_action', @args );
 
-The package file will look like this:
+The action file (Actions::Files) will look like this:
 
-  package Web/Reactor/Actions/demo/test_action;
+  package reactor::actions::test_action;
   use strict;
 
   sub main
@@ -1699,8 +1760,9 @@ The $html_args will look like this:
 Web::Reactor uses underscore and one or two letters for its system http/html
 parameters. Some of the system params are:
 
-  _PN  -- html page name (points to file template, restricted to alphanumeric)
-  _AN  -- action name (points to action package name, restricted to alphanumeric)
+  _    -- safe input token: "sid.key" from args() or "~..." from argsx()
+  _PN  -- html page name (points to the page template, a-z 0-9 _ - and /)
+  _AN  -- action name (points to the action file or package, a-z 0-9 _)
   _P   -- page session
   _R   -- referer (caller) page session
   _T   -- top-level page session (browser window)
@@ -1711,7 +1773,9 @@ More details about how those params are used can be found below.
 =head1 USER SESSIONS
 
 WR creates unique session for each connected user. The session is kept by a cookie.
-Usually WR needs just this cookie to handle all user/server interaction. Inside
+Usually WR needs just this cookie to handle all user/server interaction. The
+cookie value is the id of a cookie session, which points to the user session,
+so the user session id never reaches the browser. Inside
 WR action code, user session is represented as a hash reference. It may hold
 arbitrary data. "System" or WR-specific data inside user session has colon as
 prefix:
@@ -1721,11 +1785,26 @@ prefix:
   print STDERR $user_session->{ ':CTIME_STR' };
   # prints in http log the create time in human friendly form
 
-All data saved inside user session is automatically saved. When needed it can
-be explicitly saved with:
+All data put inside user session is automatically saved at the end of the
+request. Only sessions which changed are written. When needed it can be
+explicitly saved with:
 
   $reo->save();
-  # saves all modified context to disk or other storage
+  # saves all modified sessions to disk or other storage
+
+Session types:
+
+  USER -- user session, one per connected browser, see get_user_session()
+  COOK -- cookie session, its id is the cookie value, points to USER,
+          replaced on login, logout and when the user session is closed
+  PAGE -- page sessions, stored under the user session, survive login
+  LINK -- link data of args() links and forms, stored under the cookie
+          session, so links made before login do not work after it
+  HOLD -- user hold, kept between logins, see get_user_hold()
+
+On login() the user session stays the same, only the cookie session is
+replaced. On logout() the user session is closed and new user, cookie and
+page sessions are created.
 
 =head1 PAGE SESSIONS
 
@@ -1769,15 +1848,17 @@ Upon creation, Web::Reactor instance gets hash with config entries/keys.
 
 =head2 Required Config Entries
 
-  APP_NAME      -- alphanumeric application name (plus underscore)
+  APP_NAME      -- lowercase alphanumeric application name (plus underscore)
+  APP_ROOT      -- application root directory, must exist
 
 =head2 Optional Config Entries (with defaults)
 
-  APP_ROOT                  -- Application root directory (default: current dir)
-  APP_CHARSET               -- Character encoding (default: UTF-8)
-  LIB_DIRS                  -- Lib directories (default: ["$APP_ROOT/lib"])
-  ACTIONS_SETS              -- Action sets (default: [$APP_NAME, 'Base', 'Core'])
-  HTML_DIRS                 -- HTML template dirs (default: ["$APP_ROOT/html"])
+  LIB_DIRS                  -- Lib directories, added to @INC (default: ["$APP_ROOT/lib"])
+  ACTIONS_DIRS              -- Action file dirs, Actions::Files (default: ["$APP_ROOT/actions"])
+  ACTIONS_PKGS              -- Action package prefix, Actions::Files (default: "reactor::actions::")
+  ACTIONS_SETS              -- Action sets, Actions::Packages (default: [$APP_NAME, 'Base', 'Core'])
+  HTML_DIRS                 -- HTML template dirs, each with <lang>/ and default/
+                               subdirs (default: ["$APP_ROOT/html"])
   SESS_VAR_DIR              -- Session storage dir (default: "$APP_ROOT/var")
   DEBUG                     -- Debug level 0-4 (default: 0)
   COOKIE_NAME               -- Session cookie name (default: "${APP_NAME}_cookie")
@@ -1821,7 +1902,8 @@ documentation, see the method source code and examples in the demo/ directory.
 
 =head2 Session Functions
 
-  get_user_session()                  -- Get current user session hashref
+  get_user_session()                  -- Get current user session hashref,
+                                         ( id, hashref ) in list context
   get_user_session_id()               -- Get current user session ID
   get_user_session_expire_time()      -- Get expiration timestamp
   get_user_session_expire_time_in()   -- Get remaining time in seconds
@@ -1835,9 +1917,22 @@ documentation, see the method source code and examples in the demo/ directory.
 
   get_user_hold()                     -- Get persistent user data (requires login)
 
+  get_cookie_session()                -- Get current cookie session hashref
+  get_link_session()                  -- Get current link session hashref,
+                                         created on demand, ( id, hashref )
+                                         in list context
+  new_link_session_key( $len )        -- New unused key in the link session
+
+  sc_add( $shr )                      -- Track a session for save(), the
+                                         fingerprint is taken right away
+  sc_get( $type, $sid, $psid )        -- Get a tracked session or undef
+  sc_remove( $shr )                   -- Stop tracking, storage is untouched
+  save()                              -- Write all tracked sessions which
+                                         changed, called automatically
+
 =head2 Argument/Link Construction Functions
 
-  args( %data )           -- Create link with safe data (current page)
+  args( %data )           -- Create link with safe data only (no page session)
   args_new( %data )       -- Create link for new page with referer
   args_here( %data )      -- Create link staying on same page
   args_back( %data )      -- Create link returning to caller
@@ -1863,8 +1958,8 @@ documentation, see the method source code and examples in the demo/ directory.
 =head2 Login/Logout Functions
 
   is_logged_in()          -- Check if user is logged in
-  login( $user_ident )    -- Mark user as logged in
-  logout()                -- Log out current user
+  login( $user_ident )    -- Mark user as logged in, replaces the cookie session
+  logout()                -- Log out current user, new user and cookie sessions
   need_login()            -- Require login, forward to login page
 
 =head2 Encryption Functions
@@ -1942,7 +2037,8 @@ Create and protect the session directory:
   chmod 0700 /var/reactor/sessions
   chown www-data:www-data /var/reactor/sessions
 
-Session files are stored as JSON, one file per session, with .wrs2 extension.
+Session files are stored as JSON, one file per session, with .wrs2 extension
+and mode 0600.
 
 =head2 Installation
 
@@ -1981,7 +2077,17 @@ Web::Reactor is designed to allow extending or replacing the 4 main parts:
   Current in use: Web::Reactor::Sessions::Filesystem
 
 Extend by subclassing Web::Reactor::Sessions to use different storage backends
-(database, remote servers, memory, etc.)
+(database, remote servers, memory, etc.). A subclass implements:
+
+  _storage_create( $key, $shr ) -- atomic create, 1 created, 0 id exists,
+                                   undef on error, never overwrites
+  _storage_load( $key )         -- session hashref or undef
+  _storage_save( $key, $shr )   -- true if saved
+  _storage_delete( $key )       -- true if deleted or missing
+  _storage_exists( $key )       -- true if exists
+  _storage_debug_info()         -- storage description for error messages
+
+$key is the key components array reference from compose_key_from_sid().
 
 =head2 HTML Preprocessing
 
@@ -2008,7 +2114,7 @@ The main module handles all logic and is not recommended for modification.
 However, the reactor instance is passed to all actions and modules, so you
 can add application-specific methods by extending in your application code.
 
-Except main module (Web::Reactor) is expected that base modules are
+Except main module (Web::Reactor) it is expected that base modules are
 subclassed for extension. Inside each of them there are notes on what must
 be extended and usage hints.
 
@@ -2050,7 +2156,7 @@ When deploying Web::Reactor applications:
 
    Sessions are invalidated if either changes
 
-3. Session data is stored on filesystem in Storable format
+3. Session data is stored on filesystem in JSON format
 
    Ensure proper file permissions (0700) on session directory
 
@@ -2075,9 +2181,10 @@ When deploying Web::Reactor applications:
 
    'HTTP_CSP' => "default-src 'self'",
 
-4. Enable form CSRF protection via page sessions (automatic)
+4. Form and link CSRF protection is automatic
 
-   All forms must include session ID (_P parameter)
+   Links and forms carry a "_" token which resolves only in the LINK session
+   of the same cookie session, use args*() and new_form() to build them
 
 5. Log security events:
 
@@ -2153,7 +2260,6 @@ further contact info, mailing list and github repository is listed below.
 
 The following items are planned for future releases:
 
-  * Migrate from Storable to JSON for session storage
   * Add more config validation at startup
   * Implement built-in rate limiting
   * Add more comprehensive error pages
@@ -2172,10 +2278,13 @@ Web::Reactor requires the following Perl modules:
 
   * Scalar::Util
   * Hash::Util
+  * List::Util
   * Data::Dumper (for debugging)
   * Encode
-  * MIME::Base64
-  * Digest::SHA
+  * Storable
+  * Time::HiRes
+  * Fcntl
+  * Exporter
 
 =head2 CPAN Modules (required)
 

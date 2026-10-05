@@ -97,8 +97,14 @@ sub process_request
   my $args = @_ / 2; # count of arg pairs
   my %args = @_;
 
+  hash_uc_ipl( \%args );
+
   my $user_input_hr = $self->get_user_input();
   my $safe_input_hr = $self->get_safe_input();
+
+  # merge forced parameters, given to run(), the same way as Web::Reactor
+  %$user_input_hr = ( %$user_input_hr, %args ) if $args;
+  %$safe_input_hr = ( %$safe_input_hr, %args ) if $args;
 
   # TODO/FIXME: the name checks below instantiate act() and pre() on every request,
   #             even when only one of them will be used; cheap after the first
@@ -148,7 +154,7 @@ sub render_page
   # page data is always text/html and must be preprocessed
   my $text = $self->pre->load_page( $page );
 
-  boom "rendering page [$page] returns empty text, file does not exists or is empty" if $text eq '';
+  boom "rendering page [$page] returns empty text, file does not exist or is empty" if $text eq '';
 
   $text = $self->pre->process( $page, $text );
 
@@ -175,7 +181,8 @@ sub get_user_input_button
     {
     # regular button BUTTON:CANCEL
     # button with id BUTTON:REDIRECT:USERID
-    next unless /BUTTON:([a-z0-9_\-]+)(:(.+?))?(\.[XY])?$/oi;
+    # a repeated button parameter comes as "@BUTTON:..."
+    next unless /^\@?BUTTON:([a-z0-9_\-]+)(:(.+?))?(\.[XY])?$/oi;
 
     # return ( button, button_id )
     return wantarray ? ( $1, $3 ) : $1
@@ -213,7 +220,7 @@ sub __import_safe_input
 
   my $user_input_hr = $self->get_user_input();
 
-  # FIXME: TODO: same as in Reactor and Reflex, must be moved to func
+  # safe input tokens come in "_", or in "@_" when there are several
   my $x  = $user_input_hr->{  '_' };
   my $ax = $user_input_hr->{ '@_' };
 
@@ -341,7 +348,8 @@ sub html_hold_kit_add
   $self->html_hold_set( $name, join '', sort keys %{ $self->{ 'HTML_HOLD_KIT' }{ $name } } );
 }
 
-# <$kit_head> is assumed to be in the <head> section
+# <$$kit_head> (deferred, kits are filled while the page is processed) is
+# assumed to be in the <head> section
 sub html_hold_kit_js
 {
   my $self = shift;
@@ -554,8 +562,8 @@ Validated in C<new()>:
 
 =item C<APP_ROOT>   required, existing directory, base for the defaults below
 
-=item C<LANG>       required, two lowercase letters, selects the C<html/E<lt>langE<gt>>
-tree and the translation files
+=item C<LANG>       optional, two lowercase letters, selects the C<html/E<lt>langE<gt>>
+tree and the translation files, without it only C<html/default> is used
 
 =back
 
@@ -576,7 +584,7 @@ C<APP_ROOT/actions> (Web::Reactor::Actions::Files)
 C<reactor::actions::> (Web::Reactor::Actions::Files)
 
 =item C<LIB_DIRS>      extra directories pushed to C<@INC>, default
-C<APP_ROOT/lib> (Web::Reactor::Actions::Packages)
+C<APP_ROOT/lib> (Web::Reactor::Actions::new(), for both action loaders)
 
 =item C<ACTIONS_SETS>  action set search order, default C<( APP_NAME, Base, Core )>
 (Web::Reactor::Actions::Packages)

@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  2014-2021 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2014-2026 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2

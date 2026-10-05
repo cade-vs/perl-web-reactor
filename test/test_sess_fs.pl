@@ -1,19 +1,42 @@
 #!/usr/bin/perl
+use strict;
 use lib '../lib';
+use lib 'lib';
 use Web::Reactor;
 use Data::Dumper;
+use File::Temp qw( tempdir );
 
-my $reo = new Web::Reactor SESS_VAR_DIR => '/tmp/re/var';
+# creates, saves and loads USER and PAGE sessions in a Filesystem storage
 
-my $idu = $reo->sess_create( 'USER', 64 );
-my $idp = $reo->sess_create( 'PAGE',  8 );
+my $root = tempdir( CLEANUP => 1 );
 
-$reo->sess_save( 'USER', $idu, { ID_USER => '$idu' } );
-$reo->sess_save( 'PAGE', $idp, { ID_PAGE => '$idp' } );
+my %env = (
+          REQUEST_METHOD  => 'GET',
+          REQUEST_URI     => '/',
+          QUERY_STRING    => '',
+          SERVER_NAME     => 'localhost',
+          SERVER_PORT     => 443,
+          SERVER_PROTOCOL => 'HTTP/1.1',
+          REMOTE_ADDR     => '127.0.0.1',
+          'psgi.version'    => [ 1, 1 ],
+          'psgi.url_scheme' => 'https',
+          'psgi.errors'     => \*STDERR,
+          );
 
-print Dumper( 'USER' x 10, $idu, $reo->sess_load( $idu ) );
-print Dumper( 'PAGE' x 10, $idp, $reo->sess_load( $idp ) );
+my $reo = Web::Reactor->new( \%env, { APP_NAME => 'demo', APP_ROOT => $root, SESS_VAR_DIR => "$root/var" } );
+my $ses = $reo->__ses();
 
-my $dir = '1234567890';
-print Dumper( $reo->{ 'REO_SESS' }->_split_dir_components( $dir, 3, 3 ) );
-print Dumper( $reo->{ 'REO_SESS' }->_key_to_fn( 'PAGE', '1234567890', 'abcdefgh', 'zxcvbn') );
+my $user = $ses->create( 'USER' );
+my $page = $ses->create( 'PAGE', $user->{ ':SID' }, 8 );
+
+$user->{ 'ID_USER' } = $user->{ ':SID' };
+$page->{ 'ID_PAGE' } = $page->{ ':SID' };
+
+$ses->save( $user );
+$ses->save( $page );
+
+print Dumper( 'USER' x 10, $ses->load( 'USER', $user->{ ':SID' } ) );
+print Dumper( 'PAGE' x 10, $ses->load( 'PAGE', $page->{ ':SID' }, $user->{ ':SID' } ) );
+
+print Dumper( $ses->_split_dir_components( '1234567890', 3, 3 ) );
+print Dumper( $ses->_key_to_fn( { READONLY => 1 }, @{ $ses->compose_key_from_sid( 'PAGE', $page->{ ':SID' }, $user->{ ':SID' } ) } ) );

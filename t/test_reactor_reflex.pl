@@ -190,6 +190,16 @@ EOF
 put( 'lib/Web/Reactor/Actions/testreflex/pkg.pm',
      "package Web::Reactor::Actions::testreflex::pkg;\nuse strict;\nsub main { return 'from package' }\n1;\n" );
 
+# Packages dispatcher: broken app actions must not fall back to Base
+put( 'lib/Web/Reactor/Actions/testreflex/brokendep.pm', "package Web::Reactor::Actions::testreflex::brokendep;\nuse strict;\nuse No::Such::Module::Here;\nsub main { 'APP' }\n1;\n" );
+put( 'lib/Web/Reactor/Actions/Base/brokendep.pm',       "package Web::Reactor::Actions::Base::brokendep;\nuse strict;\nsub main { 'BASE' }\n1;\n" );
+put( 'lib/Web/Reactor/Actions/testreflex/brokensyn.pm', "package Web::Reactor::Actions::testreflex::brokensyn;\nuse strict;\nsub main { 'APP' \n1;\n" );
+put( 'lib/Web/Reactor/Actions/Base/brokensyn.pm',       "package Web::Reactor::Actions::Base::brokensyn;\nuse strict;\nsub main { 'BASE' }\n1;\n" );
+put( 'lib/Web/Reactor/Actions/Base/inbase.pm',          "package Web::Reactor::Actions::Base::inbase;\nuse strict;\nsub main { 'IN BASE' }\n1;\n" );
+
+# Files dispatcher: an action file which does not compile
+put( 'actions/brokenfile.pm', "package reactor::actions::brokenfile;\nuse strict;\nsub main { 'X' \n1;\n" );
+
 put( 'trans/bg/ui.tr', "hello=  Hi there  \nbye=Bye\n" );
 put( 'trans/single.tr', "only=one\n" );
 
@@ -659,6 +669,58 @@ ok( ( grep { $_ eq "$ROOT/lib" } @INC ), 'LIB_DIRS are added to @INC' );
 my $r = req( get( '_an=hello' ), $over );
 is_unavailable( $r, 'Files action under the Packages dispatcher' );
 like( logs(), qr/code for action name \[hello\] not found/, 'the two dispatchers do not see each other\'s actions' );
+
+# the normal fallback to the next set is only a debug message
+is( body( req( get( '_an=inbase' ), $over ) ), 'IN BASE', 'an action only in Base is found through the sets' );
+unlike( logs(), qr/^error:/m, 'the normal fallback to the next set logs no error' );
+
+# a broken app action stops the lookup, Base does not run in its place
+$r = req( get( '_an=brokendep' ), $over );
+is_unavailable( $r, 'app action with a missing dependency' );
+unlike( body( $r ), qr/BASE/, 'a missing dependency does not fall back to Base' );
+like( logs(), qr/a module it uses cannot be found/, 'the missing dependency is logged' );
+
+$r = req( get( '_an=brokensyn' ), $over );
+is_unavailable( $r, 'app action with a syntax error' );
+unlike( body( $r ), qr/BASE/, 'a syntax error does not fall back to Base' );
+like( logs(), qr/load action failed/, 'the syntax error is logged' );
+
+$r = req( get( '_an=nosuchaction' ), $over );
+like( logs(), qr/action \[nosuchaction\] not found in any of the action sets/, 'a missing action is logged once with the sets' );
+}
+
+# Files dispatcher: a failing action file is cached for the request
+{
+my $o = app();
+eval { $o->act->call( 'brokenfile' ) };
+eval { $o->act->call( 'brokenfile' ) };
+is( scalar( () = logs() =~ /load action failed/g ), 1, 'a failing action file is loaded and logged once per request' );
+}
+
+##############################################################################
+##
+##  section 13b -- name/value pairs given to run() are merged into the input
+##
+
+{
+my $o = app( get( '' ) );
+like( body( $o->run( _pn => 'admin/users', x => 'forced' ) ), qr/^USERS/, 'run() arguments choose the page' );
+is( $o->get_user_input()->{ 'X' }, 'forced', 'run() arguments reach the user input, names uppercased' );
+is( $o->get_safe_input()->{ 'X' }, 'forced', 'run() arguments reach the safe input' );
+}
+
+##############################################################################
+##
+##  section 13a -- html ids, inherited from Web::Reactor::Core
+##
+
+{
+my $o = app();
+my $scope = $o->get_uniq_id_scope();
+like( $scope, qr/^\Q$$\E_\d+_[A-Za-z0-9]{8}$/, 'Reflex uses the Core id scope' );
+is( $o->create_uniq_id(), "$scope.1", 'Reflex create_uniq_id() is scope.1 first' );
+is( $o->create_uniq_id(), "$scope.2", 'Reflex create_uniq_id() counts up' );
+ok( $o->start_time() > 0, 'Reflex start_time()' );
 }
 
 ##############################################################################

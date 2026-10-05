@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ##  Web::Reactor application machinery
-##  Copyright (c) 2013-2022 Vladi Belperchinov-Shabanski "Cade"
+##  Copyright (c) 2013-2026 Vladi Belperchinov-Shabanski "Cade"
 ##        <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##  http://cade.noxrun.com
 ##  
@@ -19,7 +19,8 @@ use parent 'Web::Reactor::Sessions';
 ##############################################################################
 ##
 ##  dummy storage methods
-##  they are all no-ops
+##  nothing is stored: create, save and delete succeed, load finds nothing and
+##  no session exists, so every request starts with new sessions
 ##
 
 sub _storage_create
@@ -29,7 +30,7 @@ sub _storage_create
 
 sub _storage_load
 {
-  return {};
+  return undef;
 }
 
 sub _storage_save
@@ -44,11 +45,12 @@ sub _storage_delete
 
 sub _storage_exists
 {
-  return 1
+  return 0
 }
 
-sub _storage_debug_info 
-{ 
+sub _storage_debug_info
+{
+  return "Web::Reactor::Sessions::Dummy: no storage";
 }
 
 ##############################################################################

@@ -1,16 +1,34 @@
 #!/usr/bin/perl
+use strict;
 use lib '../lib';
+use lib 'lib';
 use Web::Reactor;
 use Data::Dumper;
-use Web::Reactor::Acts::Native;
+use File::Temp qw( tempdir );
 
-my %opt = (
-          APP_NAME  => 'demo',
-          LIB_PATHS => [ qw(
-                         /home/cade/pro/reactor/demo/lib/
-                         ) ],
+# calls the Core 'test' action through the Packages action loader
+
+my $root = tempdir( CLEANUP => 1 );
+
+my %env = (
+          REQUEST_METHOD  => 'GET',
+          REQUEST_URI     => '/',
+          QUERY_STRING    => '',
+          SERVER_NAME     => 'localhost',
+          SERVER_PORT     => 443,
+          SERVER_PROTOCOL => 'HTTP/1.1',
+          REMOTE_ADDR     => '127.0.0.1',
+          'psgi.version'    => [ 1, 1 ],
+          'psgi.url_scheme' => 'https',
+          'psgi.errors'     => \*STDERR,
           );
 
-my $rea = new Web::Reactor::Acts::Native %opt;
+my %cfg = (
+          APP_NAME      => 'demo',
+          APP_ROOT      => $root,
+          REO_ACT_CLASS => 'Web::Reactor::Actions::Packages',
+          );
 
-print $rea->call( 'test' );
+my $reo = Web::Reactor->new( \%env, \%cfg );
+
+print $reo->act->call( 'test' ), "\n";

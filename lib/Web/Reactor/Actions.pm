@@ -72,7 +72,7 @@ sub call
 
 #  print STDERR Dumper( 'Web::Reactor::Actions::call()', $name, $code, \%args );
 
-  boom "code for action name [$name] not found" unless $code;
+  boom "code for action name [$name] not found or cannot be loaded, see the log above" unless $code;
 
   my $data;
 

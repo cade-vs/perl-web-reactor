@@ -118,8 +118,9 @@ All input parameters are validated:
     - Action names: lowercase alphanumeric, underscore
     - Session IDs: alphanumeric, underscore
 
-Invalid input is logged and silently ignored. Malformed session ids, which
-only client tampering produces, raise an error.
+Parameters with invalid names are logged and dropped. Invalid page or
+action names and malformed session ids, which only client tampering
+produces, raise an error (the client gets the generic error page).
 
 ## Data Encryption (Optional)
 
@@ -421,12 +422,20 @@ Upon creation, Web::Reactor instance gets hash with config entries/keys.
     CRY_KEY                   -- 32 raw bytes key for cry() and argsx() (required if used)
     RSA_PUB                   -- RSA public key PEM text for rsa() (required if used)
     HTTP_CSP                  -- Content-Security-Policy header (optional)
+    CLOUDFLARE                -- behind Cloudflare: client IP from CF-Connecting-IP
+    PROXY_REMOTE              -- behind a trusted reverse proxy: client IP from X-Real-IP
+
+The client IP is part of the session hijack check, so behind a proxy set the
+matching flag, otherwise every client looks like the proxy. Both are off by
+default, so a client cannot fake its address with those headers.
 
 ## Extension Config Entries
 
     REO_SES_CLASS             -- Session storage class (default: Web::Reactor::Sessions::Filesystem)
     REO_PRE_CLASS             -- Preprocessor class (default: Web::Reactor::Preprocessor::Tree)
     REO_ACT_CLASS             -- Actions class (default: Web::Reactor::Actions::Files)
+    REO_CRY_CLASS             -- Symmetric cipher class for cry() (default: Data::Tools::Crypto::Symmetric)
+    REO_RSA_CLASS             -- RSA class for rsa() (default: Data::Tools::Crypto::RSA)
 
 ## Translation Config Entries
 
@@ -644,7 +653,11 @@ $key is the key components array reference from compose\_key\_from\_sid().
     Current in use: Web::Reactor::Preprocessor::Tree
 
 Extend by subclassing Web::Reactor::Preprocessor to customize HTML processing,
-template syntax, or add new markup handlers.
+template syntax, or add new markup handlers. A subclass implements:
+
+    load_page( $page_name )         -- page text or undef
+    process( $page_name, $text )    -- processed text
+    check_page_name( $page_name )   -- booms on an invalid page name
 
 ## Actions Execution
 
@@ -652,7 +665,10 @@ template syntax, or add new markup handlers.
     Current in use: Web::Reactor::Actions::Files
 
 Extend by subclassing Web::Reactor::Actions to customize action loading,
-execution, or error handling.
+execution, or error handling. A subclass implements:
+
+    __find_code_by_name( $name )    -- code reference of the action's main()
+                                      or undef (logged) if not found
 
 ## Main Module
 
@@ -722,7 +738,7 @@ When deploying Web::Reactor applications:
         plackup --server Starman --workers 4 app.psgi
 
       - Use reverse proxy (nginx/Apache) with:
-        * X-Real-IP header passing
+        * X-Real-IP header passing (and PROXY_REMOTE => 1 in the config)
         * X-Forwarded-Proto HTTPS enforcement
         * gzip compression
 
@@ -737,7 +753,7 @@ When deploying Web::Reactor applications:
 
 5\. Log security events:
 
-    Set DEBUG => 1+ to see:
+    These are always logged (with any DEBUG level):
     * Invalid input attempts
     * Session hijacking attempts
     * Expired sessions
@@ -834,6 +850,7 @@ Web::Reactor requires the following Perl modules:
     * Time::HiRes
     * Fcntl
     * Exporter
+    * File::Spec
 
 ## CPAN Modules (required)
 

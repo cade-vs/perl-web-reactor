@@ -71,7 +71,7 @@ sub __find_code_by_name
       $act_cache->{ $name } = undef;
       $reo->log_debug( "debug: action not in set [$asl]: $ap [$fn]" );
       }
-    elsif( $@ =~ /^Can't locate / )
+    elsif( $@ =~ /^Can't locate \S+\.pm in \@INC/ ) # not "Can't locate object method"
       {
       # the action package exists but a module it uses is missing: stop here,
       # the same action in the next set must not run in its place

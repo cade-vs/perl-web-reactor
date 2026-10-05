@@ -268,11 +268,12 @@ sub compose_key_from_sid
 
 ##############################################################################
 ##
-##  helpers for session in-memory state (cache)
+##  helpers for session in-memory state (cache), obsolete: the cache now lives
+##  in Web::Reactor (sc_*), the old code is kept below for reference only
 ##
 
 
-=pod
+=begin comment
 
 # sets current cache session
 sub state_set_active
@@ -435,6 +436,8 @@ sub state_save
       }
     }
 }
+
+=end comment
 
 =cut
 

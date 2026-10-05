@@ -15,8 +15,8 @@
 ##
 ##  usage:
 ##
-##    perl xt/test_tree_process.pl          -- from the distribution root
-##    perl xt/test_tree_process.pl -v       -- also pass reactor log() to stderr
+##    perl xt/test_tree-pm.pl               -- from the distribution root
+##    perl xt/test_tree-pm.pl -v            -- also pass reactor log() to stderr
 ##
 ##  builds a throw-away application tree (html pages, includes, action files)
 ##  in a temporary directory and drives process() directly, without HTTP.
@@ -247,7 +247,7 @@ is( proc( $reo, 'main', q{<&echo a='x y' b="p q">} ),    'echo(A=x y,B=p q)id[un
 is( proc( $reo, 'main', '<&echo flag>' ),                'echo(FLAG=1)id[undef]',    'argument without value is 1' );
 is( proc( $reo, 'main', q{<&echo n=0 s="" q='0' e=>} ),   'echo(E=,N=0,Q=0,S=)id[undef]', 'argument values 0 and empty are kept' );
 is( proc( $reo, 'main', '<&echo:tag7 z=3>' ),            'echo(Z=3)id[tag7]',        '<&action:id> exposes the tag id via tagid_peek' );
-like( proc( $reo, 'main', '<&&echo>' ),   qr{^<div class="?vframe"?>echo\(\)id\[undef\]</div>$}, '<&&action> is wrapped in a vframe div' );
+like( proc( $reo, 'main', '<&&echo>' ),   qr{^<div class=(['"])vframe\1>echo\(\)id\[undef\]</div>$}, '<&&action> is wrapped in a vframe div' );
 is( proc( $reo, 'main', '<&ECHO>' ),                     'echo()id[undef]',          '<&ACTION> is case insensitive' );
 is( proc( $reo, 'main', '<&tags>' ),                     'tags[FOO|BG-INC]',         'action output is processed again for tags' );
 
@@ -270,6 +270,7 @@ my $reo = reo();
 
 my $out = eval { proc( $reo, 'main', '<$loop>' ) };
 like( $@, qr/preprocess loop detected/, 'self-referencing hold value is detected' );
+is_deeply( $reo->pre->{ 'TAG_ID_STACK' } || [], [], 'the tag id stack is empty after a loop boom' );
 
 $reo = reo();
 $reo->html_hold_set( a => '<$b>', b => '<$c>', c => 'deep' );

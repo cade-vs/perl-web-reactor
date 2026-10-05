@@ -197,7 +197,13 @@ put( 'lib/Web/Reactor/Actions/testreflex/brokensyn.pm', "package Web::Reactor::A
 put( 'lib/Web/Reactor/Actions/Base/brokensyn.pm',       "package Web::Reactor::Actions::Base::brokensyn;\nuse strict;\nsub main { 'BASE' }\n1;\n" );
 put( 'lib/Web/Reactor/Actions/Base/inbase.pm',          "package Web::Reactor::Actions::Base::inbase;\nuse strict;\nsub main { 'IN BASE' }\n1;\n" );
 
-# Files dispatcher: an action file which does not compile
+# Files and Packages dispatchers: an action file and package without main(),
+# a second actions dir, and an action file which does not compile
+put( 'actions/nomainfile.pm', "package reactor::actions::nomainfile;\nuse strict;\nsub other { 1 }\n1;\n" );
+put( 'lib/Web/Reactor/Actions/testreflex/nomainpkg.pm', "package Web::Reactor::Actions::testreflex::nomainpkg;\nuse strict;\nsub other { 1 }\n1;\n" );
+put( 'actions2/second.pm', "package reactor::actions::second;\nuse strict;\nsub main { 'SECOND DIR' }\n1;\n" );
+put( 'actions/brokenmeth.pm', "package reactor::actions::brokenmeth;\nuse strict;\nNo::Such::Class::Here->method();\nsub main { 'X' }\n1;\n" );
+put( 'lib/Web/Reactor/Actions/testreflex/brokenmeth.pm', "package Web::Reactor::Actions::testreflex::brokenmeth;\nuse strict;\nNo::Such::Class::Here->method();\nsub main { 'APP' }\n1;\n" );
 put( 'actions/brokenfile.pm', "package reactor::actions::brokenfile;\nuse strict;\nsub main { 'X' \n1;\n" );
 
 put( 'trans/bg/ui.tr', "hello=  Hi there  \nbye=Bye\n" );
@@ -685,9 +691,28 @@ is_unavailable( $r, 'app action with a syntax error' );
 unlike( body( $r ), qr/BASE/, 'a syntax error does not fall back to Base' );
 like( logs(), qr/load action failed/, 'the syntax error is logged' );
 
+$r = req( get( '_an=brokenmeth' ), $over );
+is_unavailable( $r, 'app action calling a missing class method' );
+like( logs(), qr/load action failed.*Can't locate object method/, 'a missing class method is a load failure' );
+unlike( logs(), qr/a module it uses cannot be found/, 'a missing class method is not a missing module' );
+
 $r = req( get( '_an=nosuchaction' ), $over );
-like( logs(), qr/action \[nosuchaction\] not found in any of the action sets/, 'a missing action is logged once with the sets' );
+like( logs(), qr/action \[nosuchaction\] not found in any of the action sets/, 'a missing action is logged with the sets' );
+
+my $po = app( env(), $over );
+eval { $po->act->call( 'nosuchaction' ) } for 1 .. 2;
+is( scalar( () = logs() =~ /action \[nosuchaction\] not found in any of the action sets/g ), 1, 'a missing action is logged once per request' );
+
+# an action package without main() is cached for the request
+my $no = app( env(), { REO_ACT_CLASS => 'Web::Reactor::Actions::Packages', LIB_DIRS => [ "$ROOT/lib" ] } );
+eval { $no->act->call( 'nomainpkg' ) } for 1 .. 2;
+is( scalar( () = logs() =~ /has no main\(\) sub/g ), 1, 'an action package without main() is logged once per request' );
 }
+
+##############################################################################
+##
+##  section 13a -- the Files action dispatcher, loading failures and dirs
+##
 
 # Files dispatcher: a failing action file is cached for the request
 {
@@ -695,6 +720,44 @@ my $o = app();
 eval { $o->act->call( 'brokenfile' ) };
 eval { $o->act->call( 'brokenfile' ) };
 is( scalar( () = logs() =~ /load action failed/g ), 1, 'a failing action file is loaded and logged once per request' );
+
+# a missing class method is a load failure, not a missing module
+$o = app();
+eval { $o->act->call( 'brokenmeth' ) };
+like( logs(), qr/load action failed.*Can't locate object method/, 'Files: a missing class method is a load failure' );
+unlike( logs(), qr/a module it uses cannot be found/, 'Files: a missing class method is not a missing module' );
+
+# an action file without main() is cached for the request
+$o = app();
+eval { $o->act->call( 'nomainfile' ) } for 1 .. 2;
+is( scalar( () = logs() =~ /has no main\(\) sub/g ), 1, 'an action file without main() is logged once per request' );
+like( $@, qr/code for action name \[nomainfile\] not found or cannot be loaded/, 'call() says the action was not found or cannot be loaded' );
+
+# ACTIONS_DIRS as one directory, a missing action is logged once with the dirs
+$o = app( env(), { ACTIONS_DIRS => "$ROOT/actions2" } );
+is( $o->act->call( 'second' ), 'SECOND DIR', 'ACTIONS_DIRS may be a single directory' );
+eval { $o->act->call( 'nosuchfileaction' ) } for 1 .. 2;
+is( scalar( () = logs() =~ /action \[nosuchfileaction\] not found in any of the action dirs/g ), 1, 'a missing action file is logged once per request with the dirs' );
+
+# a relative ACTIONS_DIRS works, though @INC has no '.'
+{
+use Cwd;
+my $cwd = getcwd();
+chdir( $ROOT ) or die "cannot chdir [$ROOT]";
+my $second = eval { app( env(), { ACTIONS_DIRS => 'actions2' } )->act->call( 'second' ) };
+chdir( $cwd ) or die "cannot chdir back [$cwd]"; # before any test, so a boom above cannot leave the cwd changed
+is( $second, 'SECOND DIR', 'a relative ACTIONS_DIRS directory works' );
+}
+
+# an action file edited to drop main() does not keep running the old main()
+put( 'actions3/edited.pm', "package reactor::actions::edited;\nuse strict;\nsub main { 'OLD' }\n1;\n" );
+my $eo = app( env(), { ACTIONS_DIRS => "$ROOT/actions3" } );
+is( eval { $eo->act->call( 'edited' ) }, 'OLD', 'the action runs before the edit' );
+put( 'actions3/edited.pm', "package reactor::actions::edited;\nuse strict;\nsub other { 1 }\n1;\n" );
+$eo = app( env(), { ACTIONS_DIRS => "$ROOT/actions3" } );
+eval { $eo->act->call( 'edited' ) };
+like( $@, qr/not found or cannot be loaded/, 'after main() is removed from the file the old main() does not run' );
+like( logs(), qr/action file \[[^\]]*edited\.pm\] loaded but package \[reactor::actions::edited\] has no main\(\) sub/, 'the missing main() is the logged reason' );
 }
 
 ##############################################################################
@@ -711,7 +774,7 @@ is( $o->get_safe_input()->{ 'X' }, 'forced', 'run() arguments reach the safe inp
 
 ##############################################################################
 ##
-##  section 13a -- html ids, inherited from Web::Reactor::Core
+##  section 13c -- html ids, inherited from Web::Reactor::Core
 ##
 
 {

@@ -35,12 +35,16 @@ sub new
   my $reo = $self->reo();
   $self->{ 'CFG' } = $reo->cfg(); # the reactor config, as Base::new() would set it
 
+  # the html kit holds (js and controller) and the ids need Web::Reactor::Reflex or above
+  boom "HTML::Tab needs a Web::Reactor::Reflex or Web::Reactor object, got [" . ref( $reo ) . "]" unless $reo->can( 'html_hold_kit_js' );
+
   __check_html_id(    'NAME',      $env{ 'NAME'      } ) if defined $env{ 'NAME' };
   __check_html_class( 'CLASS_ON',  $env{ 'CLASS_ON'  } );
   __check_html_class( 'CLASS_OFF', $env{ 'CLASS_OFF' } );
 
-  # a named tab set keeps the same controller id in all requests of the page,
-  # so the active tab is restored after a reload, an unnamed one gets a new id
+  # under Web::Reactor (the id scope is the page session) a named tab set keeps
+  # the same controller id in all requests of the page, so the active tab is
+  # restored after a reload. an unnamed one, or any under Reflex, gets a new id
   # each time
   $self->{ 'TABS_LIST'         } = []; # contain tab IDs
   $self->{ 'TAB_CONTROLLER_ID' } = defined $env{ 'NAME' } ? join( '_', 'RE_TAB', $reo->get_uniq_id_scope(), $env{ 'NAME' } ) : 'RE_TAB_' . $reo->create_uniq_id();
@@ -49,6 +53,7 @@ sub new
   $reo->html_hold_kit_js( "js/reactor.js" ); # pages show it with <$$kit_head>
 
   $self->{ 'OPT' } = { @_ };
+  delete $self->{ 'OPT' }{ 'REO_REACTOR' }; # keep only the weak link set by __set_reo()
 
   #use Data::Dumper;
   #print STDERR Dumper( $self );
@@ -80,6 +85,9 @@ sub add
   boom "invalid tab TYPE [$et], can be only one of DIV|TR|TD" unless $et =~ /^(DIV|TR|TD)$/;
 
   my $tab_controller_id =    $self->{ 'TAB_CONTROLLER_ID' };
+
+  boom "tab set [$tab_controller_id] already has a tab ON, only one can be shown at first" if $on and $self->{ 'ANY_ON' };
+
   my $tab_counter       = ++ $self->{ 'TAB_COUNTER'       };
 
   my $handle_id = $opt{ 'HANDLE_ID' } || "${tab_controller_id}_HANDLE_$tab_counter";
@@ -97,7 +105,8 @@ sub add
   my $display = $on ? '' : "style='display: none;'";
   my $handle_class = join ' ', grep { $_ ne '' } ( $handle_extra, $on ? $class_on : $class_off );
 
-  $handle = qq{ class='$handle_class' ID='$handle_id' onclick='return reactor_tab_activate_id( "$tab_id" )' };
+  my $keep = $handle_extra ne '' ? " data-class-keep='$handle_extra'" : ''; # kept by the tab switch
+  $handle = qq{ class='$handle_class'$keep id='$handle_id' onclick='return reactor_tab_activate_id( "$tab_id" )' };
   $text   = qq{ <$et id='$tab_id' class='$class' data-controller-id='$tab_controller_id' data-handle-id='$handle_id' $display $args >$content</$et> };
 
   return ( $handle, $text );
@@ -123,7 +132,9 @@ sub finish
   my $class_on    = $self->{ 'OPT' }{ 'CLASS_ON' };
   my $class_off   = $self->{ 'OPT' }{ 'CLASS_OFF' };
 
-  my $default_tab = $self->{ 'ANY_ON' } ? '' : qq{ || "$self->{ 'TABS_LIST' }[ 0 ]"};
+  # with no ON tab the first tab is the default, also when a remembered tab id
+  # is no longer in the page
+  my $default_tab = $self->{ 'ANY_ON' } ? '' : $self->{ 'TABS_LIST' }[ 0 ];
 
   # FIXME: <input hidden> active tab element keeper to be optionally outside element (by id)
   $html = qq{
@@ -131,7 +142,7 @@ sub finish
 
   <script type="text/javascript">
 
-    reactor_tab_activate_id( sessionStorage.getItem( 'TABSET_ACTIVE_$tab_controller_id' )$default_tab );
+    reactor_tab_restore( "$tab_controller_id", "$default_tab" );
 
   </script>
 
@@ -144,8 +155,10 @@ sub finish
 
 ##############################################################################
 
-# ids and class names go into html attributes and into the tab controller
-# javascript, so only safe characters are allowed, anything else booms
+# ids go into html attributes and into the tab controller javascript, so only
+# safe characters are allowed. class names go only into quoted attributes, so
+# any class name without quotes, < > & or \ is fine (i.e. md:w-1/2). anything
+# else booms
 
 sub __check_html_id
 {
@@ -160,7 +173,7 @@ sub __check_html_class
   my $name  = shift;
   my $value = shift;
 
-  boom "invalid tab $name [$value], allowed are A-Z a-z 0-9 _ - and spaces" unless $value =~ /^[A-Za-z0-9_\- ]*$/;
+  boom "invalid tab $name [$value], quotes, < > & and \\ are not allowed" unless $value !~ /['"<>&\\]/;
 }
 
 ##############################################################################
@@ -201,11 +214,16 @@ Without them the handles do nothing.
 
 =item C<new( REO_REACTOR =E<gt> $reo, %opt )>
 
+C<$reo> must be a Web::Reactor::Reflex or a Web::Reactor object.
+
 Options:
 
-  NAME       -- tab set name, A-Z a-z 0-9 _ - . : only. a named tab set keeps
-                its ids in all requests of the page, so the active tab is
-                remembered (per browser tab, sessionStorage) across reloads
+  NAME       -- tab set name, A-Z a-z 0-9 _ - . : only. under Web::Reactor a
+                named tab set keeps its ids in all requests of the page (the
+                id scope is the page session), so the active tab is
+                remembered (per browser tab, sessionStorage) across reloads.
+                under Web::Reactor::Reflex the scope changes per request,
+                so nothing is remembered
   CLASS_ON   -- handle class of the active tab
   CLASS_OFF  -- handle class of the other tabs
 
@@ -215,14 +233,15 @@ Returns ( handle attributes, tab html ). Put the handle attributes into the
 element which switches to this tab, and the tab html where the tab goes.
 
   TYPE          -- DIV, TR or TD, the element which holds the tab (required)
-  ON            -- the tab is shown at first
+  ON            -- the tab is shown at first, only one tab may be ON
   CLASS         -- class of the tab element (default "reactor_tab")
   HANDLE_CLASS  -- other handle classes, kept when the tab is switched
   TAB_ID        -- tab element id (default generated)
   HANDLE_ID     -- handle element id (default generated)
   ARGS          -- raw html attributes for the tab element, not checked
 
-Ids and classes allow only safe characters and boom on anything else.
+Ids allow A-Z a-z 0-9 _ - . : only, classes anything but quotes, < > & and \.
+Both boom on anything else.
 Booms after C<finish()>.
 
 =item C<finish()>

@@ -41,7 +41,7 @@ closedir( $dh );
 die "no test_*.pl files found in [$T_DIR]\n" unless @tests;
 
 # pass our own -I dirs on, so a test lib given to the runner reaches the tests
-my @inc = map { "-I$_" } grep { ! ref } @INC[ 0 .. $#INC ];
+my @inc = map { "-I$_" } grep { ! ref } @INC;
 @inc = grep { $_ ne '-I.' } @inc;
 
 my $n = 0;
@@ -60,7 +60,18 @@ for my $test ( @tests )
     }
   else
     {
-    $out = qx( $^X @inc "$fn" 2>&1 );
+    # list form, so include dirs with spaces stay single arguments
+    if( open( my $fh, '-|' ) // die "cannot fork: $!\n" )
+      {
+      local $/;
+      $out = <$fh>;
+      close( $fh );
+      }
+    else
+      {
+      open( STDERR, '>&', \*STDOUT );
+      exec( $^X, @inc, $fn ) or die "cannot run [$fn]: $!\n";
+      }
     }
   my $status = $? >> 8;
   my $signal = $? & 127;

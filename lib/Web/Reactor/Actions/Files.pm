@@ -25,6 +25,7 @@ use strict;
 use Exception::Sink;
 use Web::Reactor::Actions;
 use Data::Dumper;
+use File::Spec;
 
 use parent 'Web::Reactor::Actions';
 
@@ -41,6 +42,7 @@ sub __find_code_by_name
   my $cfg = $self->cfg();
 
   my $dirs = $cfg->{ 'ACTIONS_DIRS' } || [ $cfg->{ 'APP_ROOT' } . '/actions' ];
+  $dirs = [ $dirs ] unless ref( $dirs ); # a single directory, as LIB_DIRS and HTML_DIRS allow
   my $pkgs = $cfg->{ 'ACTIONS_PKGS' } || 'reactor::actions::';
 
   my $found;
@@ -52,16 +54,27 @@ sub __find_code_by_name
     last;
     }
 
-  # TODO: cache for missing ones
-  return undef unless $found;
+  if( ! $found )
+    {
+    $act_cache->{ $name } = undef;
+    $reo->log( "error: action [$name] not found in any of the action dirs [@$dirs]" );
+    return undef;
+    }
 
   my $ap = $pkgs . $name;
+
+  # require() searches @INC for a relative path, and @INC has no '.', so the
+  # file is loaded by its absolute path
+  $found = File::Spec->rel2abs( $found );
 
   eval
     {
     # the action file is loaded again on its first call in each request (the
     # act object and its cache live per request), so changed action files are
-    # picked up without a server restart
+    # picked up without a server restart. main() of an earlier load is removed
+    # first, so a file which no longer has it does not run the old one
+    no strict 'refs';
+    undef &{ "${ap}::main" } if defined &{ "${ap}::main" };
     delete $INC{ $found };
     require $found;
     };
@@ -79,7 +92,7 @@ sub __find_code_by_name
     my $code = $act_cache->{ $name } = \&{ "${ap}::main" }; # call/function reference
     return $code;
     }
-  elsif( $@ =~ /^Can't locate / )
+  elsif( $@ =~ /^Can't locate \S+\.pm in \@INC/ ) # not "Can't locate object method"
     {
     # the action file exists, so the missing file is a module it uses
     $act_cache->{ $name } = undef;

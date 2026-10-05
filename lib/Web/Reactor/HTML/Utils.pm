@@ -141,9 +141,28 @@ DEMO:
 
   print html_ftree( $a, 'ARGS' => 'cellpadding=10 width=100% border=0' );
 
+options:
+
+  ARGS     -- raw table attributes
+  CLASS    -- table class, used when there are no ARGS
+  ARGS_TR  -- raw attributes for the rows without their own ARGS or CLASS
+  ARGS_TD  -- raw attributes for the cells
+
+a row is a label (scalar) or a hash ref:
+
+  LABEL    -- row label
+  DATA     -- array ref of sub rows, the row becomes a branch
+  ARGS     -- raw row attributes
+  CLASS    -- row class, used when there are no ARGS
+
 =cut
 
+# ftree ids: a per-process scope (pid and the time of the first ftree in the
+# process), so ftrees served by different processes into one page do not
+# repeat ids, and a counter
 my $ftree_item_id;
+my $ftree_scope;
+my $ftree_pid;
 sub html_ftree
 {
   my $data = shift;
@@ -151,16 +170,22 @@ sub html_ftree
 
   my $t_args;
   $t_args ||= $opt{ 'ARGS' };
-  $t_args ||= 'class=' . $opt{ 'CLASS' } if $opt{ 'CLASS' };
+  $t_args ||= "class='" . $opt{ 'CLASS' } . "'" if $opt{ 'CLASS' };
 
+  if( ! $ftree_pid or $ftree_pid != $$ )
+    {
+    $ftree_pid     = $$;
+    $ftree_scope   = "$$" . '_' . time();
+    $ftree_item_id = 0;
+    }
   $ftree_item_id++;
 
-  my $ftree_table_id = "FTREE_TABLE_$ftree_item_id";
+  my $ftree_table_id = "FTREE_TABLE_${ftree_scope}_$ftree_item_id";
 
   my $html;
 
   $html .= "\n";
-  $html .= "<table id=$ftree_table_id $t_args>";
+  $html .= "<table id='$ftree_table_id' $t_args>";
 
   $html .= __html_ftree_branch( $data, $ftree_table_id, $ftree_table_id . '.', 0, \%opt );
 
@@ -196,7 +221,7 @@ sub __html_ftree_branch
       $data  = $row->{ 'DATA'  };
 
       $r_args ||= $row->{ 'ARGS' };
-      $r_args ||= 'class=' . $row->{ 'CLASS' } if $row->{ 'CLASS' };
+      $r_args ||= "class='" . $row->{ 'CLASS' } . "'" if $row->{ 'CLASS' };
       }
     else
       {
@@ -219,12 +244,12 @@ sub __html_ftree_branch
     if( ref( $data ) eq 'ARRAY' )
       {
       my $open_code = qq{ onclick='ftree_click( "$ftree_table_id", "$row_id" )' };
-      $html .= "<tr id=$row_id $open_code $r_args $hidden><td $c_args>$cell</td></tr>";
+      $html .= "<tr id='$row_id' $open_code $r_args $hidden><td $c_args>$cell</td></tr>";
       $html .= __html_ftree_branch( $data, $ftree_table_id, $row_id, $level + 1, $opt );
       }
     else
       {
-      $html .= "<tr id=$row_id $hidden $r_args><td $c_args>$cell</td></tr>";
+      $html .= "<tr id='$row_id' $hidden $r_args><td $c_args>$cell</td></tr>";
       }
 
     $html .= "\n";
@@ -321,6 +346,7 @@ sub html_hover_layer
     {
     boom "missing REO reactor object";
     }
+  boom "html_hover_layer() needs a Web::Reactor::Reflex or Web::Reactor object, got [" . ref( $reo ) . "]" unless $reo->can( 'html_hold_kit_add' );
 
   if( @_ == 1 )
     {
@@ -363,6 +389,7 @@ sub html_popup_layer
     {
     boom "missing REO reactor object";
     }
+  boom "html_popup_layer() needs a Web::Reactor::Reflex or Web::Reactor object, got [" . ref( $reo ) . "]" unless $reo->can( 'html_hold_kit_add' );
 
   if( @_ == 1 )
     {
@@ -415,6 +442,12 @@ sub html_alink
   my $opts  =    shift; # hashref with alink options
   my @args  = @_;
 
+  if( ref( $reo ) !~ /^Web::Reactor(::|$)/ )
+    {
+    boom "missing REO reactor object";
+    }
+  boom "html_alink() needs a Web::Reactor::Reflex or Web::Reactor object, got [" . ref( $reo ) . "]" unless $reo->can( 'args_type' );
+
   my $href = $reo->args_type( $type, @args );
 
   my $tag_args;
@@ -425,26 +458,37 @@ sub html_alink
   my $hint = $opts->{ 'HINT' };
 
   my $confirm = $opts->{ 'CONFIRM' };
-  $tag_args .= '  ' . qq( onclick="return confirm('$confirm');" ) if $confirm =~ /^([^"']+)$/;
+  my $disable_on_click = int( $opts->{ 'DISABLE_ON_CLICK' } );
 
   if( $opts->{ 'DISABLED' } )
     {
     $tag_args .= '  ' . qq( onclick="return false;" ) ;
-    $class .= " disabled-button";
+    $class = join ' ', grep { $_ ne '' } ( $class, 'disabled-button' );
     $hint = undef; # remove button hints for disabled buttons
     }
 
-  $tag_args .= '  ' . "ID='$tag_id'"  if $tag_id ne '';
+  $tag_args .= '  ' . "id='$tag_id'"  if $tag_id ne '';
   $tag_args .= '  ' . "class='$class'" if $class  ne '';
   if( $hint )
     {
     my $hint_tag_arg = html_hover_layer( $reo, VALUE => $hint, DELAY => 1000 );
-    $tag_args  .= '  ' . $hint_tag_arg;
+    $tag_args  .= '  ' . "onmouseover='$hint_tag_arg'"; # the handle is the attribute value, it has double quotes
     }
 
   # FIXME: FIX REACTOR TO HAVE SENSIBLE HTML_LINK FUNCTIONS, I.E. CONVERT HINT TO HASHREF!
-  my $disable_on_click = int( $opts->{ 'DISABLE_ON_CLICK' } );
-  if( $confirm !~ /^([^"']+)$/ and $disable_on_click > 0 )
+  # one onclick only: a disabled link has its "return false" above, else
+  # confirm, else disable on click
+  if( ! $opts->{ 'DISABLED' } and $confirm ne '' )
+    {
+    # the text goes into a javascript string inside a double-quoted attribute
+    $confirm =~ s/\\/\\\\/g;
+    $confirm =~ s/'/\\'/g;
+    $confirm =~ s/\r\n?|\n/\\n/g; # any line ending, a raw one breaks the string
+    $confirm =~ s/&/&amp;/g;
+    $confirm =~ s/"/&quot;/g;
+    $tag_args .= '  ' . qq( onclick="return confirm('$confirm');" );
+    }
+  elsif( ! $opts->{ 'DISABLED' } and $disable_on_click > 0 )
     {
     my $class_off = $opts->{ 'DISABLE_ON_CLICK_CLASS' };
     $tag_args .= '  ' . "data-class-on='$class' data-class-off='$class_off'";
@@ -468,7 +512,8 @@ array_ref is list of hash refs with this content:
     LABEL_TD_ARGS  -- further optional arguments for the label TD
     TEXT           -- text to show when tab handle clicked
     TEXT_TD_ARGS   -- TD element args, same as above
-    ON             -- if true, this tab will be initially visible
+    ON             -- if true, this tab will be initially visible, only one
+                      entry may be ON
     TAB_ID         -- html id for this tab
 
 opt_hash is inline with the following items:
@@ -545,7 +590,7 @@ sub html_tabs_table
     # a class in LABEL_TD_ARGS goes to the handle classes, so the label TD gets
     # only one class attribute and the class is kept when the tab is switched
     my $handle_class;
-    $handle_class = $2 if $label_args =~ s/\bclass\s*=\s*(['"])(.*?)\1//i or $label_args =~ s/\bclass\s*=\s*()([^\s>'"]+)//i;
+    $handle_class = $2 if $label_args =~ s/(?<![\w-])class\s*=\s*(['"])(.*?)\1//i or $label_args =~ s/(?<![\w-])class\s*=\s*()([^\s>'"]+)//i;
 
     my ( $tab_handle, $tab_html ) = $tab->add( "<TD $text_args>$text</td>", TYPE => 'TR', ON => $on, TAB_ID => $tab_id, HANDLE_CLASS => $handle_class );
 

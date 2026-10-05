@@ -577,7 +577,7 @@ any link arguments or forwards are used
 =item C<HTML_DIRS>     list (or single string) of template roots, default
 C<APP_ROOT/html>; see Web::Reactor::Preprocessor::Tree for the layout
 
-=item C<ACTIONS_DIRS>  list of action file directories, default
+=item C<ACTIONS_DIRS>  list (or single string) of action file directories, default
 C<APP_ROOT/actions> (Web::Reactor::Actions::Files)
 
 =item C<ACTIONS_PKGS>  package prefix for action files, default
@@ -651,14 +651,15 @@ Returns if the request is POST, otherwise renders page C<epostrequired>.
 
 =over 4
 
-=item C<args( %args )>
+=item C<argsx( %args )>, alias C<args( %args )>
 
 Returns the safe input token for C<%args> (keys uppercased), ready to be used
-as the C<_> parameter.
+as the C<_> parameter. Web::Reactor keeps C<argsx()> and has its own
+C<args()>, which stores the data in a link session instead.
 
-=item C<args_type( $type, %args )>
+=item C<argsx_type( $type, %args )>, alias C<args_type( $type, %args )>
 
-Same as C<args()>, C<$type> (here/back/new/none) is accepted for template
+Same as C<argsx()>, C<$type> (here/back/new/none) is accepted for template
 compatibility and ignored, a stateless reactor has nothing to go back to.
 
 =back
@@ -669,7 +670,8 @@ compatibility and ignored, a stateless reactor has nothing to go back to.
 
 =item C<get_user_input_button()>
 
-Finds the first C<BUTTON:NAME> or C<BUTTON:NAME:ID> parameter, returns
+Finds the first C<BUTTON:NAME> or C<BUTTON:NAME:ID> parameter, also an image
+button (C<BUTTON:NAME.X>/C<.Y>) and a repeated one (C<@BUTTON:NAME>), returns
 C<( $name, $id )> in list context, C<$name> in scalar context.
 
 =item C<get_lang()>, C<get_app_name()>, C<get_app_root()>

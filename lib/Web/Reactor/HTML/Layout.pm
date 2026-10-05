@@ -18,7 +18,6 @@ use strict;
 
 use Exception::Sink;
 use Data::Tools;
-use Web::Reactor::HTML::Utils;
 
 use Exporter;
 our @ISA    = qw( Exporter );
@@ -73,11 +72,21 @@ DEMO:
   push @data, {
               PCCL  => [ 'view-name-h', 'view-value-h' ],
               # set only PCCL and skip this row
-              SKIP  => YES,
+              SKIP  => 1,
               # row will also be skipped if missing DATA, regardless of SKIP
               };
 
   $text .= html_table( \@data, ARGS => 'width=100%' );
+
+table options:
+
+  ARGS     -- raw table attributes
+  CLASS    -- table class, used when there are no ARGS
+  TR1, TR2 -- row stripe classes (default tr-1, tr-2)
+  TRH, TDH -- class of the first rendered row and of its cells
+  CCL      -- columns class list for the first rendered row only
+  PCCL     -- columns class list for all rows
+  COMMENT  -- html comment around the table
 
 
 collapse identifier for rows  
@@ -100,7 +109,7 @@ sub html_table
 
   my $t_args;
   $t_args ||= $opt{ 'ARGS' };
-  $t_args ||= 'class=' . $opt{ 'CLASS' } if $opt{ 'CLASS' };
+  $t_args ||= "class='" . $opt{ 'CLASS' } . "'" if $opt{ 'CLASS' };
 
   my $tr1 = $opt{ 'TR1' } || $opt{ 'TR-1' } || 'tr-1';
   my $tr2 = $opt{ 'TR2' } || $opt{ 'TR-2' } || 'tr-2';
@@ -117,18 +126,17 @@ sub html_table
   $text .= "<!--- BEGIN TABLE: $t_cmt --->\n" if $t_cmt;
   $text .= "<table $t_args>\n<tbody>\n";
 
-  my $r_class = $tr1;
+  my $r_class = $tr1; # class of the last rendered row
 
   my $row_num = 0;
-  for my $row ( @$rows )
+  for my $row_in ( @$rows )
     {
+    my $row = $row_in; # a copy, the caller's data is not changed
     my $cols;
-    $r_class = $r_class eq $tr1 ? $tr2 : $tr1;
+    my $row_class = ( $trh and $row_num == 0 ) ? $trh : ( $r_class eq $tr1 ? $tr2 : $tr1 );
     my $r_args;
     my $cid;
     my $display;
-
-    $r_class = $trh if $trh and $row_num == 0;
 
     if ( ! ref( $row ) ) # SCALAR
       {
@@ -146,7 +154,7 @@ sub html_table
     if ( ref( $row ) eq 'ARRAY' )
       {
       $cols  = $row;
-      $r_args = "class='$r_class'";
+      $r_args = "class='$row_class'";
       }
     elsif ( ref( $row ) eq 'HASH' )
       {
@@ -154,26 +162,35 @@ sub html_table
       $display  = "style='display: none'" if $row->{ '-NODISPLAY' };
       $cols     = $row->{ 'DATA'   };
       $cid      = $row->{ 'CID'    };
-      $r_args ||= $row->{ 'ARGS'   };
-      $r_args ||= "class='" . ( $row->{ 'CLASS' } || $r_class ) . "'"; # TODO: FIXME: !!! move to html_element
-      $ccl      = $row->{ 'CCL'  } if $row->{ 'CCL'  };
+      $r_args  = $row->{ 'ARGS'   };
+      # the row CLASS or the stripe class, unless ARGS already sets one
+      my $rc = $row->{ 'CLASS' } || $row_class;
+      $r_args .= " class='$rc'" if $rc ne '' and $r_args !~ /(?<![\w-])class\s*=/i; # TODO: FIXME: !!! move to html_element
       $pccl     = $row->{ 'PCCL' } if $row->{ 'PCCL' };
 
+      # a skipped row sets only PCCL, its own CCL is not used and the table
+      # CCL option stays for the first rendered row
       next if $row->{ 'SKIP' } or ! $cols;
+
+      $ccl      = $row->{ 'CCL'  } if $row->{ 'CCL'  };
       }
     else
       {
       boom "invalid row type, expected HASH or ARRAY reference";
       }
 
-    $r_args .= qq{ data-cid='$cid' $display } if $cid;
+    $r_class = $row_class; # the row is rendered, the stripe moves on
+
+    $r_args .= qq{ data-cid='$cid'} if $cid;
+    $r_args .= " $display"        if $display;
     $text  .= "  <tr $r_args>\n";
 
     $ccl = $pccl if $pccl and ! $ccl; # use permanent cols class list if permanent specified and not local one
 
     my $cn = 0; # column index number
-    for my $cell ( @$cols )
+    for my $cell_in ( @$cols )
       {
+      my $cell = $cell_in; # a copy, the caller's data is not changed
       my $c_class;
       my $c_args;
       my $val;
@@ -190,7 +207,7 @@ sub html_table
         $cell    = hash_uc( $cell );
         $val     = $cell->{ 'DATA' };
         $c_args  = $cell->{ 'ARGS' };
-        $c_args .= " class='" . $cell->{ 'CLASS' } . "'" if $cell->{ 'CLASS' };
+        $c_class = $cell->{ 'CLASS' } if $cell->{ 'CLASS' };
         $c_args .= " width='" . $cell->{ 'WIDTH' } . "'" if $cell->{ 'WIDTH' };
         }
       elsif( ref( $cell ) eq 'ARRAY' )
@@ -205,7 +222,8 @@ sub html_table
         next;
         }
 
-      $c_args ||= "class='" . $c_class . "'";
+      # the cell CLASS or the column class, unless ARGS already sets one
+      $c_args .= " class='$c_class'" if $c_class ne '' and $c_args !~ /(?<![\w-])class\s*=/i;
       $c_args .= qq{ onclick='ctable_row_click( this )' data-cid='$cid'} if $cn == 0 and $cid;
       $text .= "    <td $c_args>$val</td>\n";
       $cn++;
@@ -237,22 +255,24 @@ sub html_layout_grid
   for my $row ( @$data )
     {
     my $row_args;
+    my $cols = $row; # copies, the caller's data is not changed
     if( ref( $row ) eq 'HASH' )
       {
       $row_args = $row->{ 'ARGS' };
-      $row      = $row->{ 'DATA' };
+      $cols     = $row->{ 'DATA' };
       }
     
     $text .= "<tr $row_args>";
-    for my $col ( @$row )
+    for my $col ( @$cols )
       {
       my $col_args;
+      my $val = $col;
       if( ref( $col ) eq 'HASH' )
         {
         $col_args = $col->{ 'ARGS' };
-        $col      = $col->{ 'DATA' };
+        $val      = $col->{ 'DATA' };
         }
-      $text .= "<td $col_args>$col</td>";
+      $text .= "<td $col_args>$val</td>";
       }
     $text .= "</tr>";
     }
@@ -323,7 +343,7 @@ examples:
 <50%=50%>   -- left is left aligned, right is right aligned, equal length
 <=>         -- the same
 >20=>       -- left is right aligned, 20% width, right is right aligned, 80% 
-=1%         -- same as <99=1> or <99%=1%>
+=1%         -- same as 99=1 or 99%=1% (no alignment)
 
 using '==' instead of '=' enables no-word-wrap style
 
@@ -375,7 +395,7 @@ sub html_layout_2lr_flex
   my $fm = shift; # format: '[<>]nn%=nn%[<>]', see html_layout_2lr()
 
   # without a format: left takes the room, right is as narrow as its content
-  return "<div style='display: flex;'><div style='flex: 99; text-align: left; align-content: center;'>$ld</div><div style='flex: 1; text-align: right; white-space: nowrap; align-content: center;'>$rd</div></div>" unless defined $fm;
+  return "<div style='display: flex;'><div style='flex: 99; text-align: left; align-content: center;'>$ld</div><div style='flex: 1; text-align: right; white-space: nowrap; align-content: center;'>$rd</div></div>" unless $fm;
 
   my $la;  # left  align
   my $ra;  # right align
@@ -413,10 +433,36 @@ sub html_layout_2lr_flex
 
   $nw = "white-space: nowrap" if $nw;
 
-  return "<div style='display: flex;'><div style='$lw;$la;$acl;$nw'>$ld</div><div style='$rw;$ra;$acr;$nw'>$rd</div></div>";
+  my $ls = join '; ', grep { $_ ne '' } ( $lw, $la, $acl, $nw );
+  my $rs = join '; ', grep { $_ ne '' } ( $rw, $ra, $acr, $nw );
+
+  return "<div style='display: flex;'><div style='$ls'>$ld</div><div style='$rs'>$rd</div></div>";
 }
 
 ##############################################################################
+
+=pod
+
+html_hbox( $format, @values ), html_vbox( $format, @values )
+
+returns a flex box (row or column) with one cell per value. the format has
+one spec per cell, separated by "," or ";":
+
+  class:spec  -- optional class name for the cell, before ":"
+  <  >  |     -- text align left, right, center
+  n           -- no wrap
+  w           -- wrap
+  p           -- preformatted (white-space: pre)
+  =           -- the cell takes all the free room
+  xN          -- the spec is used for N cells
+
+cells beyond the specs get flex 1, centered content.
+
+example:
+
+  html_hbox( 'label:<n,=,btn:>x2', $label, $text, $ok, $cancel );
+
+=cut
 
 my %__HTML_BOX_ALIGN = (
                        '>' => 'text-align: right; ',
@@ -438,7 +484,8 @@ sub __html_box_fmt_parse
     {
 #print "    [$f]\n";
     my $arg;
-    $arg .= "class='$1' "            if $f =~ /^([^:]+):/;
+    # the class prefix is taken off first, so its letters are not read as flags
+    $arg .= "class='$1' "            if $f =~ s/^([^:]+)://;
 
     my $wid = 1;
     $wid  = 1000                    if $f =~ /=/;
@@ -476,7 +523,9 @@ sub __html_hbox
   my $c;
   for my $d ( @_ )
     {
-    $text .= "<div $fmt->[$c]>$d</div>\n";
+    # cells beyond the format specs get the default spec
+    my $cf = $fmt->[ $c ] // "style='flex: 1; align-content: center; '";
+    $text .= "<div $cf>$d</div>\n";
     $c++;
     }
   $text .= "</div>\n";

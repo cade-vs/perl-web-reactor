@@ -1,7 +1,7 @@
 /****************************************************************************
 ##
 ##  Web::Reactor application machinery
-##  2014-2022 (c) Vladi Belperchinov-Shabanski "Cade"
+##  2014-2026 (c) Vladi Belperchinov-Shabanski "Cade"
 ##  <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org>
 ##
 ##  LICENSE: GPLv2
@@ -38,13 +38,15 @@ function html_element_hide( elem )
 
 function html_element_toggle( elem )
 {
-  if( elem.style.visibility = "visible" )
+  // the inline value, or the computed one when only css sets it
+  var vis = elem.style.visibility || window.getComputedStyle( elem ).visibility;
+  if( vis == "visible" )
     {
-    html_element_show( elem );
+    html_element_hide( elem );
     }
   else
     {
-    html_element_hide( elem );
+    html_element_show( elem );
     }
 }
 
@@ -122,7 +124,7 @@ function ftree_click( ftree_id, branch_id )
 
   branch_tr.open = ! branch_tr.open;
 
-  var elems = root_table.getElementsByTagName( 'TR' )
+  var elems = root_table.getElementsByTagName( 'TR' );
   var bia = branch_id.split( "." );
 
   for( var i = 0; i < elems.length; i++ )
@@ -147,7 +149,7 @@ function ftree_click( ftree_id, branch_id )
         if( eia.length > bia.length )
           {
           html_block_hide( el );
-          // el.open = false;
+          el.open = false; // a hidden branch shows closed when its parent opens again
           }
         }
       }
@@ -162,7 +164,7 @@ function ctable_row_click( branch_el )
 
 //  branch_el.open = ! branch_el.open;
 
-  var rows = table_el.getElementsByTagName( 'TR' )
+  var rows = table_el.getElementsByTagName( 'TR' );
   var branch_cid = branch_el.dataset.cid;
   var bia = branch_cid.split( "." );
 
@@ -213,12 +215,11 @@ function current_date( fmt )
   var now = new Date();
   var d = now.getDate();
   var m = now.getMonth() + 1;
-  var y = now.getYear();
-  if( y < 1000 ) y += 1900; // stupid msie shit
+  var y = now.getFullYear();
   if( d < 10 ) d = '0' + d;
   if( m < 10 ) m = '0' + m;
   
-  fmt = fmt.substr( 0, 3 );
+  fmt = ( fmt || 'DMY' ).substr( 0, 3 );
   if( fmt == "MDY" )
     return m + '.' + d + '.' + y;
   if( fmt == "YMD" )
@@ -241,7 +242,6 @@ function current_time()
 
 function current_utime( fmt )
   {
-  var now = new Date();
   return current_date( fmt ) + ' ' + current_time();
   }
 
@@ -289,15 +289,17 @@ function reactor_tab_activate_id( tab_id )
   }
 
 // removes the classes in "rm" and adds the ones in "add" (space separated),
-// other classes of the element are kept
+// other classes of the element, and the ones in data-class-keep, are kept
 function reactor_class_swap( el, rm, add )
   {
   if( ! el ) return;
   var r = ( rm  || "" ).split( /\s+/ );
   var a = ( add || "" ).split( /\s+/ );
   var z;
+  var k = ( el.dataset && el.dataset.classKeep || "" ).split( /\s+/ ); // classes which always stay
   for( z = 0; z < r.length; z++ ) if( r[z] ) el.classList.remove( r[z] );
   for( z = 0; z < a.length; z++ ) if( a[z] ) el.classList.add( a[z] );
+  for( z = 0; z < k.length; z++ ) if( k[z] ) el.classList.add( k[z] );
   }
 
 function reactor_tab_activate( tab )
@@ -322,7 +324,7 @@ function reactor_tab_activate( tab )
   reactor_class_swap( q( tab.dataset.handleId ), coff, con );
   if( pkey )
     {
-    sessionStorage.setItem( 'TABSET_ACTIVE_' + pkey, tab.id );
+    try { sessionStorage.setItem( 'TABSET_ACTIVE_' + pkey, tab.id ); } catch( e ) {} // storage may be blocked
     }
   if( tab.tagName == 'TR' )
     tab.style.display = "table-row";
@@ -334,6 +336,17 @@ function reactor_tab_activate( tab )
   return false;
   }
 
+// called by the tab controller (HTML::Tab finish()) when the page loads: shows
+// the tab remembered in the browser session, if it is still in the page, else
+// default_tab_id (if given)
+function reactor_tab_restore( ctrl_id, default_tab_id )
+  {
+  var tab_id;
+  try { tab_id = sessionStorage.getItem( 'TABSET_ACTIVE_' + ctrl_id ); } catch( e ) {} // storage may be blocked
+  if( ! tab_id || ! q( tab_id ) ) tab_id = default_tab_id;
+  return reactor_tab_activate_id( tab_id );
+  }
+
 /***************************************************************************/
 
 function reactor_form_checkbox_set( el, value )
@@ -343,14 +356,17 @@ function reactor_form_checkbox_set( el, value )
    cb.value   = value ? 1 : 0;
    el.checked = value;
 
-   var onchange = cb.getAttribute( 'ONCHANGE' );
-   if( onchange )
-     {
-     if( is_msie )
-       onchange();
-     else
-       eval( onchange );
-     }
+   reactor_fire_change( cb );
+}
+
+// fires a change event on el, so its onchange handler (and listeners) run
+// with this = el and the event, as on a real change
+function reactor_fire_change( el )
+{
+  if( typeof Event == "function" )
+    el.dispatchEvent( new Event( "change", { bubbles: true } ) ); // bubbles as a real change does
+  else if( el.onchange ) // old msie, no Event constructor
+    el.onchange();
 }
 
 function reactor_form_checkbox_toggle( el )
@@ -366,12 +382,12 @@ function reactor_form_checkbox_toggle_by_id( el_id )
 function reactor_form_checkbox_set_all( form_id, value )
 {
   var arr = q( form_id ).elements;
-  for( z = 0; z < arr.length; z++ )
+  for( var z = 0; z < arr.length; z++ )
     {
     var ch_id = arr[z].dataset.checkboxInputId;
     if( ! ch_id ) continue;
     if( value == -1 )
-      reactor_form_checkbox_toggle( arr[z] );
+      reactor_form_checkbox_set( arr[z], ! arr[z].checked );
     else  
       reactor_form_checkbox_set( arr[z], value );
     }
@@ -403,7 +419,8 @@ function reactor_form_multi_checkbox_toggle_by_id( id )
 
 function reactor_form_multi_checkbox_set( el, cb, new_value )
 {
-  var stages = el.dataset.stages;
+  var stages = +el.dataset.stages; // numbers, not text compare
+  new_value  = +new_value;
   var value = cb.value;
   if( new_value >= stages ) 
     cb.value = 0;
@@ -411,7 +428,7 @@ function reactor_form_multi_checkbox_set( el, cb, new_value )
     cb.value = new_value;  
 
   var kids = el.children;
-  for( z = 0; z < kids.length; z++ )
+  for( var z = 0; z < kids.length; z++ )
     {
     kids[z].style.display = cb.value == z ? "inline" : "none";
     }
@@ -423,16 +440,9 @@ function reactor_form_multi_checkbox_set( el, cb, new_value )
    el.innerHTML = new_label;
 */
 
-  if( new_value != value )
+  if( cb.value != value )
     {
-    var onchange = cb.getAttribute( 'ONCHANGE' );
-    if( onchange )
-      {
-      if( is_msie )
-        onchange();
-      else
-        eval( onchange );
-      }
+    reactor_fire_change( cb );
     }  
 }
 
@@ -454,9 +464,9 @@ function reactor_form_sort_toggle( el, sort_ic_name )
 var reactor_hover_layer;
 var reactor_hover_layer_timeout_id;
 
-function reactor_hover_show( el, hl_name )
+function reactor_hover_show( el, hl_name, event )
   {
-  reactor_hover_show_delay( el, hl_name, 0 );
+  reactor_hover_show_delay( el, hl_name, 0, event );
   }
 
 function reactor_hover_show_delay( el, hl_name, delay, event )
@@ -465,7 +475,7 @@ function reactor_hover_show_delay( el, hl_name, delay, event )
     clearTimeout( reactor_hover_layer_timeout_id );
 
   reactor_hover_layer = q( hl_name );
-  reactor_hover_layer_timeout_id = setTimeout( "reactor_hover_activate()", delay );
+  reactor_hover_layer_timeout_id = setTimeout( reactor_hover_activate, delay );
   reactor_hover_reposition( event );
   el.onmousemove = is_msie ? reactor_hover_reposition_ie : reactor_hover_reposition;
   el.onmouseout  = reactor_hover_hide;
@@ -510,7 +520,7 @@ function reactor_popup_mouse_toggle( el, opt )
     reactor_popup_show( el );
 
   return false;
-};
+}
 
 /*-------------------------------------------------------------------*/
 
@@ -527,7 +537,7 @@ function reactor_popup_mouse_over( el, opt )
     {
     //console.log( "there is open popup, remove all running timeouts and close it" );
     reactor_popup_clear_tos( el );
-    reactor_popup_hide( el ) 
+    reactor_popup_hide( el );
     return false;
     }  
   else
@@ -540,7 +550,7 @@ function reactor_popup_mouse_over( el, opt )
       if( opt.single ) single_popup_layer = el;
       }
     else
-      el.open_to = setTimeout( function() { reactor_popup_show( el ) }, timeout );
+      el.open_to = setTimeout( function() { reactor_popup_show( el ); }, timeout );
     el.onmouseout = function()
                     {
                     //console.log( "mouse out from main element, cancel open timeout, set close timeout" );
@@ -549,7 +559,7 @@ function reactor_popup_mouse_over( el, opt )
                     el.close_to   = setTimeout( function() 
                                                 { 
                                                 //console.log( "close timeout up, hide popup" );
-                                                reactor_popup_hide( el ) 
+                                                reactor_popup_hide( el );
                                                 if( opt.single && single_popup_layer ) single_popup_layer = null;
                                                 }, timeout );
                     
@@ -565,7 +575,7 @@ function reactor_popup_mouse_over( el, opt )
                                               reactor_popup_clear_tos( el );
                                               el.close_to = setTimeout( function() 
                                                                         { 
-                                                                        reactor_popup_hide( el ) 
+                                                                        reactor_popup_hide( el );
                                                                         if( opt.single && single_popup_layer ) single_popup_layer = null;
                                                                         }, timeout );
                                               };
@@ -573,7 +583,7 @@ function reactor_popup_mouse_over( el, opt )
     }  
 
   return false;
-};
+}
 
 function reactor_popup_clear_tos( el )
 {
@@ -589,7 +599,7 @@ function reactor_popup_show( el )
 {
   var class_on = el.dataset.popupClassOn;
   if( class_on )
-    el.className = class_on;
+    reactor_class_swap( el, el.dataset.popupClassOff, class_on );
 
   var popup_layer = reactor_get_popup_layer( el );
   popup_layer.style.display  = "block";
@@ -604,7 +614,7 @@ function reactor_popup_hide( el )
 {
   var class_off = el.dataset.popupClassOff;
   if( class_off )
-    el.className = class_off;
+    reactor_class_swap( el, el.dataset.popupClassOn, class_off );
 
   var popup_layer = reactor_get_popup_layer( el );
   popup_layer.style.display = "none";
@@ -631,8 +641,8 @@ function reactor_reposition_div_next_to( div, el )
   var doc  = document.documentElement;
   var body = document.body;
 
-  const vw = Math.max( doc && doc.clientWidth  || 0, window.innerWidth  || 0 )
-  const vh = Math.max( doc && doc.clientHeight || 0, window.innerHeight || 0 )
+  var vw = Math.max( doc && doc.clientWidth  || 0, window.innerWidth  || 0 );
+  var vh = Math.max( doc && doc.clientHeight || 0, window.innerHeight || 0 );
 
   var dw = div.offsetWidth;
   var dh = div.offsetHeight;
@@ -645,8 +655,8 @@ function reactor_reposition_div_next_to( div, el )
   var scrollLeft = (doc && doc.scrollLeft || body && body.scrollLeft || 0);
   var scrollTop  = (doc && doc.scrollTop  || body && body.scrollTop  || 0);
 
-  const pw = vw + scrollLeft;
-  const ph = vh + scrollTop;
+  var pw = vw + scrollLeft;
+  var ph = vh + scrollTop;
 
   var left = (ex + 16 + dw) > pw ? pw - dw - 16 : ex;
   var top  = (ey + 16 + dh) > ph ? ph - dh - 16 : ey;
@@ -662,8 +672,8 @@ function reactor_reposition_div_to_xy( div, x, y )
   var doc  = document.documentElement;
   var body = document.body;
 
-  const vw = Math.max( doc && doc.clientWidth  || 0, window.innerWidth  || 0 )
-  const vh = Math.max( doc && doc.clientHeight || 0, window.innerHeight || 0 )
+  var vw = Math.max( doc && doc.clientWidth  || 0, window.innerWidth  || 0 );
+  var vh = Math.max( doc && doc.clientHeight || 0, window.innerHeight || 0 );
 
   var dw = div.offsetWidth;
   var dh = div.offsetHeight;
@@ -671,14 +681,14 @@ function reactor_reposition_div_to_xy( div, x, y )
   var scrollLeft = (doc && doc.scrollLeft || body && body.scrollLeft || 0);
   var scrollTop  = (doc && doc.scrollTop  || body && body.scrollTop  || 0);
 
-  const pw = vw + scrollLeft;
-  const ph = vh + scrollTop;
+  var pw = vw + scrollLeft;
+  var ph = vh + scrollTop;
 
-  const nx = x + scrollLeft;
-  const ny = y + scrollTop;
+  var nx = x + scrollLeft;
+  var ny = y + scrollTop;
   
-  const left = nx + ( ( nx + 16 + dw ) > pw ? -( 16 + dw ) : 16 );
-  const top  = ny + ( ( ny + 16 + dh ) > ph ? -( 16 + dh ) : 16 );
+  var left = nx + ( ( nx + 16 + dw ) > pw ? -( 16 + dw ) : 16 );
+  var top  = ny + ( ( ny + 16 + dh ) > ph ? -( 16 + dh ) : 16 );
 
   //console.log( "mouse x: " + nx + ", y: " + ny );
   //console.log( "div pos left: " + left + ", top: " + top );
@@ -695,8 +705,8 @@ function reactor_element_disable_on_click( el, timeout )
   el.is_disabled = get_utime() + timeout;
   var con  = el.dataset.classOn;
   var coff = el.dataset.classOff;
-  el.className = coff;
-  el.disabled_to = setTimeout( function() { el.is_disabled = 0; el.className = con; }, timeout * 1000 );
+  reactor_class_swap( el, con, coff );
+  el.disabled_to = setTimeout( function() { el.is_disabled = 0; reactor_class_swap( el, coff, con ); }, timeout * 1000 );
   return true;
 }
 
@@ -728,12 +738,14 @@ function reactor_image_click_loop( img )
 {
   for( var i = 0; i < 32; i++ )
     {
-    if( img.src != img.dataset[ "src-" + i ] ) continue;
+    // the src attribute as written, img.src would be the absolute url
+    if( img.getAttribute( "src" ) != img.dataset[ "src-" + i ] ) continue;
     var ni = img.dataset[ "src-" + ++i ];
     if( ni ) 
       img.src = ni;
     else  
       img.src = img.dataset[ "src-0" ];
+    break;
     }
 }
 
@@ -745,7 +757,7 @@ function date_is_leap_year( year )
     if( year % 100 ) return 1;
     if( year % 400 ) return 0;
     return 1;
-};
+}
 
 var __days_in_month = [
                         [ 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 ],
@@ -795,9 +807,10 @@ function display_cal( dd )
     
   for( var i = 1; i <= date_days_in_month( y, m ); i++ )
     {
-    var ds = y + "." + mm + "." + i;
-    if( dd.dataset.fmt == 'DMY' ) ds =  i + "." + mm + "." + y;
-    if( dd.dataset.fmt == 'MDY' ) ds = mm + "." +  i + "." + y;
+    var di2 = i < 10 ? "0" + i : i; // day, two digits like the month
+    var ds = y + "." + mm + "." + di2;
+    if( dd.dataset.fmt == 'DMY' ) ds = di2 + "." + mm + "." + y;
+    if( dd.dataset.fmt == 'MDY' ) ds = mm + "." + di2 + "." + y;
     var tm = d > 0 && d == i ? "*" : " "; // today mark
     text += "<span class=nz-date onclick='__nz_set( this )' data-date='"+ds+"' data-div-id='"+di+"'> " + ( i < 10 ? " " : "" ) + tm + i + "</span>";
     if( ( wd + i ) % 7 == 0 ) text += "\n";
@@ -824,7 +837,7 @@ function nz_setup_picker( div_id, target_id, dt, fmt, scb )
   var m  = dt.getMonth();
   var d  = dt.getDate();
 
-  dd = q( div_id );
+  var dd = q( div_id );
   dd.dataset.y   = y;
   dd.dataset.m   = m;
   dd.dataset.d   = d;
@@ -841,7 +854,7 @@ function __nz_td( el )
   var dt = new Date( Date.now() );
   dd.dataset.y = dt.getFullYear();
   dd.dataset.m = dt.getMonth();
-  dd.dataset.d = dt.getDate();;
+  dd.dataset.d = dt.getDate();
   display_cal( dd );
 }
 
@@ -855,7 +868,7 @@ function __nz_pm( el )
 function __nz_nm( el )
 {
   var dd = q( el.dataset.divId );
-  if( ++dd.dataset.m > 11 ) { dd.dataset.y++; dd.dataset.m = 1; }
+  if( ++dd.dataset.m > 11 ) { dd.dataset.y++; dd.dataset.m = 0; }
   display_cal( dd );
 }
 

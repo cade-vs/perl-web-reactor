@@ -221,14 +221,17 @@ sub __process_tag
 #print STDERR "DEBUG: PROCESS PAGE TAG ----------------------- [$pn] [$type] [$tag]:[$tagid]\n";
 
 #print STDERR Dumper( 'PROCESS ARGS --- ' x 7, ( $pn, $type, $tag, $args, $opt, $ctx ) );
-  $self->tagid_push( $tagid );
-
   $ctx = { %$ctx }; # FIXME: CHECK, was opt
   $ctx->{ 'PATH' } .= ", $type$tag";
   my $path = $ctx->{ 'PATH' };
 
   boom "preprocess loop detected, tag [$type$tag] path [$path]" if $ctx->{ 'SEEN:' . $type . $tag }++;
   boom "empty or invalid tag" unless $tag =~ /^[a-zA-Z_\-0-9]+$/;
+
+  # the tag id is popped when this sub is left in any way, also by a boom
+  # from a nested tag, so no stale tag id stays on the stack
+  $self->tagid_push( $tagid );
+  my $tagid_guard = bless [ $self ], 'Web::Reactor::Preprocessor::Tree::__TagIdGuard';
 
   my $reo = $self->reo();
 
@@ -240,7 +243,6 @@ sub __process_tag
     {
     $opt->{ ':REPEAT_PROCESSING_REQUESTED' }++;
     my $nt = substr( $type, 1 );
-    $self->tagid_pop();
     return "<${nt}$tag>"; # shortcut to deferred eval
     }
   elsif( $type eq '$' )
@@ -270,20 +272,14 @@ sub __process_tag
     my $calltext = $reo->act->call( $tag, HTML_ARGS => \%args );
     if( $type eq '&&' )
       {
-      $calltext = "<div class=vframe>" . $calltext . "</div>";
+      $calltext = "<div class='vframe'>" . $calltext . "</div>";
       }
     $text .= $calltext;
-    }
-  else
-    {
-    $reo->log( "debug: invalid tag: [$type$tag]" );
     }
 
 # print STDERR Dumper( 'PROCESS TEXT --- ' x 7, ( $pn, $text, $opt, $ctx ) );
 #print STDERR ">>> $self->process( $pn, $text, $opt, $ctx )\n";
   $text = $self->process_single_pass( $pn, $text, $opt, $ctx );
-
-  $self->tagid_pop();
 
   return $text;
 }
@@ -336,6 +332,11 @@ sub tagid_peek
   return undef unless exists $self->{ 'TAG_ID_STACK' };
   return $self->{ 'TAG_ID_STACK' }->[-1];
 }
+
+# pops the tag id pushed by __process_tag() when it goes out of scope
+package Web::Reactor::Preprocessor::Tree::__TagIdGuard;
+sub DESTROY { $_[0][0]->tagid_pop() }
+package Web::Reactor::Preprocessor::Tree;
 
 ##############################################################################
 

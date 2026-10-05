@@ -19,7 +19,7 @@
 ##    perl t/test_reactor_core.pl               -- same, from the distribution root
 ##    perl t/test_reactor_core.pl -v            -- also pass Web::Reactor::Core log() to stderr
 ##
-##  sections 1-12 run against hand-built PSGI environments, section 13 runs a
+##  sections 1-12b run against hand-built PSGI environments, section 13 runs a
 ##  throw-away HTTP::Server::PSGI on a local socket. nothing outside of the
 ##  temporary directory is touched.
 ##
@@ -292,6 +292,8 @@ ok( ! exists $in->{ 'A' }, 'repeated parameter is not also stored as a scalar' )
 ok( ! exists $in->{ 'BAD NAME!' }, 'invalid parameter name is skipped' );
 like( join( '', @LOG ), qr/invalid CGI\/input parameter name/, 'invalid parameter name is logged' );
 
+is( app( env( 'QUERY_STRING' => '0=zero' ) )->get_user_input()->{ '0' }, 'zero', 'a parameter named 0 is kept' );
+
 is( $in->{ 'NUL' }, 'ab', 'NUL bytes are stripped from values' );
 is( $in->{ 'UNI' }, "\x{2603}", 'values are decoded from UTF-8' );
 ok( utf8::is_utf8( $in->{ 'UNI' } ), 'decoded value is a character string' );
@@ -303,6 +305,27 @@ is_deeply( $o->get_safe_input(), {}, 'get_safe_input() is empty in the base clas
 
 # uploads, exercised over a real multipart request in section 13
 is_deeply( app( env() )->get_user_uploads(), {}, 'get_user_uploads() is empty without a body' );
+
+# an upload field with an invalid name is logged and dropped
+{
+my $body = join "\r\n", '--XB', 'Content-Disposition: form-data; name="file"; filename="a.txt"', 'Content-Type: text/plain', '', 'aaa',
+                         '--XB', 'Content-Disposition: form-data; name="bad name"; filename="b.txt"', 'Content-Type: text/plain', '', 'bbb',
+                         '--XB--', '';
+open( my $bfh, '<', \$body ) or die;
+my $up = app( env( 'REQUEST_METHOD' => 'POST', 'CONTENT_TYPE' => 'multipart/form-data; boundary=XB',
+                   'CONTENT_LENGTH' => length( $body ), 'psgi.input' => $bfh ) )->get_user_uploads();
+is_deeply( [ sort keys %$up ], [ 'FILE' ], 'an upload with an invalid field name is dropped' );
+like( join( '', @LOG ), qr/invalid CGI\/input upload name: \[bad name\]/, 'an upload with an invalid field name is logged' );
+}
+}
+
+{
+package TestAppNames;
+our @ISA = ( 'TestApp' );
+sub __input_param_name_check { return $_[1] } # accept every name
+package main;
+my $o = TestAppNames->new( env( 'QUERY_STRING' => 'bad%20name=1&OK=2' ), { DEBUG => 0 } );
+ok( exists $o->get_user_input()->{ 'BAD NAME' }, '__input_param_name_check() can be overridden by a subclass' );
 }
 
 ##############################################################################
@@ -594,7 +617,7 @@ like( $@, qr/subclass Web::Reactor::Core/, 'process_request() must be implemente
 
 ##############################################################################
 ##
-##  section 12b -- res_clear_headers(), run_print_final_debug()
+##  section 12a -- res_clear_headers(), run_print_final_debug()
 ##
 
 {
@@ -608,7 +631,7 @@ ok( eval { $o->run_print_final_debug(); 1 }, 'run_print_final_debug() is a no-op
 
 ##############################################################################
 ##
-##  section 12a -- start time and html ids
+##  section 12b -- start time and html ids
 ##
 
 {
@@ -639,7 +662,7 @@ is( $o2->create_uniq_id(), $o2->get_uniq_id_scope() . '.1', 'the counter is per 
 SKIP:
 {
 eval { require Plack::Test; require HTTP::Request::Common; require Plack::Middleware::Lint; 1 }
-  or skip( 'Plack::Test / Plack::Middleware::Lint not available', 13 );
+  or skip( 'Plack::Test / Plack::Middleware::Lint not available', 14 );
 
 $Plack::Test::Impl = 'Server';
 
@@ -664,7 +687,8 @@ my $app = sub
                   'query: '     . ( $in->{ 'Q' }                     || '' ),
                   'multi: '     . join( ',', @{ $in->{ '@M' } || [] } ),
                   'uni: '       . ( $in->{ 'UNI' }                   || '' ),
-                  'upload: '    . join( ',', map { $_->filename } @{ $up->{ 'FILE' } || [] } );
+                  'upload: '    . join( ',', map { $_->filename } @{ $up->{ 'FILE' } || [] } ),
+                  'upkeys: '    . join( ',', sort keys %$up );
         $s->res_set_cookie( 'given', value => 'yes' );
         $s->render( $s->portray( $out, 'text' ) );
         };
@@ -681,7 +705,8 @@ Plack::Test::test_psgi( Plack::Middleware::Lint->wrap( $app ), sub
                      'Cookie'       => 'sid=cookie-value',
                      'Content-Type' => 'form-data',
                      'Content'      => [ m => 'one', m => 'two',
-                                         file => [ $ufn, 'upload.txt' ] ] ) );
+                                         file => [ $ufn, 'upload.txt' ],
+                                         'bad name' => [ $ufn, 'bad.txt' ] ] ) );
 
     is( $res->code, 200, 'live request succeeds and passes PSGI Lint' );
 
@@ -695,6 +720,7 @@ Plack::Test::test_psgi( Plack::Middleware::Lint->wrap( $app ), sub
     is(   $got{ 'multi'  }, 'one,two',                  'live repeated parameter' );
     is(   $got{ 'uni'    }, "\x{2603}",                 'live UTF-8 parameter'    );
     is(   $got{ 'upload' }, 'upload.txt',               'live file upload'        );
+    is(   $got{ 'upkeys' }, 'FILE',                     'live upload with an invalid field name is dropped' );
 
     like( $res->header( 'Content-Type' ), qr/text\/plain; charset=UTF-8/, 'live response content type' );
     like( $res->header( 'Set-Cookie'   ), qr/given=yes/,                  'live response cookie'       );

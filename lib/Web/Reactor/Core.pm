@@ -495,7 +495,7 @@ sub __import_user_input
   # import plain parameters from GET/POST request
   PARAM_LOOP: for my $n ( keys %$params )
     {
-    unless( __input_param_name_check( $n ) )
+    unless( $self->__input_param_name_check( $n ) )
       {
       $self->log( "error: invalid CGI/input parameter name: [$n]" );
       next;
@@ -542,6 +542,12 @@ sub __import_user_uploads
   my $uploads = $self->plack()->uploads();
   for my $n ( keys %$uploads )
     {
+    unless( $self->__input_param_name_check( $n ) )
+      {
+      $self->log( "error: invalid CGI/input upload name: [$n]" );
+      next;
+      }
+
     my @u = $uploads->get_all( $n );
     $uploads{ uc $n } = \@u; # FIXME: again, uc/lc/asis
     }
@@ -584,7 +590,9 @@ sub __input_param_invalid_value
 
 sub __input_param_name_check
 {
-  return $_[0] =~ /^[A-Za-z0-9\-\_\.\:]+$/o ? $_[0] : undef;
+  my $self = shift;
+
+  return $_[0] =~ /^[A-Za-z0-9\-\_\.\:]+$/o ? 1 : 0; # true also for a name like "0"
 }
 
 ### LOGGING ##################################################################
@@ -849,6 +857,11 @@ Returns the PSGI response array reference. Never dies.
 
 Abstract, see L</REQUEST LIFECYCLE>.
 
+=item C<save()>
+
+Called by C<run()> after C<process_request()> and after the response is
+rendered. Empty here, Web::Reactor saves its changed sessions in it.
+
 =item C<run_print_final_debug()>
 
 Called by C<run()> after the response is built, when the debug level is 2 or
@@ -962,7 +975,8 @@ its link sessions.
 =item C<get_user_uploads()>
 
 Hash reference, uppercase field name to array reference of Plack::Request::Upload
-objects, one entry per field even for a single file.
+objects, one entry per field even for a single file. Field names outside
+C<[A-Za-z0-9_.:-]> are logged and dropped, as for C<get_user_input()>.
 
 =item C<get_user_postdata_fh()>, C<get_user_postdata_body()>
 
@@ -1087,7 +1101,7 @@ public getters.
 
 =item C<__input_param_name_check( $name )>
 
-Returns the name if acceptable, undef otherwise.
+Returns 1 if the name is acceptable, 0 otherwise.
 
 =item C<__input_param_invalid_value( $name, $value )>
 

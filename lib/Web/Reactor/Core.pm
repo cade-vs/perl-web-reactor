@@ -19,7 +19,7 @@ use strict;
 use Storable qw( dclone );
 use Plack::Request;
 use Cookie::Baker;
-use Data::Tools 1.24;
+use Data::Tools 1.53; # the version the whole distribution needs, see Makefile.PL
 use Exception::Sink;
 use Data::Dumper;
 use Encode;
@@ -393,17 +393,17 @@ sub res_set_headers
 
   for my $k ( keys %h )
     {
-    my $v = $h{ $k };
-    my $k = lc $k;
-    boom "invalid output headers [$k] value [$v]" if ( $k . $v ) =~ /[\r\n]/;
+    my $v  = $h{ $k };
+    my $lk = lc $k;
+    boom "invalid output headers [$lk] value [$v]" if ( $lk . $v ) =~ /[\r\n]/;
 
-    if( $k eq 'status' )
+    if( $lk eq 'status' )
       {
       $self->res_set_status( $v );
       }
     else
       {
-      $self->{ 'OUT' }{ 'HEADERS' }{ $k } = $v;
+      $self->{ 'OUT' }{ 'HEADERS' }{ $lk } = $v;
       }
     }
 
@@ -489,7 +489,6 @@ sub __import_user_input
   my $input_user_hr = {};
 
   my $params = $self->plack()->parameters(); # input parameters, GET + POST
-  my %params; # preprocessed parameters
 
   # check valid params names and preprocess multiple values
   # import plain parameters from GET/POST request
@@ -520,7 +519,8 @@ sub __import_user_input
       $input_user_hr->{ $n } = $v[0];
       }
 
-    $self->log_debug( "debug: input param [$n] value [$v[0]] array [@v]" );
+    my @lv = $n =~ /pass/i ? ( '***' ) x @v : @v; # passwords stay out of the log
+    $self->log_debug( "debug: input param [$n] value [$lv[0]] array [@lv]" );
     }
 
   return $input_user_hr;

@@ -35,6 +35,7 @@ use lib 'lib';    # when run from the distribution root
 
 use Test::More;
 use File::Temp qw( tempdir tempfile );
+use Cwd;
 use File::Path qw( make_path );
 use Encode;
 use Data::Tools;
@@ -107,12 +108,20 @@ diag( "Data::Tools::Crypto::Symmetric not installed, safe input / forward tests 
 ##  html/default/inc.html                 root include
 ##  html/default/admin/users/index.html   nested page showing hold x
 ##  html/default/withact/index.html       page calling an action tag
-##  html/default/epostrequired/index.html page rendered by require_post_method()
+##  html/default/epostrequired/index.html require_post_method() page
 ##  html/default/empty/index.html         empty page file
 ##  html/bg/main/index.html               language override of the root page
-##  actions/*.pm                          Files dispatcher actions (default)
-##  lib/Web/Reactor/Actions/testreflex/   Packages dispatcher action
+##  actions/*.pm                          Files dispatcher actions (default),
+##                                        broken ones too (syntax, missing
+##                                        method, no main)
+##  actions2/second.pm                    second ACTIONS_DIRS directory
+##  actions3/edited.pm                    action edited between requests
+##  lib/Web/Reactor/Actions/testreflex/   Packages dispatcher actions, broken
+##                                        ones too (syntax, missing module or
+##                                        method, no main)
+##  lib/Web/Reactor/Actions/Base/         Packages dispatcher fallback set
 ##  trans/bg/ui.tr                        translation file
+##  trans/single.tr                       single translation file (TRANS_FILE)
 ##
 
 my $ROOT = tempdir( CLEANUP => 1 );
@@ -241,7 +250,7 @@ sub env
 sub get { my $qs = shift; return env( 'QUERY_STRING' => $qs, 'REQUEST_URI' => "/app?$qs" ) }
 
 # POST request with a query string and an empty body
-sub post { return env( 'REQUEST_METHOD' => 'POST', 'CONTENT_LENGTH' => 0, 'QUERY_STRING' => shift ) }
+sub post { my $qs = shift; return env( 'REQUEST_METHOD' => 'POST', 'CONTENT_LENGTH' => 0, 'QUERY_STRING' => $qs, 'REQUEST_URI' => "/app?$qs" ) }
 
 # base config, extra keys override
 sub cfg
@@ -459,6 +468,13 @@ eval { $o->render_page( 'empty' ) };
 like( $@, qr/returns empty text/, 'render_page() booms on an empty page' );
 
 $o = app();
+eval { $o->render_data( 'raw data', 'text' ) };
+like( $@, qr/RENDER/, 'render_data() sinks RENDER' );
+is( $o->res_get_body(), 'raw data', 'render_data() body is the data as given' );
+my %rdh = @{ $o->res_get_headers_ar() };
+like( $rdh{ 'content-type' }, qr{^text/plain}, 'render_data() content type from the portray type' );
+
+$o = app();
 $o->html_hold_set( foo => 'direct' );
 eval { $o->render_action( 'hello' ) };
 like( $@, qr/RENDER/, 'render_action() sinks RENDER' );
@@ -656,6 +672,10 @@ is_deeply( $o3->{ 'TRANS' }{ 'en' }, {}, 'no files gives an empty translation ta
 
 is_deeply( $o->load_trans_file( "$ROOT/trans/single.tr" ), { only => 'one' }, 'load_trans_file() returns the raw hash' );
 
+my $o5 = app( env(), { LANG => 'en', TRANS_DIRS => undef, TRANS_FILE => undef } );
+is( $o5->load_trans(), 1, 'load_trans() without TRANS_DIRS and TRANS_FILE loads nothing and does not die' );
+is_deeply( $o5->{ 'TRANS' }{ 'en' }, {}, 'no translation sources give an empty translation table' );
+
 my $o4 = app( env(), { LANG => '', TRANS_DIRS => [ "$ROOT/trans" ] } );
 is( $o4->load_trans(), 0, 'load_trans() returns 0 with an empty LANG' );
 ok( ! exists $o4->{ 'TRANS' }, 'load_trans() loads nothing with an empty LANG' );
@@ -741,7 +761,6 @@ is( scalar( () = logs() =~ /action \[nosuchfileaction\] not found in any of the 
 
 # a relative ACTIONS_DIRS works, though @INC has no '.'
 {
-use Cwd;
 my $cwd = getcwd();
 chdir( $ROOT ) or die "cannot chdir [$ROOT]";
 my $second = eval { app( env(), { ACTIONS_DIRS => 'actions2' } )->act->call( 'second' ) };

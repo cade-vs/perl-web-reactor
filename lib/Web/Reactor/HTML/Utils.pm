@@ -145,14 +145,16 @@ options:
 
   ARGS     -- raw table attributes
   CLASS    -- table class, used when there are no ARGS
-  ARGS_TR  -- raw attributes for the rows without their own ARGS or CLASS
+  ARGS_TR  -- raw attributes for the rows without their own ARGS or CLASS, a
+              style in it gets display: none merged for nested rows
   ARGS_TD  -- raw attributes for the cells
 
 a row is a label (scalar) or a hash ref:
 
   LABEL    -- row label
   DATA     -- array ref of sub rows, the row becomes a branch
-  ARGS     -- raw row attributes
+  ARGS     -- raw row attributes, a style in it gets display: none merged
+              for a nested row
   CLASS    -- row class, used when there are no ARGS
 
 =cut
@@ -237,7 +239,15 @@ sub __html_ftree_branch
 
     # $label = "($row_id) $label"; # DEBUG
 
-    my $hidden = $level > 0 ? "style='display: none'" : undef;
+    # nested rows start hidden: into a style already in the row args (quoted
+    # or not), so the row has only one style attribute
+    my $hidden = '';
+    if( $level > 0 )
+      {
+      $r_args =~ s/(?<![\w-])style\s*=\s*(['"])/style=$1display: none; /i
+        or $r_args =~ s/(?<![\w-])style\s*=\s*([^\s'">]+)/style='display: none; $1'/i
+        or $hidden = "style='display: none'";
+      }
     my $pad = $level * 6 + 1;
     my $cell = html_layout_2lr( '&nbsp;', $label, "$pad=<" );
 
@@ -249,7 +259,7 @@ sub __html_ftree_branch
       }
     else
       {
-      $html .= "<tr id='$row_id' $hidden $r_args><td $c_args>$cell</td></tr>";
+      $html .= "<tr id='$row_id' $r_args $hidden><td $c_args>$cell</td></tr>";
       }
 
     $html .= "\n";
@@ -262,7 +272,7 @@ sub __html_ftree_branch
 
 =pod
 
-collapsable rows table
+collapsable rows table, NOT IMPLEMENTED YET, html_ctable() booms when called
 
 first level items are always visible, click on cell1 on each row will show
 or hide all nested rows. visually collapsed rows will not be indented by
@@ -317,24 +327,40 @@ DEMO:
 
 =cut
 
-# FIXME: not implemented yet, returns nothing
+# FIXME: not implemented yet
 sub html_ctable
 {
   my $data = shift;
   my $opt  = shift;
 
-  my $table = [];
-
-  for my $row ( @$data )
-    {
-
-
-
-    }
+  boom "html_ctable() is not implemented yet";
 }
 
 
 ##############################################################################
+
+=pod
+
+html_hover_layer( $reo, VALUE => $html, %opt ) or html_hover_layer( $reo, $html )
+
+hover (tooltip) layer, shown next to the mouse after DELAY while it stays
+over an element. returns the javascript for the onmouseover attribute of
+the element (the handle); the layer itself goes into the KIT_HTML hold,
+pages show it with <$$kit_html>. in list context returns ( handle, layer
+html ) and nothing goes into the hold.
+
+  my $h = html_hover_layer( $reo, VALUE => 'more info', DELAY => 500 );
+  print "<span onmouseover='$h'>?</span>";
+
+options:
+
+  VALUE  -- layer html (the only argument in the short form)
+  CLASS  -- layer class (default "hover-layer")
+  DELAY  -- milliseconds before the layer shows (default 250, 0 shows at once)
+
+$reo must be a Web::Reactor::Reflex or Web::Reactor object.
+
+=cut
 
 # returns the value for html tag attribute "onmouseover"
 sub html_hover_layer
@@ -353,9 +379,9 @@ sub html_hover_layer
     %opt = ( VALUE => shift() );
     }
 
-  my $value = $opt{ 'VALUE' };
+  my $value = $opt{ 'VALUE' } // ''; # undef would make an unclosed <div/>
   my $class = $opt{ 'CLASS' } || 'hover-layer';
-  my $delay = $opt{ 'DELAY' } || 250;
+  my $delay = int( $opt{ 'DELAY' } // 250 ); # 0 shows the layer at once, a number for the javascript
 
   my $hover_layer_counter = $reo->create_uniq_id();
   my $hover_layer_id = "R_HOVER_LAYER_$hover_layer_counter";
@@ -380,6 +406,35 @@ sub html_hover_layer
 
 ##############################################################################
 
+=pod
+
+html_popup_layer( $reo, VALUE => $html, %opt ) or html_popup_layer( $reo, $html )
+
+popup layer, opened by a click or by the context menu on an element and
+kept open while the mouse is over the element or the layer. returns the
+attributes for the element (the handle: onClick or onContextMenu and
+data-popup-layer-id); the layer itself goes into the KIT_HTML hold, pages
+show it with <$$kit_html>. in list context returns ( handle, layer html )
+and nothing goes into the hold.
+
+  my $h = html_popup_layer( $reo, VALUE => $menu_html, SINGLE => 1 );
+  print "<span $h>menu</span>";
+
+options:
+
+  VALUE    -- layer html (the only argument in the short form)
+  CLASS    -- layer class (default "popup-layer")
+  TYPE     -- CLICK (default) opens on click, CONTEXT opens on the context
+              menu after TIMEOUT
+  TIMEOUT  -- milliseconds the layer stays open after the mouse leaves, and
+              the open delay for CONTEXT (default 200)
+  SINGLE   -- only one SINGLE layer is open at a time, opening another one
+              closes it
+
+$reo must be a Web::Reactor::Reflex or Web::Reactor object.
+
+=cut
+
 sub html_popup_layer
 {
   my $reo = shift;
@@ -396,10 +451,12 @@ sub html_popup_layer
     %opt = ( VALUE => shift() );
     }
 
-  my $value   =    $opt{ 'VALUE'   };
+  my $value   =    $opt{ 'VALUE'   } // ''; # undef would make an unclosed <div/>
   my $class   =    $opt{ 'CLASS'   } || 'popup-layer';
   my $timeout =    $opt{ 'TIMEOUT' } || 200;
-  my $type    =    $opt{ 'TYPE'    } || 'CLICK';
+  my $type    = uc $opt{ 'TYPE'    } || 'CLICK';
+
+  boom "invalid popup TYPE [$type], expected CLICK or CONTEXT" unless $type =~ /^(CLICK|CONTEXT)$/;
   my $single  = !! $opt{ 'SINGLE'  } || 0;
 
   $timeout = 200 unless $timeout > 0;
@@ -407,7 +464,7 @@ sub html_popup_layer
   my $trigger;
   if( $type eq 'CONTEXT' )
     {
-    $trigger = qq( onContextMenu="return reactor_popup_mouse_over( this )" );
+    $trigger = qq( onContextMenu="return reactor_popup_mouse_over( this, { timeout: $timeout, single: $single } )" );
     }
   else # ( $type eq 'CLICK' )
     {
@@ -418,7 +475,7 @@ sub html_popup_layer
   my $popup_layer_id = "R_POPUP_LAYER_$popup_layer_id_counter";
 
   my $handle  = qq( $trigger data-popup-layer-id="$popup_layer_id" );
-  my $html    = qq( <div class='$class' id="$popup_layer_id">$value</div> );
+  my $html    = html_element( 'div', $value, class => $class, id => $popup_layer_id ); # escapes the class
 
   if ( wantarray )
     {
@@ -434,6 +491,33 @@ sub html_popup_layer
 
 ##############################################################################
 
+=pod
+
+html_alink( $reo, $type, $html, \%opt, @args )
+
+<a> link to a reactor page or action. the href is made by args_type() of
+the reactor: $type is one of new, new_fr, here, back or none, @args are the
+link parameters (see Web::Reactor args*()). $html is the link content.
+
+  print html_alink( $reo, 'new', 'users', { CLASS => 'btn' }, _PN => 'users' );
+
+options (hash reference):
+
+  ID                      -- element id
+  CLASS                   -- element class
+  HINT                    -- hover layer text, see html_hover_layer()
+  CONFIRM                 -- confirm() question before the link is followed
+  DISABLED                -- the link does nothing, gets class "disabled-button"
+                             and no HINT or CONFIRM
+  DISABLE_ON_CLICK        -- seconds the link is disabled after a click
+  DISABLE_ON_CLICK_CLASS  -- class of the link while it is disabled, swapped
+                             with CLASS
+
+only one onclick is made: DISABLED, else CONFIRM, else DISABLE_ON_CLICK.
+$reo must be a Web::Reactor object (args_type()).
+
+=cut
+
 sub html_alink
 {
   my $reo   =    shift;
@@ -446,7 +530,7 @@ sub html_alink
     {
     boom "missing REO reactor object";
     }
-  boom "html_alink() needs a Web::Reactor::Reflex or Web::Reactor object, got [" . ref( $reo ) . "]" unless $reo->can( 'args_type' );
+  boom "html_alink() needs a Web::Reactor object (args_type), got [" . ref( $reo ) . "]" unless $reo->can( 'args_type' );
 
   my $href = $reo->args_type( $type, @args );
 
@@ -508,7 +592,7 @@ arguments: reactor, array_ref, opt_hash
 
 array_ref is list of hash refs with this content:
 
-    LABEL          -- label text for the this tab handle
+    LABEL          -- label text for this tab handle
     LABEL_TD_ARGS  -- further optional arguments for the label TD
     TEXT           -- text to show when tab handle clicked
     TEXT_TD_ARGS   -- TD element args, same as above
@@ -565,7 +649,7 @@ sub html_tabs_table
   my $class_on  = $opt{ 'LABEL_CLASS_ON' };
   my $class_off = $opt{ 'LABEL_CLASS_OFF' };
 
-  my $tab = new Web::Reactor::HTML::Tab(
+  my $tab = Web::Reactor::HTML::Tab->new(
                                    REO_REACTOR => $reo,
                                    CLASS_ON    => $class_on,
                                    CLASS_OFF   => $class_off,
@@ -592,7 +676,7 @@ sub html_tabs_table
     my $handle_class;
     $handle_class = $2 if $label_args =~ s/(?<![\w-])class\s*=\s*(['"])(.*?)\1//i or $label_args =~ s/(?<![\w-])class\s*=\s*()([^\s>'"]+)//i;
 
-    my ( $tab_handle, $tab_html ) = $tab->add( "<TD $text_args>$text</td>", TYPE => 'TR', ON => $on, TAB_ID => $tab_id, HANDLE_CLASS => $handle_class );
+    my ( $tab_handle, $tab_html ) = $tab->add( "<TD $text_args>$text</TD>", TYPE => 'TR', ON => $on, TAB_ID => $tab_id, HANDLE_CLASS => $handle_class );
 
     push @label_td, "<TD $label_args $tab_handle>$label</TD>";
     push @text_td,  $tab_html;

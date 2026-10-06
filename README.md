@@ -1,6 +1,6 @@
 # NAME
 
-Web::Reactor perl-based web application machinery.
+Web::Reactor - perl-based web application machinery
 
 # SYNOPSIS
 
@@ -42,7 +42,7 @@ Startup PLACK/PSGI script example (RECOMMENDED):
 
     my $app = sub {
       my $env = shift;
-      my $reactor = new Web::Reactor( $env, \%cfg );
+      my $reactor = Web::Reactor->new( $env, \%cfg );
       return $reactor->run();
     };
 
@@ -53,14 +53,14 @@ Or with reverse proxy (nginx): plackup --server Starman -p 5000 app.psgi
 
 # INTRODUCTION
 
-Web::Reactor is a perl module which automates as much as possible of the all
+Web::Reactor is a perl module which automates as much as possible of all the
 routine tasks when implementing web applications, interactive sites, etc.
-Main task is to handle all the repetative work and adding more comfortable
+Main task is to handle all the repetitive work and adding more comfortable
 functionality like:
 
     * setting and recognising web browser cookies (for sessions or other data)
     * handling user and page sessions (storage, cookie management, etc.)
-    * hiding html link data and forms data to rise page-to-page transfer safety.
+    * hiding html link data and forms data to raise page-to-page transfer safety.
     * preprocessing of text/html, including hiding data, calling actions etc.
     * on-demand loading of 'actions', perl code modules to handle dynamic pages.
 
@@ -270,7 +270,7 @@ So the packages tried in this example will be:
     Web::Reactor::Actions::Core::test_action
 
 The first set which has the action wins, this is used to allow overriding of
-standard modules or modules you dont have write access to.
+standard modules or modules you don't have write access to.
 
 Another way to call a module is directly from another module code with:
 
@@ -291,7 +291,7 @@ The action file (Actions::Files) will look like this:
       return $result_data; # usually html text
     }
 
-$html\_args is hashref with all args give inside the html code if this action
+$html\_args is hashref with all args given inside the html code if this action
 is called from a html text. If you look the example above:
 
     <&test_action arg1=val1 arg2=val2 flag1 flag2...>
@@ -403,15 +403,17 @@ Upon creation, Web::Reactor instance gets hash with config entries/keys.
 
 ## Optional Config Entries (with defaults)
 
-    LIB_DIRS                  -- Lib directories, added to @INC (default: ["$APP_ROOT/lib"])
+    LIB_DIRS                  -- Lib directories list (or single string), added to @INC (default: ["$APP_ROOT/lib"])
     ACTIONS_DIRS              -- Action file dirs, Actions::Files (default: ["$APP_ROOT/actions"])
     ACTIONS_PKGS              -- Action package prefix, Actions::Files (default: "reactor::actions::")
     ACTIONS_SETS              -- Action sets, Actions::Packages (default: [$APP_NAME, 'Base', 'Core'])
     HTML_DIRS                 -- HTML template dirs, each with <lang>/ and default/
                                  subdirs (default: ["$APP_ROOT/html"])
     SESS_VAR_DIR              -- Session storage dir (default: "$APP_ROOT/var")
+    SESS_CREATE_TIMEOUT       -- seconds create() keeps trying new session ids on a collision (default: 5)
+    SESS_CREATE_TIMEOUT_COUNT -- tries before create() gives up (default: 1023)
     DEBUG                     -- Debug level 0-4 (default: 0)
-    COOKIE_NAME               -- Session cookie name (default: "${APP_NAME}_cookie")
+    COOKIE_NAME               -- Session cookie name, lowercased (default: "${APP_NAME}_cookie")
     COOKIE_PATH               -- Cookie path (default: derived from REQUEST_URI)
     USER_SESSION_EXPIRE       -- Session timeout in seconds (default: 600)
     LANG                      -- Language code for translations (default: none)
@@ -450,9 +452,9 @@ documentation, see the method source code and examples in the demo/ directory.
 ## Input Data Functions
 
     get_user_input()        -- Get all user (unsafe) input from request
-    get_safe_input()        -- Get safe input from hidden form fields
+    get_safe_input()        -- Get safe input resolved from the _ token (links and forms)
     param( @names )         -- Get and cache safe input parameters
-    param_unsafe( @names )  -- Get unsafe user input
+    param_unsafe( @names )  -- Get and cache unsafe user input parameters
     param_peek( @names )    -- Get safe input without caching
     param_save( @names )    -- Get, cache, and save to page session
     get_input_button()      -- Get which form button was clicked
@@ -502,7 +504,7 @@ documentation, see the method source code and examples in the demo/ directory.
     forward_new( %data )    -- Forward to new page
     forward_here( %data )   -- Forward staying on same page
     forward_back( %data )   -- Forward returning to caller
-    forward_url( $url )     -- Forward to absolute URL (302 redirect)
+    forward_url( $url )     -- Forward to a URL, relative or absolute (302 redirect)
 
 ## HTML and Form Functions
 
@@ -516,7 +518,8 @@ documentation, see the method source code and examples in the demo/ directory.
 ## Login/Logout Functions
 
     is_logged_in()          -- Check if user is logged in
-    login( $user_ident )    -- Mark user as logged in, replaces the cookie session
+    login( $user_ident )    -- Mark user as logged in, replaces the cookie session,
+                               without an ident there is no user hold
     logout()                -- Log out current user, new user and cookie sessions
     need_login()            -- Require login, forward to login page
 
@@ -856,10 +859,15 @@ Web::Reactor requires the following Perl modules:
 
     * Plack 1.0000+          -- PSGI web framework
     * Cookie::Baker 0.001+   -- Cookie handling
-    * Data::Tools 1.24+      -- Data manipulation utilities
+    * Data::Tools 1.53+      -- Data manipulation utilities
     * Exception::Sink 0.01+  -- Exception handling
     * Crypt::PRNG            -- session and link ids (CryptX)
     * Data::Tools::Crypto    -- cry() and rsa() plugs, ChaCha20-Poly1305 and RSA (CryptX)
+
+## CPAN Modules (optional)
+
+    * JavaScript::QuickJS    -- runs the javascript tests (t/test_reactor_js.pl),
+                                skipped without it
 
 ## GitHub Repositories
 
@@ -871,7 +879,7 @@ Web::Reactor requires the following Perl modules:
 
 ## Perl Version
 
-    Minimum: Perl 5.10.0
+    Minimum: Perl 5.10.1 (use parent)
     Tested:  Perl 5.20, 5.24, 5.28, 5.32, 5.36
 
 # DEMO APPLICATION
@@ -900,7 +908,7 @@ Web::Reactor for its main web interface:
 
     Vladi Belperchinov-Shabanski "Cade"
 
-    <cade@bis.bg> <cade@cpan.org> <shabanski@gmail.com>
+    <cade@noxrun.com> <cade@bis.bg> <cade@cpan.org> <shabanski@gmail.com>
 
     http://cade.noxrun.com
 

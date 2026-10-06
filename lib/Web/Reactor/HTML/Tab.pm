@@ -102,11 +102,21 @@ sub add
   my $handle;
   my $text;
 
-  my $display = $on ? '' : "style='display: none;'";
+  # a hidden tab: display none goes into a style attribute already in ARGS
+  # (quoted or not), so the element has only one (a browser keeps the first
+  # and drops the rest)
+  my $display = '';
+  if( ! $on )
+    {
+    $args =~ s/(?<![\w-])style\s*=\s*(['"])/style=$1display: none; /i
+      or $args =~ s/(?<![\w-])style\s*=\s*([^\s'">]+)/style='display: none; $1'/i
+      or $display = "style='display: none;'";
+    }
   my $handle_class = join ' ', grep { $_ ne '' } ( $handle_extra, $on ? $class_on : $class_off );
 
   my $keep = $handle_extra ne '' ? " data-class-keep='$handle_extra'" : ''; # kept by the tab switch
-  $handle = qq{ class='$handle_class'$keep id='$handle_id' onclick='return reactor_tab_activate_id( "$tab_id" )' };
+  my $hc   = $handle_class ne '' ? " class='$handle_class'"           : ''; # no empty class attribute
+  $handle = qq{$hc$keep id='$handle_id' onclick='return reactor_tab_activate_id( "$tab_id" )' };
   $text   = qq{ <$et id='$tab_id' class='$class' data-controller-id='$tab_controller_id' data-handle-id='$handle_id' $display $args >$content</$et> };
 
   return ( $handle, $text );
@@ -238,7 +248,8 @@ element which switches to this tab, and the tab html where the tab goes.
   HANDLE_CLASS  -- other handle classes, kept when the tab is switched
   TAB_ID        -- tab element id (default generated)
   HANDLE_ID     -- handle element id (default generated)
-  ARGS          -- raw html attributes for the tab element, not checked
+  ARGS          -- raw html attributes for the tab element, not checked. a
+                   hidden tab gets display: none merged into a style in it
 
 Ids allow A-Z a-z 0-9 _ - . : only, classes anything but quotes, < > & and \.
 Both boom on anything else.

@@ -4,6 +4,18 @@ Changes
 README
 README.md
 Makefile.PL
+demo/README.txt
+demo/html/default/page_eexpired.html
+demo/html/default/page_einvalid.html
+demo/html/default/page_grid.html
+demo/html/default/page_index.html
+demo/html/default/page_view.html
+demo/lib/Web/Reactor/Actions/Base/expire_hint.pm
+demo/lib/Web/Reactor/Actions/demo/getimg.pm
+demo/lib/Web/Reactor/Actions/demo/grid.pm
+demo/lib/Web/Reactor/Actions/demo/test1.pm
+demo/lib/Web/Reactor/Actions/demo/view.pm
+htdocs/index.cgi
 htdocs/reactor.js
 lib/Web/Reactor/Actions/Core/test.pm
 lib/Web/Reactor/Actions/Files.pm
@@ -23,5 +35,6 @@ lib/Web/Reactor/Sessions/Filesystem.pm
 lib/Web/Reactor/Sessions.pm
 lib/Web/Reactor/Utils.pm
 t/test_reactor_core.pl
+t/test_reactor_js.pl
 t/test_reactor.pl
 t/test_reactor_reflex.pl

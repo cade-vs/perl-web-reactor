@@ -13,7 +13,7 @@ package Web::Reactor::Sessions;
 use strict;
 use Exception::Sink;
 use Crypt::PRNG;
-use Data::Tools 1.24;
+use Data::Tools 1.53; # the version the whole distribution needs, see Makefile.PL
 
 use parent 'Web::Reactor::Base';
 
@@ -58,7 +58,7 @@ sub create
   my $psid = shift; # parent sid
   my $len  = shift || 73; # 21st prime :)
 
-  boom "Web::Reactor::Sessions::create: invalid type, expected ALPHANUMERIC, got [$type]" unless $type =~ /^[A-Z0-9]+$/;
+  boom "Web::Reactor::Sessions::create: invalid session type [$type], expected one of " . join( ' ', sort keys %SESSION_TYPES ) unless exists $SESSION_TYPES{ $type };
   boom "Web::Reactor::Sessions::create: invalid length, expected len >= $MIN_SES_ID_LEN, got [$len]" unless $len >= $MIN_SES_ID_LEN;
 
   my $cfg  = $self->cfg();

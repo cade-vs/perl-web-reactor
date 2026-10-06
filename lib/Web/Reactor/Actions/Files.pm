@@ -41,8 +41,9 @@ sub __find_code_by_name
   my $reo = $self->reo();
   my $cfg = $self->cfg();
 
-  my $dirs = $cfg->{ 'ACTIONS_DIRS' } || [ $cfg->{ 'APP_ROOT' } . '/actions' ];
-  $dirs = [ $dirs ] unless ref( $dirs ); # a single directory, as LIB_DIRS and HTML_DIRS allow
+  my $dirs = $cfg->{ 'ACTIONS_DIRS' };
+  $dirs = [ $dirs ] if ! ref( $dirs ) and $dirs; # a single directory, as LIB_DIRS and HTML_DIRS allow
+  $dirs = [ $cfg->{ 'APP_ROOT' } . '/actions' ] if ! $dirs or ! @$dirs; # nothing specified, the default
   my $pkgs = $cfg->{ 'ACTIONS_PKGS' } || 'reactor::actions::';
 
   my $found;

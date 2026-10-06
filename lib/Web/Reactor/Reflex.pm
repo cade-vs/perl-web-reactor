@@ -14,7 +14,7 @@ use strict;
 
 use parent 'Web::Reactor::Core';
 
-use Data::Tools 1.24;
+use Data::Tools 1.53; # the version the whole distribution needs, see Makefile.PL
 use Exception::Sink;
 use Data::Dumper;
 
@@ -404,7 +404,7 @@ sub load_trans
 
   my $lang = lc $cfg->{ 'LANG' };
 
-  return 0 if $lang !~ /^[a-z][a-z]$/; # FIXME: move to init check! verify hash etc. data::tools
+  return 0 if $lang !~ /^[a-z][a-z]$/; # no LANG, nothing to load (new() allows nothing else)
 
   $self->{ 'TRANS' }{ 'LANG' } = $lang;
 
@@ -412,7 +412,7 @@ sub load_trans
 
   my $tr = $self->{ 'TRANS' }{ $lang } = {};
 
-  # FIXME: TRANS_DIRS may be undef (dies on deref below) and TRANS_FILE may be undef (-e warns)
+  # both are optional, with neither there is nothing to load
   my $trans_dirs = $cfg->{ 'TRANS_DIRS' };
   my $trans_file = $cfg->{ 'TRANS_FILE' };
 
@@ -583,7 +583,7 @@ C<APP_ROOT/actions> (Web::Reactor::Actions::Files)
 =item C<ACTIONS_PKGS>  package prefix for action files, default
 C<reactor::actions::> (Web::Reactor::Actions::Files)
 
-=item C<LIB_DIRS>      extra directories pushed to C<@INC>, default
+=item C<LIB_DIRS>      extra directories list (or single string) pushed to C<@INC>, default
 C<APP_ROOT/lib> (Web::Reactor::Actions::new(), for both action loaders)
 
 =item C<ACTIONS_SETS>  action set search order, default C<( APP_NAME, Base, Core )>
@@ -676,7 +676,8 @@ C<( $name, $id )> in list context, C<$name> in scalar context.
 
 =item C<get_lang()>, C<get_app_name()>, C<get_app_root()>
 
-Config accessors, C<get_lang()> returns the language lowercased.
+Config accessors, C<get_lang()> returns LANG from the config (lowercase,
+C<new()> accepts nothing else).
 
 =back
 

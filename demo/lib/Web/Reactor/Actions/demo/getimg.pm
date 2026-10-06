@@ -10,7 +10,6 @@
 package Web::Reactor::Actions::demo::getimg;
 use strict;
 use Data::Dumper;
-use Web::Reactor::HTML::FormEngine;
 
 sub main
 {

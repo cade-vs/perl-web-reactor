@@ -75,6 +75,12 @@ DEMO:
               SKIP  => 1,
               # row will also be skipped if missing DATA, regardless of SKIP
               };
+  push @data, [ \'grid', '123', 'asd' ];          # scalar ref first: row class, then the cells
+  push @data, [ { CID => '1.2' }, '123', 'asd' ]; # hash ref first: row options, then the cells
+  push @data, {
+              '-NODISPLAY' => 1,                                # rendered hidden
+              DATA         => [ { WIDTH => '20%', DATA => 'w' } ], # cell width attribute
+              };
 
   $text .= html_table( \@data, ARGS => 'width=100%' );
 
@@ -88,10 +94,32 @@ table options:
   PCCL     -- columns class list for all rows
   COMMENT  -- html comment around the table
 
+row keys (hash row):
 
-collapse identifier for rows  
-  
+  DATA        -- the cells (array ref), a row without DATA is skipped
+  CLASS       -- row class, else the stripe class
+  ARGS        -- raw row attributes, a class in it wins over the stripe class
+                 and a style in it gets display: none merged for -NODISPLAY
+  CID         -- collapse id, see below
+  CCL, PCCL   -- columns class list for this row / from this row on
+  SKIP        -- skip the row, it only sets PCCL
+  -NODISPLAY  -- the row is rendered hidden (display: none)
+
+cell keys (hash cell):
+
+  DATA   -- cell text
+  CLASS  -- cell class, else the column class
+  ARGS   -- raw cell attributes, a class in it wins over the column class
+  WIDTH  -- cell width attribute
+
+
+collapse identifier for rows
+
   CID=id.id.id+
+
+the first cell of a row with a CID toggles the rows whose CID starts with it
+(ctable_row_click() in js/reactor.js, the page must load it). nested rows
+start visible unless they are also marked -NODISPLAY.
 
 =cut
 
@@ -126,7 +154,7 @@ sub html_table
   $text .= "<!--- BEGIN TABLE: $t_cmt --->\n" if $t_cmt;
   $text .= "<table $t_args>\n<tbody>\n";
 
-  my $r_class = $tr1; # class of the last rendered row
+  my $r_class = $tr2; # class of the last rendered row, so the first one gets TR1
 
   my $row_num = 0;
   for my $row_in ( @$rows )
@@ -182,7 +210,13 @@ sub html_table
     $r_class = $row_class; # the row is rendered, the stripe moves on
 
     $r_args .= qq{ data-cid='$cid'} if $cid;
-    $r_args .= " $display"        if $display;
+    if( $display )
+      {
+      # into a style already in ARGS (quoted or not), so the row has only one style attribute
+      $r_args =~ s/(?<![\w-])style\s*=\s*(['"])/style=$1display: none; /i
+        or $r_args =~ s/(?<![\w-])style\s*=\s*([^\s'">]+)/style='display: none; $1'/i
+        or $r_args .= " $display";
+      }
     $text  .= "  <tr $r_args>\n";
 
     $ccl = $pccl if $pccl and ! $ccl; # use permanent cols class list if permanent specified and not local one
@@ -304,8 +338,8 @@ sub html_layout_hbox_flex
   while( @data )
     {
     my $data = shift @data;
-    my $opt  = shift @opt || 1;
-    $text .= "<div style='flex:$opt; padding: 1em'>$data</div>";
+    my $flex = shift @opt || 1;
+    $text .= "<div style='flex:$flex; padding: 1em'>$data</div>";
     }
   
   $text .= "</div>";
@@ -492,7 +526,7 @@ sub __html_box_fmt_parse
 
     my $sty;
     $sty .= "white-space: nowrap; " if $f =~ /n/i;
-    $sty .= "white-space:   wrap; " if $f =~ /w/i;
+    $sty .= "white-space: normal; " if $f =~ /w/i;
     $sty .= "white-space:    pre; " if $f =~ /p/i;
     $sty .= $__HTML_BOX_ALIGN{ $1 } if $f =~ /([<>\|])/;
 

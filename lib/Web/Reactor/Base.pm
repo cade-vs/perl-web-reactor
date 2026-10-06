@@ -35,6 +35,8 @@ sub new
   return $self;
 }
 
+# for subclasses, not used by the framework itself: adds the given keys (undef)
+# and locks the object keys, so a typo in a key name dies instead of hiding
 sub __lock_self_keys
 {
   my $self = shift;
@@ -80,7 +82,7 @@ sub cfg
 {
   my $self = shift;
 
-  return $self->{ 'CFG' }
+  return $self->{ 'CFG' };
 }
 
 #sub DESTROY

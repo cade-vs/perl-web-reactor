@@ -14,7 +14,7 @@ use strict;
 use List::Util qw( first );
 use Exception::Sink;
 use Data::Dumper;
-use Data::Tools;
+use Data::Tools 1.53; # file_text_load()
 use Web::Reactor::Preprocessor;
 
 use parent 'Web::Reactor::Preprocessor';

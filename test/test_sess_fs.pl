@@ -1,4 +1,19 @@
 #!/usr/bin/perl
+##############################################################################
+##
+##  Web::Reactor application machinery
+##  Copyright (c) 2013-2026 Vladi Belperchinov-Shabanski "Cade"
+##        <cade@noxrun.com>
+##  http://cade.noxrun.com
+##
+##  LICENSE: GPLv2
+##  https://github.com/cade-vs/perl-web-reactor
+##
+##############################################################################
+##
+##  demo script: the Sessions::Filesystem storage
+##
+##############################################################################
 use strict;
 use lib '../lib';
 use lib 'lib';

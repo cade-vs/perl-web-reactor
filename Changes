@@ -1,5 +1,28 @@
 Revision history for Perl extension Web::Reactor
 
+3.33  2026.10.06
+
+    1. Web::Reactor is split in Web::Reactor::Core (PSGI request and
+       response), Web::Reactor::Reflex (stateless: actions, pages, encrypted
+       safe input) and Web::Reactor (sessions, cookies, login), see POD
+    2. uniq ids moved to Core: start_time(), get_uniq_id_scope(), create_uniq_id()
+    3. new Web::Reactor::Actions::Packages loader (ACTIONS_SETS), Actions::Files
+       loads by absolute path and reloads edited actions
+    4. Web::Reactor::Sessions::Dummy and HTML::FormEngine removed
+    5. HTML::Tab: named tab sets, remembered active tab, id and class checks
+    6. HTML::Layout and HTML::Utils fixes: class and style merging with ARGS,
+       html_alink() CONFIRM escaping and HINT, popup and hover layers
+    7. htdocs/reactor.js fixes: change events, tabs, checkboxes, hover layers
+    8. Makefile.PL: "make test" runs t/*.pl, license and author set,
+       Data::Tools 1.53 required
+    9. new tests in t/ and xt/, htdocs/reactor.js tested with JavaScript::QuickJS
+       (t/test_reactor_js.pl, skipped without it), README.md and README
+       generated from the POD
+
+2.13, 2.14
+
+    not recorded here, see the git history
+
 2.12  2022.11.18
 
     1. fixed MANIFEST list missing files

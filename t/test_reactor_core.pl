@@ -189,6 +189,23 @@ is( $o->set_debug( -3 ), 3, 'set_debug() takes absolute value' );
 is( $o->set_debug( 0 ),  0, 'set_debug( 0 ) turns debugging off' );
 is( $o->inc_debug(),     1, 'inc_debug() defaults to step 1' );
 is( $o->inc_debug( 2 ),  3, 'inc_debug( 2 )' );
+
+# debug logging is gated by the level
+$o->set_debug( 0 );
+@LOG = ();
+$o->log_debug( 'quiet' );
+is( scalar @LOG, 0, 'log_debug() logs nothing with debug off' );
+$o->set_debug( 1 );
+$o->log_debug( 'one' );
+like( $LOG[-1], qr/^debug: one$/, 'log_debug() logs with the debug: prefix at level 1' );
+$o->log_debug( 'debug: already' );
+like( $LOG[-1], qr/^debug: already$/, 'log_debug() does not double the prefix' );
+$o->log_debug2( 'two' );
+is( scalar @LOG, 2, 'log_debug2() logs nothing at level 1' );
+$o->set_debug( 2 );
+$o->log_debug2( 'two' );
+like( $LOG[-1], qr/^debug: two$/, 'log_debug2() logs at level 2' );
+$o->set_debug( 0 );
 }
 
 ##############################################################################
@@ -291,6 +308,12 @@ ok( ! exists $in->{ 'A' }, 'repeated parameter is not also stored as a scalar' )
 
 ok( ! exists $in->{ 'BAD NAME!' }, 'invalid parameter name is skipped' );
 like( join( '', @LOG ), qr/invalid CGI\/input parameter name/, 'invalid parameter name is logged' );
+
+# at debug level the parameters are logged, passwords masked
+app( env( 'QUERY_STRING' => 'password=secret-pw&user=u&password=again' ), { DEBUG => 1 } )->get_user_input();
+unlike( join( '', @LOG ), qr/secret-pw|again/, 'debug logging does not log password values' );
+like( join( '', @LOG ), qr/input param \[PASSWORD\] value \[\*\*\*\] array \[\*\*\* \*\*\*\]/, 'debug logging masks every password value' );
+like( join( '', @LOG ), qr/input param \[USER\] value \[u\]/, 'debug logging shows other values' );
 
 is( app( env( 'QUERY_STRING' => '0=zero' ) )->get_user_input()->{ '0' }, 'zero', 'a parameter named 0 is kept' );
 

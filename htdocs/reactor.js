@@ -76,6 +76,8 @@ function html_block_show( block )
 
   if( block.tagName == "TR" && ! is_msie )
     ds = "table-row";
+  else if( block.tagName == "TD" && ! is_msie )
+    ds = "table-cell";
 
   block.style.display = ds;
 }
@@ -87,7 +89,9 @@ function html_block_hide( block )
 
 function html_block_toggle( block )
 {
-  if( block.style.display == "none" )
+  // the inline value, or the computed one when only css hides it
+  var ds = block.style.display || window.getComputedStyle( block ).display;
+  if( ds == "none" )
     {
     html_block_show( block );
     }
@@ -463,6 +467,8 @@ function reactor_form_sort_toggle( el, sort_ic_name )
 
 var reactor_hover_layer;
 var reactor_hover_layer_timeout_id;
+var reactor_hover_layer_x; // last mouse position, the layer is placed again
+var reactor_hover_layer_y; // when it shows, hidden it has no size for the edge check
 
 function reactor_hover_show( el, hl_name, event )
   {
@@ -486,6 +492,7 @@ function reactor_hover_activate()
   clearTimeout( reactor_hover_layer_timeout_id );
   reactor_hover_layer.style.display  = "block";
   reactor_hover_layer.style.position = "absolute";
+  reactor_reposition_div_to_xy( reactor_hover_layer, reactor_hover_layer_x, reactor_hover_layer_y );
   }
 
 function reactor_hover_hide()
@@ -496,6 +503,8 @@ function reactor_hover_hide()
 
 function reactor_hover_reposition( event )
   {
+  reactor_hover_layer_x = event.clientX;
+  reactor_hover_layer_y = event.clientY;
   reactor_reposition_div_to_xy( reactor_hover_layer, event.clientX, event.clientY );
   }
 
@@ -550,7 +559,12 @@ function reactor_popup_mouse_over( el, opt )
       if( opt.single ) single_popup_layer = el;
       }
     else
-      el.open_to = setTimeout( function() { reactor_popup_show( el ); }, timeout );
+      el.open_to = setTimeout( function()
+                               {
+                               if( opt.single && single_popup_layer ) reactor_popup_hide( single_popup_layer );
+                               reactor_popup_show( el );
+                               if( opt.single ) single_popup_layer = el;
+                               }, timeout );
     el.onmouseout = function()
                     {
                     //console.log( "mouse out from main element, cancel open timeout, set close timeout" );
@@ -560,7 +574,7 @@ function reactor_popup_mouse_over( el, opt )
                                                 { 
                                                 //console.log( "close timeout up, hide popup" );
                                                 reactor_popup_hide( el );
-                                                if( opt.single && single_popup_layer ) single_popup_layer = null;
+                                                if( opt.single && single_popup_layer === el ) single_popup_layer = null; // not another one opened meanwhile
                                                 }, timeout );
                     
                     popup_layer.onmouseover = function() 
@@ -576,7 +590,7 @@ function reactor_popup_mouse_over( el, opt )
                                               el.close_to = setTimeout( function() 
                                                                         { 
                                                                         reactor_popup_hide( el );
-                                                                        if( opt.single && single_popup_layer ) single_popup_layer = null;
+                                                                        if( opt.single && single_popup_layer === el ) single_popup_layer = null;
                                                                         }, timeout );
                                               };
                     };
@@ -649,7 +663,6 @@ function reactor_reposition_div_next_to( div, el )
 
   var ex = abs_pos.x;
   var ey = abs_pos.y;
-  var ew = abs_pos.w;
   var eh = abs_pos.h;
 
   var scrollLeft = (doc && doc.scrollLeft || body && body.scrollLeft || 0);
@@ -658,10 +671,9 @@ function reactor_reposition_div_next_to( div, el )
   var pw = vw + scrollLeft;
   var ph = vh + scrollTop;
 
-  var left = (ex + 16 + dw) > pw ? pw - dw - 16 : ex;
-  var top  = (ey + 16 + dh) > ph ? ph - dh - 16 : ey;
-
-  top += eh;
+  // the div goes under the element, so its height counts for the edge check
+  var left = (ex + 16 + dw)      > pw ? pw - dw - 16 : ex;
+  var top  = (ey + eh + 16 + dh) > ph ? ph - dh - 16 : ey + eh;
 
   div.style.left = left + 'px';
   div.style.top  = top  + 'px';

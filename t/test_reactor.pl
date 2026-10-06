@@ -23,8 +23,9 @@
 ##  page and action dispatch) have their own tests, test_reactor_core.pl and
 ##  test_reactor_reflex.pl. this one covers what Web::Reactor adds: session
 ##  storage, cookie/user/page/link sessions, login and logout, the session
-##  state cache, args and forwards, params, and the HTML helpers which need
-##  a live reactor.
+##  state cache, args and forwards, params, the HTML helpers which need a
+##  live reactor, Web::Reactor::Base and the distribution files (MANIFEST,
+##  Makefile.PL).
 ##
 ##  everything runs against a throw-away application tree created under a
 ##  temporary directory, nothing outside of it is touched.
@@ -38,10 +39,11 @@ use lib 'lib';    # when run from the distribution root
 use Test::More;
 use File::Temp qw( tempdir );
 use File::Path qw( make_path );
+use File::Basename qw( dirname );
 use Data::Tools;
 use Data::Dumper;
 
-my $VERBOSE = grep { $_ eq '-v' or $_ eq '--verbose' } @ARGV;
+my $VERBOSE = grep { $_ eq '-v' } @ARGV;
 
 ##############################################################################
 ##
@@ -397,11 +399,20 @@ ok( $@, '_key_to_fn() booms on invalid id component' );
   ok( -e ses_file( $reo, 'PAGE', $page->{ ':SID' }, 'useruseruser' ), 'PAGE session stored under its parent' );
 
   eval { $ses->create( 'bad type' ) };
-  ok( $@, 'create() booms on an invalid type' );
+  like( $@, qr/invalid session type \[BAD TYPE\], expected one of COOK HOLD LINK PAGE USER/, 'create() booms on an invalid type and names the valid ones' );
+  eval { $ses->create( 'XYZ' ) };
+  like( $@, qr/invalid session type \[XYZ\]/, 'create() booms on an unknown upper case type' );
   eval { $ses->create( 'USER', undef, 3 ) };
   ok( $@, 'create() booms on a too short length' );
   eval { $ses->create( 'PAGE' ) };
   ok( $@, 'create() booms for PAGE without a parent sid' );
+}
+
+# the cookie name from the config is used lowercased
+{
+  my ( undef, $res ) = request( CFG => { COOKIE_NAME => 'MyApp' } );
+  ok(   defined cookie_of( $res, 'myapp' ), 'COOKIE_NAME is used lowercased' );
+  ok( ! defined cookie_of( $res, 'MyApp' ), 'COOKIE_NAME is not used as given' );
 }
 
 # abstract base classes (Sessions, Preprocessor, Actions) must refuse to work
@@ -437,8 +448,6 @@ like( $ses->_storage_debug_info(), qr/\Q$APP_ROOT\E/, '_storage_debug_info() men
 my ( $COOKIE, $USID, $PSID );
 
 {
-  my $mark = scalar @LOG;
-
   my ( $r, $res ) = request();
 
   is( ref( $res ), 'ARRAY', 'run() returns a PSGI triplet' );
@@ -650,6 +659,28 @@ my ( $COOKIE, $USID, $PSID );
   is( $user->{ ':COOKIE_SID_HISTORY' }[ 1 ]{ 'SID' },    $after_c, 'cookie history records the new cookie session' );
   is( $user->{ ':COOKIE_SID_HISTORY' }[ 1 ]{ 'REASON' }, 'login',  'cookie history reason is "login"' );
 
+  # a login without an ident has no user hold, so ident-less logins share nothing
+  for my $ident ( '', undef )
+    {
+    my ( $ri ) = request( HOOK => sub
+      {
+      my $reo = shift;
+      $reo->login( $ident );
+      is( $reo->is_logged_in(), 1, 'login() without an ident logs in' );
+      is( $reo->get_user_session()->{ ':USER_IDENT' }, '', 'login() without an ident stores an empty ident' );
+      is( $reo->get_user_hold(), undef, 'login() without an ident gives no user hold' );
+      } );
+    ok( ! -e ses_file( $ri, 'HOLD', '_' x 8 ), 'login() without an ident creates no padded hold' );
+    }
+
+  # passwords stay out of the debug log
+  {
+    my $mark = scalar @LOG;
+    request( COOKIE => $COOKIE, QS => 'password=secret-pw&user=u', CFG => { DEBUG => 2 } );
+    ok( ! log_since( $mark, qr/secret-pw/ ), 'the debug dump does not log a password value' );
+    ok(   log_since( $mark, qr/PASSWORD.*\*\*\*/s ), 'the debug dump masks the password' );
+  }
+
   my ( $r2 ) = request( COOKIE => $after_c );
   is( $r2->get_user_session_id(), $before_u, 'the new cookie reaches the logged-in user session' );
   is( $r2->is_logged_in(), 1, 'the new cookie is logged in' );
@@ -659,7 +690,7 @@ my ( $COOKIE, $USID, $PSID );
   is( $r3->is_logged_in(), 0, 'the pre-login cookie is not logged in' );
 
   # user hold
-  my ( $r4 ) = request( COOKIE => $after_c, HOOK => sub
+  request( COOKIE => $after_c, HOOK => sub
     {
     my $reo = shift;
     my $h1  = $reo->get_user_hold();
@@ -674,10 +705,10 @@ my ( $COOKIE, $USID, $PSID );
   ok( -s ses_file( $r5, 'HOLD', $hold_ident ), 'user hold persisted' );
 
   # a second login of the same ident gets the same hold
-  my ( $r6 ) = request( HOOK => sub { $_[0]->login( 'joe@example.com' ); is( $_[0]->get_user_hold()->{ 'PREF' }, 'dark', 'user hold is shared between logins of the same ident' ) } );
+  request( HOOK => sub { $_[0]->login( 'joe@example.com' ); is( $_[0]->get_user_hold()->{ 'PREF' }, 'dark', 'user hold is shared between logins of the same ident' ) } );
 
   # an anonymous session has no hold
-  my ( $r7 ) = request( HOOK => sub { is( $_[0]->get_user_hold(), undef, 'get_user_hold() is undef when not logged in' ) } );
+  request( HOOK => sub { is( $_[0]->get_user_hold(), undef, 'get_user_hold() is undef when not logged in' ) } );
 
   # logout
   my $logout_page;
@@ -706,7 +737,7 @@ my ( $COOKIE, $USID, $PSID );
   is( $r9->is_logged_in(), 0, 'the logged-in cookie is not logged in after logout' );
 
   # expire time api
-  my ( $r10 ) = request( HOOK => sub
+  request( HOOK => sub
     {
     my $reo = shift;
     ok( $reo->get_user_session_expire_time() > time(), 'get_user_session_expire_time()' );
@@ -725,7 +756,7 @@ my ( $COOKIE, $USID, $PSID );
 ##
 
 {
-  my ( $r ) = request( COOKIE => $COOKIE, HOOK => sub
+  request( COOKIE => $COOKIE, HOOK => sub
     {
     my $app = shift;
 
@@ -814,8 +845,8 @@ my ( $COOKIE, $USID, $PSID );
 {
   my ( $new_link, $back_link, $caller, $callee );
 
-  my ( $r1 ) = request( COOKIE => $COOKIE, HOOK => sub { $caller = $_[0]->get_page_session_id(); $new_link = $_[0]->args_new( _PN => 'other' ) } );
-  my ( $r2 ) = request( COOKIE => $COOKIE, QS => "_=$new_link", HOOK => sub
+  request( COOKIE => $COOKIE, HOOK => sub { $caller = $_[0]->get_page_session_id(); $new_link = $_[0]->args_new( _PN => 'other' ) } );
+  request( COOKIE => $COOKIE, QS => "_=$new_link", HOOK => sub
     {
     my $reo = shift;
     $callee = $reo->get_page_session_id();
@@ -827,11 +858,33 @@ my ( $COOKIE, $USID, $PSID );
 
   isnt( $callee, $caller, 'args_new() opens a new page session' );
 
+  # two levels back: a page opened from the callee returns to the caller with args_back_back()
+  my ( $new_link2, $bb_link );
+  request( COOKIE => $COOKIE, QS => "_=$new_link", HOOK => sub { $new_link2 = $_[0]->args_new( _PN => 'other' ) } );
+  request( COOKIE => $COOKIE, QS => "_=$new_link2", HOOK => sub { $bb_link = $_[0]->args_back_back() } );
+  my ( $rbb ) = request( COOKIE => $COOKIE, QS => "_=$bb_link" );
+  is( $rbb->get_page_session_id(), $caller, 'args_back_back() returns to the caller of the caller' );
+  my ( undef, $fbb ) = request( COOKIE => $COOKIE, QS => "_=$new_link2", HOOK => sub { $_[0]->forward_back_back() } );
+  is( $fbb->[0], 302, 'forward_back_back() sets a 302 status' );
+  my %fbh = @{ $fbb->[1] };
+  my ( $fbb_link ) = $fbh{ 'location' } =~ /^\?_=(.+)$/;
+  my ( $rfbb ) = request( COOKIE => $COOKIE, QS => "_=$fbb_link" );
+  is( $rfbb->get_page_session_id(), $caller, 'forward_back_back() goes to the caller of the caller' );
+
+  # args_new_fr() marks the caller as the top page of the new one
+  my ( $fr_link, $fr_caller );
+  request( COOKIE => $COOKIE, HOOK => sub { $fr_caller = $_[0]->get_page_session_id(); $fr_link = $_[0]->args_new_fr( _PN => 'other' ) } );
+  request( COOKIE => $COOKIE, QS => "_=$fr_link", HOOK => sub
+    {
+    is( $_[0]->get_top_page_session_id(), $fr_caller, 'args_new_fr() target records the caller as its top page' );
+    isnt( $_[0]->get_page_session_id(), $fr_caller, 'args_new_fr() opens a new page session' );
+    } );
+
   my ( $r3 ) = request( COOKIE => $COOKIE, QS => "_=$back_link" );
   is( $r3->get_page_session_id(), $caller, 'args_back() returns to the caller page session' );
 
   # a referrer which cannot be loaded is cut from the chain
-  my ( $r4 ) = request( COOKIE => $COOKIE, QS => "_=$new_link", HOOK => sub
+  request( COOKIE => $COOKIE, QS => "_=$new_link", HOOK => sub
     {
     my $reo = shift;
     $reo->get_page_session()->{ ':REF_PAGE_SID' } = 'NoSuchPageSession';
@@ -846,7 +899,7 @@ my ( $COOKIE, $USID, $PSID );
 ##
 
 {
-  my ( $r ) = request( COOKIE => $COOKIE, QS => 'AA=1&BB=2&BB=3', HOOK => sub
+  request( COOKIE => $COOKIE, QS => 'AA=1&BB=2&BB=3', HOOK => sub
     {
     my $reo = shift;
     my $ui  = $reo->get_user_input();
@@ -887,13 +940,13 @@ my ( $COOKIE, $USID, $PSID );
 
   # the page session cache survives into the next request of the same page
   my $here;
-  my ( $r1 ) = request( COOKIE => $COOKIE, QS => 'KEEP=me', HOOK => sub { $_[0]->param_unsafe( 'KEEP' ); $here = $_[0]->args_here() } );
-  my ( $r2 ) = request( COOKIE => $COOKIE, QS => "_=$here", HOOK => sub { is( $_[0]->param_unsafe( 'KEEP' ), 'me', 'param cache survives into the next request of the page' ) } );
+  request( COOKIE => $COOKIE, QS => 'KEEP=me', HOOK => sub { $_[0]->param_unsafe( 'KEEP' ); $here = $_[0]->args_here() } );
+  request( COOKIE => $COOKIE, QS => "_=$here", HOOK => sub { is( $_[0]->param_unsafe( 'KEEP' ), 'me', 'param cache survives into the next request of the page' ) } );
 }
 
 # buttons
 {
-  my ( $r ) = request( COOKIE => $COOKIE, QS => 'BUTTON%3ASAVE=x', HOOK => sub
+  request( COOKIE => $COOKIE, QS => 'BUTTON%3ASAVE=x', HOOK => sub
     {
     my $reo = shift;
     is( scalar $reo->get_user_input_button(), 'SAVE', 'get_user_input_button() from BUTTON:NAME' );
@@ -1103,8 +1156,17 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( $tree, qr/display: none/, 'html_ftree() hides collapsed branches' );
   like( html_ftree( [ 'a' ], CLASS => 'tr' ), qr/class='tr'/, 'html_ftree() quotes the table class' );
   like( html_ftree( [ { LABEL => 'row', CLASS => 'rc' } ] ), qr/class='rc'/, 'html_ftree() quotes the row class' );
+  like( html_ftree( [ 'a' ], ARGS_TR => "data-r='1'", ARGS_TD => "data-c='1'" ), qr/<tr [^>]*data-r='1'[^>]*><td [^>]*data-c='1'/, 'html_ftree() ARGS_TR and ARGS_TD go to the rows and cells' );
+  my $fo = html_ftree( [ { LABEL => 'a', ARGS => "data-own='1'" } ], ARGS_TR => "data-r='1'" );
+  like(   $fo, qr/<tr [^>]*data-own='1'/, 'html_ftree() row ARGS win over ARGS_TR' );
+  unlike( $fo, qr/data-r=/,              'html_ftree() ARGS_TR is not added to a row with its own ARGS' );
+  my $ft = html_ftree( [ { LABEL => 'b', DATA => [ 'l', { LABEL => 'sb', DATA => [ 'x' ] } ] } ], ARGS_TR => "style='color: red'" );
+  unlike( $ft, qr/<tr [^>]*style=[^>]*style=/, 'html_ftree() nested rows with a style in ARGS_TR get one style attribute' );
+  is( scalar( () = $ft =~ /style='display: none; color: red'/g ), 3, 'html_ftree() merges display none into the style of every nested row' );
 
   ok( defined &html_ctable, 'html_ctable() is exported' );
+  eval { html_ctable( [] ) };
+  like( $@, qr/html_ctable\(\) is not implemented yet/, 'html_ctable() booms instead of returning nothing' );
 
   like( html_debug( { A => 1 } ), qr/<xmp>.*'A' => 1.*<\/xmp>/s, 'html_debug() dumps its arguments' );
 
@@ -1143,7 +1205,7 @@ my ( $APP ) = request( COOKIE => $COOKIE );
     eval { my $x = html_popup_layer( $core, VALUE => 'v' ) };
     like( $@, qr/needs a Web::Reactor::Reflex or Web::Reactor object/, 'html_popup_layer() booms on a Core reactor' );
     eval { html_alink( $core, 'here', 'C', {} ) };
-    like( $@, qr/needs a Web::Reactor::Reflex or Web::Reactor object/, 'html_alink() booms on a Core reactor' );
+    like( $@, qr/needs a Web::Reactor object \(args_type\)/, 'html_alink() booms on a Core reactor' );
   }
   {
     # reactor classes live under Web::Reactor::, the same rule for all the helpers
@@ -1178,14 +1240,26 @@ my ( $APP ) = request( COOKIE => $COOKIE );
     like( $kit, qr/accumulated hover/,   'html_hover_layer() scalar context layer goes into the kit_html hold' );
   }
 
+  my ( undef, $et ) = html_hover_layer( $APP );
+  like( $et, qr{<div [^>]*></div>$}, 'html_hover_layer() without VALUE still closes the div' );
+  like( html_hover_layer( $APP, VALUE => 'v', DELAY => 0 ), qr/, 0, event/, 'html_hover_layer() DELAY 0 shows at once' );
   my ( $ph, $pt ) = html_popup_layer( $APP, VALUE => 'popup text' );
   like( $ph, qr/data-popup-layer-id="R_POPUP_LAYER_/, 'html_popup_layer() handle carries the layer id' );
   like( $ph, qr/onClick=/, 'html_popup_layer() CLICK trigger by default' );
+  like( $ph, qr/reactor_popup_mouse_over\( this, \{ click_open: 1, timeout: 200, single: 0 \} \)/, 'html_popup_layer() CLICK default options' );
+  my ( $cs ) = html_popup_layer( $APP, VALUE => 'v', TIMEOUT => 500, SINGLE => 1 );
+  like( $cs, qr/\{ click_open: 1, timeout: 500, single: 1 \}/, 'html_popup_layer() CLICK passes TIMEOUT and SINGLE' );
+  like( html_popup_layer( $APP, VALUE => 'v', TYPE => 'context' ), qr/onContextMenu/, 'html_popup_layer() TYPE is case insensitive' );
+  eval { html_popup_layer( $APP, VALUE => 'v', TYPE => 'hover' ) };
+  like( $@, qr/invalid popup TYPE \[HOVER\]/, 'html_popup_layer() booms on an unknown TYPE' );
   like( $pt, qr/popup text/, 'html_popup_layer() layer carries the value' );
   like( $pt, qr/class='popup-layer'/, 'html_popup_layer() default class' );
-
-  my ( $ch ) = html_popup_layer( $APP, VALUE => 'x', TYPE => 'CONTEXT' );
-  like( $ch, qr/onContextMenu/i, 'html_popup_layer() CONTEXT trigger' );
+  my ( undef, $pe ) = html_popup_layer( $APP, VALUE => 'v', CLASS => q{a'b} );
+  like( $pe, qr/class='a&#39;b'/, 'html_popup_layer() escapes the class' );
+  my ( undef, $pu ) = html_popup_layer( $APP );
+  like( $pu, qr{<div [^>]*></div>$}, 'html_popup_layer() without VALUE still closes the div' );
+  my ( $ch ) = html_popup_layer( $APP, VALUE => 'v', TYPE => 'CONTEXT', TIMEOUT => 500, SINGLE => 1 );
+  like( $ch, qr/onContextMenu="return reactor_popup_mouse_over\( this, \{ timeout: 500, single: 1 \} \)"/, 'html_popup_layer() CONTEXT passes TIMEOUT and SINGLE' );
 
   my ( $hh, $ht ) = html_hover_layer( $APP, VALUE => 'hover text', DELAY => 500 );
   like( $hh, qr/reactor_hover_show_delay/, 'html_hover_layer() wires the hover handler' );
@@ -1201,6 +1275,14 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   my $tabs = html_tabs_table( $APP, [ { LABEL => 'L1', TEXT => 'T1', ON => 1 },
                                       { LABEL => 'L2', TEXT => 'T2' } ] );
   like( $tabs, qr/L1/, 'html_tabs_table() renders the first label'  );
+  my $otabs = html_tabs_table( $APP, [ { LABEL => 'L1', TEXT => 'T1', ON => 1, TEXT_TD_ARGS => "data-tt='1'" }, { LABEL => 'L2', TEXT => 'T2' } ],
+                                     LABEL_CLASS_ON => 'lon', LABEL_CLASS_OFF => 'loff', LABELS_TABLE_ARGS => "data-lt='1'" );
+  like( $otabs, qr/<TD [^>]*class='lon'[^>]*>L1</,  'html_tabs_table() LABEL_CLASS_ON on the active label' );
+  like( $otabs, qr/<TD [^>]*class='loff'[^>]*>L2</, 'html_tabs_table() LABEL_CLASS_OFF on the other label' );
+  like( $otabs, qr/<table [^>]*data-lt='1'/i,      'html_tabs_table() LABELS_TABLE_ARGS on the labels table' );
+  like( $otabs, qr/<TD data-tt='1'>T1<\/TD>/,      'html_tabs_table() TEXT_TD_ARGS on the text cell' );
+  unlike( $tabs, qr{</td>}, 'html_tabs_table() closes the cells in the case it opens them' );
+  unlike( $tabs, qr/class=''/, 'html_tabs_table() without label classes emits no empty class' );
   like( $tabs, qr/L2/, 'html_tabs_table() renders the second label' );
   like( $tabs, qr/T1/, 'html_tabs_table() renders the first tab'    );
   like( $tabs, qr/reactor_tab_activate_id/, 'html_tabs_table() wires the tab handler' );
@@ -1252,18 +1334,29 @@ my ( $APP ) = request( COOKIE => $COOKIE );
 
     like( html_table( [ { '-NODISPLAY' => 1, DATA => [ 'a' ] } ] ), qr/display: none/, 'html_table() -NODISPLAY works without a CID' );
     my @st = html_table( [ [ 'r1' ], { SKIP => 1, DATA => [ 's' ] }, [ 'r2' ] ] ) =~ /<tr class='(tr-\d)'/g;
-    is( "@st", 'tr-2 tr-1', 'html_table() row stripes skip SKIP rows' );
+    is( "@st", 'tr-1 tr-2', 'html_table() row stripes skip SKIP rows' );
+    is( join( ' ', html_table( [ [ 1 ], [ 2 ], [ 3 ] ] ) =~ /<tr class='(tr-\d)'/g ), 'tr-1 tr-2 tr-1', 'html_table() stripes start with TR1' );
+    is( join( ' ', html_table( [ [ 1 ], [ 2 ], [ 3 ] ], TRH => 'hd' ) =~ /<tr class='([\w-]+)'/g ), 'hd tr-1 tr-2', 'html_table() with TRH the body stripes start with TR1 too' );
+    my $nd = html_table( [ { -NODISPLAY => 1, ARGS => "style='color: red'", DATA => [ 'a' ] } ] );
+    like( $nd, qr/<tr style='display: none; color: red' class='tr-1'>/, 'html_table() -NODISPLAY merges into a style in ARGS' );
+    is( scalar( () = $nd =~ /style=/g ), 1, 'html_table() -NODISPLAY with a style in ARGS gives one style attribute' );
+    my $nu = html_table( [ { -NODISPLAY => 1, ARGS => 'style=color:red', DATA => [ 'a' ] } ] );
+    like( $nu, qr/<tr style='display: none; color:red' class='tr-1'>/, 'html_table() -NODISPLAY merges into an unquoted style in ARGS' );
+    is( scalar( () = $nu =~ /style=/g ), 1, 'html_table() -NODISPLAY with an unquoted style in ARGS gives one style attribute' );
     my $cc = html_table( [ { CCL => [ 'colc' ], DATA => [ { ARGS => 'align=right', DATA => 'v' } ] }, [ 'plain' ] ] );
     like( $cc, qr/align=right class='colc'/, 'html_table() keeps the column class with cell ARGS' );
     unlike( $cc, qr/class=''/, 'html_table() emits no empty class' );
-    like( html_table( [ { ARGS => 'data-class=x', DATA => [ 'a' ] } ] ), qr/<tr data-class=x class='tr-2'>/, 'html_table() row data-class ARGS do not hide the stripe class' );
+    like( html_table( [ { ARGS => 'data-class=x', DATA => [ 'a' ] } ] ), qr/<tr data-class=x class='tr-1'>/, 'html_table() row data-class ARGS do not hide the stripe class' );
     like( html_table( [ { CCL => [ 'cc' ], DATA => [ { ARGS => 'data-class=y', DATA => 'v' } ] } ] ), qr/data-class=y class='cc'/, 'html_table() cell data-class ARGS do not hide the column class' );
     unlike( html_hbox( 'content:<', 'a' ), qr/nowrap/, 'box format: letters of the class name are not flags' );
     unlike( html_table( [ { CCL => [ 'skipc' ], SKIP => 1 }, [ 'a' ] ] ), qr/skipc/, 'html_table() CCL of a skipped row is not used for the next row' );
     like( html_table( [ { PCCL => [ 'permc' ], SKIP => 1 }, [ 'a' ] ] ), qr/class='permc'/, 'html_table() PCCL of a skipped row stays' );
     like( html_table( [ { PCCL => [ 'p' ], SKIP => 1 }, [ 'a', 'b' ] ], CCL => [ 'opt1', 'opt2' ] ), qr/class='opt1'/, 'html_table() a skipped row keeps the table CCL option' );
-    like( html_table( [ { ARGS => 'id=x', DATA => [ 'a' ] } ] ), qr/<tr id=x class='tr-2'>/, 'html_table() keeps the stripe class with row ARGS' );
+    like( html_table( [ { ARGS => 'id=x', DATA => [ 'a' ] } ] ), qr/<tr id=x class='tr-1'>/, 'html_table() keeps the stripe class with row ARGS' );
     like( html_table( [ [ 'a' ] ], CLASS => 'tbl' ), qr/<table class='tbl'>/, 'html_table() quotes the table class' );
+    my $th = html_table( [ [ 'a', 'b' ], [ 'c' ] ], TDH => 'hc', COMMENT => 'cm' );
+    is( scalar( () = $th =~ /<td\s+class='hc'>/g ), 2, 'html_table() TDH classes the cells of the first row only' );
+    like( $th, qr/<!--- BEGIN TABLE: cm --->.*<!--- END TABLE: cm --->/s, 'html_table() COMMENT wraps the table' );
     my $oc = html_table( [ { ARGS => "class='own'", DATA => [ 'a' ] } ] );
     is( scalar( () = $oc =~ /<tr [^>]*class=/g ), 1, 'html_table() row ARGS class: one class attribute' );
     like( $oc, qr/<tr class='own'>/, 'html_table() row ARGS class wins over the stripe' );
@@ -1288,6 +1381,9 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( html_layout_2lr_flex( 'L', 'R' ), qr/flex: 99;.*flex: 1;/s, 'html_layout_2lr_flex() without a format: left takes the room' );
   like( html_layout_2lr_flex( 'L', 'R', '>20=>' ), qr/flex: 20;.*flex: 80;/s, 'html_layout_2lr_flex() honours the format' );
   unlike( html_layout_2lr_flex( 'L', 'R', '>20=>' ), qr/;\s*;/, 'html_layout_2lr_flex() style has no empty segments' );
+  like( html_layout_2lr_flex( 'L', 'R', '<==>' ), qr/white-space: nowrap/, 'html_layout_2lr_flex() == means no wrap' );
+  unlike( html_layout_2lr_flex( 'L', 'R', '<=>' ), qr/nowrap/, 'html_layout_2lr_flex() = wraps' );
+  like( html_layout_2lr( 'L', 'R', '<==>' ), qr/nowrap/i, 'html_layout_2lr() == means no wrap' );
 
   my $hb = html_hbox( 'ctl:<,,>', 'a', 'b', 'c' );
   like( $hb, qr/flex-direction: row/, 'html_hbox() is a row' );
@@ -1298,6 +1394,7 @@ my ( $APP ) = request( COOKIE => $COOKIE );
 
   like( html_vbox( 'a,b', '1', '2' ), qr/flex-direction: column/, 'html_vbox() is a column' );
   like( html_hbox( 'n,w,p', '1', '2', '3' ), qr/white-space: nowrap/, 'box format: n means nowrap' );
+  like( html_hbox( 'n,w,p', '1', '2', '3' ), qr/white-space: normal/, 'box format: w means normal wrapping' );
   like( html_hbox( '=', '1' ), qr/flex: 1000/, 'box format: = means take all the room' );
   like( html_hbox( 'a', '1', '2' ), qr/<div style='flex: 1; align-content: center; '>2<\/div>/, 'box format: cells beyond the specs get the default spec' );
 }
@@ -1428,9 +1525,25 @@ my ( $APP ) = request( COOKIE => $COOKIE );
     like( $@, qr/already has a tab ON/, 'the second ON add() booms' );
     my ( $h4 ) = $tab3->add( 'C', TYPE => 'DIV' );
     like( $h4, qr/_HANDLE_2'/, 'a failed second ON add() leaves no gap in the tab ids' );
+    my ( undef, $t5 ) = $tab3->add( 'D', TYPE => 'DIV', ARGS => "style='color: red'" );
+    like( $t5, qr/style='display: none; color: red'/, 'tab->add() merges display none into a style in ARGS' );
+    is( scalar( () = $t5 =~ /style=/g ), 1, 'tab->add() hidden tab with a style in ARGS has one style attribute' );
+    my ( undef, $t8 ) = $tab3->add( 'F', TYPE => 'DIV', ARGS => 'style=color:red' );
+    like( $t8, qr/style='display: none; color:red'/, 'tab->add() merges display none into an unquoted style in ARGS' );
+    is( scalar( () = $t8 =~ /style=/g ), 1, 'tab->add() hidden tab with an unquoted style in ARGS has one style attribute' );
+    my ( undef, $t6 ) = $tab3->add( 'E', TYPE => 'DIV', ARGS => "data-style='x'" );
+    like( $t6, qr/style='display: none;'/, 'tab->add() hidden tab without a style in ARGS gets its own' );
+    my $tab4 = Web::Reactor::HTML::Tab->new( REO_REACTOR => $APP );
+    my ( $h7 ) = $tab4->add( 'A', TYPE => 'DIV' );
+    unlike( $h7, qr/class=/, 'tab->add() without any class emits no empty class attribute' );
   }
   $un->finish();
   like( $APP->html_hold_get( 'kit_html' ), qr/reactor_tab_restore\( "\Q$un->{ 'TAB_CONTROLLER_ID' }\E", "\Q$un->{ 'TABS_LIST' }[ 0 ]\E" \)/, 'without an ON tab the first tab is the default' );
+  {
+    my $kit0 = $APP->html_hold_get( 'kit_html' );
+    Web::Reactor::HTML::Tab->new( REO_REACTOR => $APP )->finish();
+    is( $APP->html_hold_get( 'kit_html' ), $kit0, 'tab->finish() with no tabs adds no controller' );
+  }
   like( $APP->html_hold_get( 'kit_html' ), qr/reactor_tab_restore\( "\Q$tab->{ 'TAB_CONTROLLER_ID' }\E", "" \)/, 'with an ON tab there is no default tab' );
 
   {
@@ -1469,7 +1582,6 @@ my ( $APP ) = request( COOKIE => $COOKIE );
 ##
 
 {
-  use File::Basename qw( dirname );
   my $dist = dirname( __FILE__ ) . '/..';
   # one file per line, the first field, a description may follow, # lines are comments
   my @manifest = map { ( split /\s+/ )[ 0 ] } grep { /\S/ and ! /^\s*#/ } split /\n/, file_load( "$dist/MANIFEST" );
@@ -1478,7 +1590,7 @@ my ( $APP ) = request( COOKIE => $COOKIE );
 
   my %listed   = map { $_ => 1 } @manifest;
   my @modules;
-  my @dirs = ( "$dist/lib" );
+  my @dirs = ( "$dist/lib", "$dist/demo" ); # the POD says the demo is in the tarball
   while( my $d = shift @dirs )
     {
     opendir( my $dh, $d ) or die "cannot open [$d]";
@@ -1487,31 +1599,39 @@ my ( $APP ) = request( COOKIE => $COOKIE );
       my $p = "$d/$e";
       push @dirs, $p if -d $p;
       ( my $rel = $p ) =~ s{^\Q$dist\E/}{};
-      push @modules, $rel if $p =~ /\.pm$/;
+      push @modules, $rel if $p =~ /\.pm$/ or ( -f $p and $rel =~ m{^demo/} );
       }
     closedir( $dh );
     }
-  for my $sub ( [ 'htdocs', qr/\.js$/ ], [ 't', qr/\.pl$/ ] )
+  for my $sub ( [ 'htdocs', qr/^[^.]/ ], [ 't', qr/\.pl$/ ] ) # every htdocs file
     {
     opendir( my $dh, "$dist/$sub->[ 0 ]" ) or die "cannot open [$dist/$sub->[ 0 ]]";
     push @modules, map { "$sub->[ 0 ]/$_" } grep { $_ =~ $sub->[ 1 ] } readdir $dh;
     closedir( $dh );
     }
   my @unlisted = sort grep { ! $listed{ $_ } } @modules;
-  is_deeply( \@unlisted, [], 'every module, htdocs script and test is in MANIFEST' );
+  is_deeply( \@unlisted, [], 'every module, demo file, htdocs script and test is in MANIFEST' );
 
-  like( file_load( "$dist/Makefile.PL" ), qr/'CryptX'/, 'Makefile.PL requires CryptX (Crypt::PRNG)' );
-
-  # the minimum versions in Makefile.PL are the ones the Web::Reactor POD lists
   my $mk  = file_load( "$dist/Makefile.PL" );
   my $pod = file_load( "$dist/lib/Web/Reactor.pm" );
+  like( $mk, qr/'CryptX'/, 'Makefile.PL requires CryptX (Crypt::PRNG)' );
+
+  # the minimum versions in Makefile.PL are the ones the Web::Reactor POD lists
   for my $m ( qw( Plack Cookie::Baker Data::Tools Exception::Sink ) )
     {
     my ( $mv ) = $mk  =~ /'\Q$m\E'\s*=>\s*'?([\d.]+)/;
     my ( $pv ) = $pod =~ /^\s*\*\s+\Q$m\E\s+([\d.]+)\+/m;
     ok( defined $pv && defined $mv && $mv eq $pv, "Makefile.PL requires $m $pv as the POD says" );
     }
-  like( file_load( "$dist/Makefile.PL" ), qr/^\s*test\s*=>\s*\{\s*TESTS\s*=>\s*'t\/\*\.pl'/m, 'Makefile.PL makes "make test" run t/*.pl' );
+  like( $mk, qr/^\s*test\s*=>\s*\{\s*TESTS\s*=>\s*'t\/\*\.pl'/m, 'Makefile.PL makes "make test" run t/*.pl' );
+  like( $mk, qr/^\s*LICENSE\s*=>\s*'gpl_2'/m, 'Makefile.PL sets the license' );
+  like( $mk, qr/^\s*AUTHOR\s*=>\s*'\S/m, 'Makefile.PL sets the author' );
+  like( $mk, qr/^\s*ABSTRACT_FROM\s*=>\s*'lib\/Web\/Reactor\.pm'/m, 'Makefile.PL takes the abstract from the POD' );
+  like( $pod, qr/^=head1 NAME\n\nWeb::Reactor - \S/m, 'the POD NAME line has the "module - abstract" form ABSTRACT_FROM needs' );
+  my ( $mp ) = $mk  =~ /MIN_PERL_VERSION\s*=>\s*'([\d.]+)'/;
+  my ( $pp ) = $pod =~ /Minimum: Perl ([\d.]+)/;
+  require version;
+  is( version->parse( $mp )->normal, version->parse( $pp )->normal, 'Makefile.PL minimum perl is the one the POD says' );
 }
 
 ##############################################################################

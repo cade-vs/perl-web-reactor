@@ -14,7 +14,7 @@ use strict;
 use Exception::Sink;
 use Web::Reactor::Sessions;
 use Fcntl qw( O_CREAT O_EXCL O_WRONLY );
-use Data::Tools;
+use Data::Tools 1.53; # hash_load_json(), hash_save_json()
 use Data::Dumper;
 
 use parent 'Web::Reactor::Sessions';
@@ -76,7 +76,7 @@ sub _storage_load
   my $fn = $self->_key_to_fn( { READONLY => 1 }, @$key );
   if( ! -r $fn )
     {
-    $self->reo()->log_debug( "error: session file missing or not readable: $fn" );
+    $self->reo()->log_debug( "session file missing or not readable: $fn" );
     return undef;
     }
   my $shr;

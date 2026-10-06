@@ -408,6 +408,22 @@ ok( $@, '_key_to_fn() booms on invalid id component' );
   ok( $@, 'create() booms for PAGE without a parent sid' );
 }
 
+# a failed save leaves no temp file behind
+{
+  my $ses = $reo->__ses;
+  my $shr = $ses->create( 'USER', undef, 24 );
+  my $key = $ses->compose_key_from_sid( 'USER', $shr->{ ':SID' } );
+  my $fn  = $ses->_key_to_fn( {}, @$key );
+  ( my $dir = $fn ) =~ s{/[^/]+$}{};
+  unlink( $fn );
+  mkdir( $fn ) or die "cannot mkdir [$fn]: $!"; # rename() onto a non-empty directory fails
+  file_save( "$fn/x", 'x' );
+  ok( ! $ses->_storage_save( $key, $shr ), 'a save which cannot rename its temp file fails' );
+  is_deeply( [ glob( "$dir/*.part" ) ], [], 'a failed save leaves no temp file behind' );
+  unlink( "$fn/x" );
+  rmdir( $fn );
+}
+
 # the cookie name from the config is used lowercased
 {
   my ( undef, $res ) = request( CFG => { COOKIE_NAME => 'MyApp' } );
@@ -676,8 +692,9 @@ my ( $COOKIE, $USID, $PSID );
   # passwords stay out of the debug log
   {
     my $mark = scalar @LOG;
-    request( COOKIE => $COOKIE, QS => 'password=secret-pw&user=u', CFG => { DEBUG => 2 } );
+    request( COOKIE => $COOKIE, QS => 'password=secret-pw&new_password=secret-new&user=u', CFG => { DEBUG => 2, DISABLE_PASSWORD_ENCRYPT => 1 } );
     ok( ! log_since( $mark, qr/secret-pw/ ), 'the debug dump does not log a password value' );
+    ok( ! log_since( $mark, qr/secret-new/ ), 'the debug dump does not log a value of a name containing PASSWORD' );
     ok(   log_since( $mark, qr/PASSWORD.*\*\*\*/s ), 'the debug dump masks the password' );
   }
 
@@ -992,6 +1009,64 @@ my ( $COOKIE, $USID, $PSID );
     is( $reo->get_input_button_and_remove(), 'LINKED', 'get_input_button_and_remove() returns the safe button' );
     is( $reo->get_input_button(), undef, 'get_input_button_and_remove() removed both the safe and the form button' );
     } );
+}
+
+# password input parameters: names starting with PASS or containing PASSWORD
+# are RSA encrypted as hex, see $Web::Reactor::Core::RE_PASSWORD_PARAM_NAMES
+{
+  require Crypt::PK::RSA;
+  require Data::Tools::Crypto::RSA;
+  my $pk = Crypt::PK::RSA->new();
+  $pk->generate_key( 128 ); # 1024 bits, the smallest usual key, enough for a test
+  my $pub_pem  = $pk->export_key_pem( 'public'  );
+  my $priv_pem = $pk->export_key_pem( 'private' );
+  my $priv     = Data::Tools::Crypto::RSA->new( $priv_pem );
+
+  my %rsa_cfg = ( RSA_PUB => $pub_pem );
+
+  my $mark = scalar @LOG;
+  request( COOKIE => $COOKIE, CFG => \%rsa_cfg, QS => 'password=pw1&new_password=pw2&pass2=&passwd=pw3&user_passwd=pw4&name=n', HOOK => sub
+    {
+    my $ui = $_[0]->get_user_input();
+    like( $ui->{ 'PASSWORD' }, qr/^[0-9a-f]+$/i, 'PASSWORD arrives encrypted as hex' );
+    is( $priv->decrypt_hex( $ui->{ 'PASSWORD' } ), 'pw1', 'PASSWORD decrypts with the private key' );
+    is( $priv->decrypt_hex( $ui->{ 'NEW_PASSWORD' } ), 'pw2', 'a name containing PASSWORD is encrypted too' );
+    is( $priv->decrypt_hex( $ui->{ 'PASSWD' } ), 'pw3', 'a name starting with PASS is encrypted' );
+    is( $ui->{ 'PASS2' }, '', 'an empty password value stays empty' );
+    is( $ui->{ 'USER_PASSWD' }, 'pw4', 'a name with PASS inside but not PASSWORD is not a password' );
+    is( $ui->{ 'NAME' }, 'n', 'other parameters are not touched' );
+    } );
+  ok( ! log_since( $mark, qr/pw1|pw2|pw3/ ), 'plain password values are not logged' );
+
+  $mark = scalar @LOG;
+  request( COOKIE => $COOKIE, CFG => \%rsa_cfg, QS => 'password=a&password=b&new_password=c&new_password=d', HOOK => sub
+    {
+    my $ui = $_[0]->get_user_input();
+    ok( ! exists $ui->{ '@PASSWORD' } && ! exists $ui->{ 'PASSWORD' }, 'a repeated PASS* parameter is dropped' );
+    ok( ! exists $ui->{ '@NEW_PASSWORD' } && ! exists $ui->{ 'NEW_PASSWORD' }, 'a repeated *PASSWORD* parameter is dropped' );
+    } );
+  ok( log_since( $mark, qr/password input parameter sent more than once.*\[\@PASSWORD\]/ ),     'the dropped @PASSWORD is logged' );
+  ok( log_since( $mark, qr/password input parameter sent more than once.*\[\@NEW_PASSWORD\]/ ), 'the dropped @NEW_PASSWORD is logged' );
+
+  # forced run() arguments are encrypted like request input
+  my $r = make_reo( make_env( HTTP_COOKIE => "wrtest_cookie=$COOKIE" ), make_cfg( %rsa_cfg ) );
+  $r->{ 'HOOK' } = sub { is( $priv->decrypt_hex( $_[0]->get_user_input()->{ 'PASSWORD' } ), 'forced-pw', 'a forced PASSWORD argument is encrypted' ) };
+  $r->run( password => 'forced-pw' );
+  ok( $r->{ 'HOOK_DONE' }, 'the forced arguments request ran' );
+
+  request( COOKIE => $COOKIE, CFG => { DISABLE_PASSWORD_ENCRYPT => 1 }, QS => 'password=plain-pw&new_password=plain-new', HOOK => sub
+    {
+    my $ui = $_[0]->get_user_input();
+    is( $ui->{ 'PASSWORD' },     'plain-pw',  'DISABLE_PASSWORD_ENCRYPT leaves PASSWORD as it arrives' );
+    is( $ui->{ 'NEW_PASSWORD' }, 'plain-new', 'DISABLE_PASSWORD_ENCRYPT leaves NEW_PASSWORD as it arrives' );
+    } );
+
+  # without RSA_PUB a non-empty password fails the request, an empty one does not
+  $mark = scalar @LOG;
+  my ( $rn, $resn ) = request( COOKIE => $COOKIE, QS => 'password=no-key-pw' );
+  ok( ! $rn->{ 'HOOK_DONE' } && log_since( $mark, qr/RSA_PUB/ ), 'a password without RSA_PUB booms' );
+  ok( ! log_since( $mark, qr/no-key-pw/ ), 'the failed request does not log the password' );
+  request( COOKIE => $COOKIE, QS => 'password=', HOOK => sub { is( $_[0]->get_user_input()->{ 'PASSWORD' }, '', 'an empty password needs no RSA_PUB' ) } );
 }
 
 ##############################################################################

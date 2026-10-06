@@ -217,6 +217,7 @@ put( 'actions/brokenfile.pm', "package reactor::actions::brokenfile;\nuse strict
 
 put( 'trans/bg/ui.tr', "hello=  Hi there  \nbye=Bye\n" );
 put( 'trans/single.tr', "only=one\n" );
+put( 'trans sp/bg/sp.tr', "spaced=yes\n" ); # a directory with a space in its name
 
 ##############################################################################
 ##
@@ -676,6 +677,10 @@ my $o5 = app( env(), { LANG => 'en', TRANS_DIRS => undef, TRANS_FILE => undef } 
 is( $o5->load_trans(), 1, 'load_trans() without TRANS_DIRS and TRANS_FILE loads nothing and does not die' );
 is_deeply( $o5->{ 'TRANS' }{ 'en' }, {}, 'no translation sources give an empty translation table' );
 
+my $o6 = app( env(), { LANG => 'bg', TRANS_DIRS => [ "$ROOT/trans sp" ] } );
+is( $o6->load_trans(), 1, 'load_trans() with a space in a TRANS_DIRS directory' );
+is( $o6->{ 'TRANS' }{ 'bg' }{ 'spaced' }, 'yes', 'translation files in a directory with a space are loaded' );
+
 my $o4 = app( env(), { LANG => '', TRANS_DIRS => [ "$ROOT/trans" ] } );
 is( $o4->load_trans(), 0, 'load_trans() returns 0 with an empty LANG' );
 ok( ! exists $o4->{ 'TRANS' }, 'load_trans() loads nothing with an empty LANG' );
@@ -789,6 +794,29 @@ my $o = app( get( '' ) );
 like( body( $o->run( _pn => 'admin/users', x => 'forced' ) ), qr/^USERS/, 'run() arguments choose the page' );
 is( $o->get_user_input()->{ 'X' }, 'forced', 'run() arguments reach the user input, names uppercased' );
 is( $o->get_safe_input()->{ 'X' }, 'forced', 'run() arguments reach the safe input' );
+}
+
+##############################################################################
+##
+##  section 13b2 -- password parameters are masked in the input log by
+##  Web::Reactor::Core, see $Web::Reactor::Core::RE_PASSWORD_PARAM_NAMES.
+##  Reflex does not encrypt them, only Web::Reactor does
+##
+
+{
+my $in;
+req( get( 'password=secret-pw&new_password=secret-new&pass2=secret-p2&pass2=secret-p3&user_passwd=plain-up&name=n' ), { DEBUG => 1 }, sub { $in = $_[0]->get_user_input() } );
+my $log = logs();
+unlike( $log, qr/secret-pw/,  'the input log does not show a PASS* value' );
+unlike( $log, qr/secret-new/, 'the input log does not show a *PASSWORD* value' );
+unlike( $log, qr/secret-p[23]/, 'the input log does not show the values of a repeated PASS* parameter' );
+like( $log, qr/input param \[PASSWORD\] value \[\*\*\*\]/,     'the input log masks PASSWORD' );
+like( $log, qr/input param \[NEW_PASSWORD\] value \[\*\*\*\]/, 'the input log masks NEW_PASSWORD' );
+like( $log, qr/input param \[PASS2\] value \[\*\*\*\] array \[\*\*\* \*\*\*\]/, 'the input log masks every value of a repeated PASS2' );
+like( $log, qr/input param \[USER_PASSWD\] value \[plain-up\]/, 'a name with PASS inside but not PASSWORD is logged as is' );
+like( $log, qr/input param \[NAME\] value \[n\]/, 'other parameters are logged as is' );
+is( $in->{ 'PASSWORD' }, 'secret-pw', 'Reflex does not encrypt PASSWORD' );
+is_deeply( $in->{ '@PASS2' }, [ 'secret-p2', 'secret-p3' ], 'Reflex keeps a repeated PASS2 parameter' );
 }
 
 ##############################################################################

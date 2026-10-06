@@ -28,6 +28,11 @@ use Time::HiRes;
 
 our $VERSION = '3.33';
 
+# input parameter names holding passwords: starting with PASS or containing
+# PASSWORD, optionally with the @ prefix of repeated parameters, captured in $1.
+# Web::Reactor RSA encrypts these values, all reactors mask them in the logs
+# TODO: may be configured?
+our $RE_PASSWORD_PARAM_NAMES = qr/^(@)?(PASS|.*?PASSWORD)/;
 
 ##############################################################################
 
@@ -519,7 +524,7 @@ sub __import_user_input
       $input_user_hr->{ $n } = $v[0];
       }
 
-    my @lv = $n =~ /pass/i ? ( '***' ) x @v : @v; # passwords stay out of the log
+    my @lv = $n =~ $RE_PASSWORD_PARAM_NAMES ? ( '***' ) x @v : @v; # passwords stay out of the log
     $self->log_debug( "debug: input param [$n] value [$lv[0]] array [@lv]" );
     }
 
@@ -963,6 +968,11 @@ Hash reference of GET and POST parameters, built once per request:
 
 =item * a parameter sent more than once is stored as an array reference under
 C<@NAME>, a single one as a scalar under C<NAME>
+
+=item * values of password parameters, names starting with C<PASS> or containing
+C<PASSWORD>, are masked as C<***> in the debug log. The rule is kept in
+C<$Web::Reactor::Core::RE_PASSWORD_PARAM_NAMES>. Web::Reactor also RSA
+encrypts these values, see its Password Encryption section
 
 =back
 

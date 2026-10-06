@@ -87,10 +87,10 @@ sub rsa
 
   return $self->{ "REO_RSA" } if exists $self->{ "REO_RSA" };
 
-  my $pub = $self->cfg->{ 'RSA_PUB' };
-  boom "RSA encryption requested but configuration does not have RSA_PUB key in it" unless $pub;
+  my $pub = $self->cfg->{ 'RSA_PUB_KEY' };
+  boom "RSA encryption requested but configuration does not have RSA_PUB_KEY key in it" unless $pub;
 
-  return $self->{ "REO_RSA" } = $self->__load_and_attach_module( 'RSA', 'Data::Tools::Crypto::RSA', $pub );
+  return $self->{ "REO_RSA" } = $self->__load_and_attach_module( 'RSA', 'Data::Tools::Crypto::RSA', file_load( $pub ) );
 }
 
 ##############################################################################
@@ -193,6 +193,9 @@ sub process_request
   %$user_input_hr = ( %$user_input_hr, %args ) if $args;
   %$safe_input_hr = ( %$safe_input_hr, %args ) if $args;
 
+  # *** encrypting password input parameters, see $RE_PASSWORD_PARAM_NAMES ***
+
+  $self->__encrypt_pass_input_parameters( $user_input_hr ) unless $self->cfg->{ 'DISABLE_PASSWORD_ENCRYPT' };
 
   # *** loading page session *************************************************
 
@@ -566,6 +569,33 @@ sub __import_hidden_safe_input
   return \%safe_input_hr;
 }
 
+
+
+sub __encrypt_pass_input_parameters
+{
+  my $self = shift;
+  my $ui   = shift;
+
+  for my $k ( keys %$ui )
+    {
+    next unless $k =~ $Web::Reactor::Core::RE_PASSWORD_PARAM_NAMES;
+    if( $1 )
+      {
+      # NOTE: repeated password parameters (@PASS*, @*PASSWORD*) should be avoided, they are not supported
+      delete $ui->{ $k };
+      $self->log( "error: password input parameter sent more than once is not supported, dropped [$k]" );
+      }
+    else
+      {
+      next if $ui->{ $k } eq ''; # empty values are not encrypted
+      $ui->{ $k } = $self->rsa()->encrypt_hex( $ui->{ $k } ); # rsa instantiated here but password parameters should be very few :)
+      }
+    }
+
+  return $ui;
+}
+
+
 ##############################################################################
 
 # a copy of an input hash with the values of password-like keys hidden, so
@@ -575,7 +605,7 @@ sub __mask_passwords
   my $hr = shift;
 
   my %c = %$hr;
-  $c{ $_ } = '***' for grep { /pass/i } keys %c;
+  $c{ $_ } = '***' for grep { $_ =~ $Web::Reactor::Core::RE_PASSWORD_PARAM_NAMES } keys %c;
   return \%c;
 }
 
@@ -1582,6 +1612,20 @@ See CRYPTOGRAPHY section below.
 Data such as passwords can be encrypted with an RSA public key through rsa().
 Configure RSA_PUB with the PEM text of the public key.
 
+Web::Reactor, and not Web::Reactor::Reflex or Web::Reactor::Core, also
+encrypts password input by itself: the value of every user input parameter
+whose name starts with PASS (PASS, PASS2, PASSWORD, ...) or contains PASSWORD
+(NEW_PASSWORD, OLD_PASSWORD, ...) is replaced with its RSA encryption as hex
+text, so the application never sees the plain password. The same parameters
+are masked in the debug logs, by all reactors. The rule is kept in
+$Web::Reactor::Core::RE_PASSWORD_PARAM_NAMES. Only the backend holding the
+private key reads the value back, with decrypt_hex() of Data::Tools::Crypto::RSA.
+Empty values stay empty, and a value that fails to encrypt becomes empty. A password
+parameter sent more than once is not supported: it is dropped and logged.
+A request with a non-empty password parameter booms when RSA_PUB is not
+configured, unless DISABLE_PASSWORD_ENCRYPT is set, which leaves all user
+input as it arrives.
+
 =head2 Content Security Policy (Optional)
 
 Set HTTP_CSP config to add Content-Security-Policy header:
@@ -1872,6 +1916,7 @@ Upon creation, Web::Reactor instance gets hash with config entries/keys.
   DISABLE_SECURE_COOKIES    -- Disable HTTPS enforcement (default: 0, NOT RECOMMENDED)
   CRY_KEY                   -- 32 raw bytes key for cry() and argsx() (required if used)
   RSA_PUB                   -- RSA public key PEM text for rsa() (required if used)
+  DISABLE_PASSWORD_ENCRYPT  -- Do not RSA encrypt PASS* and *PASSWORD* user input, Web::Reactor only (default: 0)
   HTTP_CSP                  -- Content-Security-Policy header (optional)
   CLOUDFLARE                -- behind Cloudflare: client IP from CF-Connecting-IP
   PROXY_REMOTE              -- behind a trusted reverse proxy: client IP from X-Real-IP
@@ -1900,7 +1945,7 @@ documentation, see the method source code and examples in the demo/ directory.
 
 =head2 Input Data Functions
 
-  get_user_input()        -- Get all user (unsafe) input from request
+  get_user_input()        -- Get all user (unsafe) input, PASS* and *PASSWORD* values RSA encrypted
   get_safe_input()        -- Get safe input resolved from the _ token (links and forms)
   param( @names )         -- Get and cache safe input parameters
   param_unsafe( @names )  -- Get and cache unsafe user input parameters
@@ -2029,7 +2074,9 @@ a LINK session instead. Both arrive the same way in get_safe_input().
   my $ok    = $rsa->verify_base64url( $message, $signature );
 
 rsa() booms if RSA_PUB is not configured. The reactor holds only the public
-key, decrypting with the private key belongs to the backend.
+key, decrypting with the private key belongs to the backend. User input
+parameters named PASS* or containing PASSWORD arrive encrypted this way, see
+Password Encryption above.
 
 =head2 Security Considerations
 
@@ -2232,8 +2279,9 @@ When deploying Web::Reactor applications:
 
    'RSA_PUB' => $public_key_pem_text
 
-   rsa() gives the key object, the framework does not encrypt password
-   fields in the browser by itself
+   Web::Reactor encrypts PASS* and *PASSWORD* input parameters with it, see
+   Password Encryption above; rsa() gives the key object for anything else.
+   Nothing is encrypted in the browser, HTTPS protects the transport.
 
 2. Never log passwords (application responsibility)
 

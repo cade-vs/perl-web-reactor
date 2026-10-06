@@ -17,6 +17,7 @@ use parent 'Web::Reactor::Core';
 use Data::Tools 1.53; # the version the whole distribution needs, see Makefile.PL
 use Exception::Sink;
 use Data::Dumper;
+use File::Glob qw( bsd_glob ); # glob() splits its pattern on spaces, a path may have them
 
 use Web::Reactor::Actions;
 use Web::Reactor::Preprocessor;
@@ -426,8 +427,8 @@ sub load_trans
     {
     for my $dir ( @$trans_dirs )
       {
-      push @tf, glob( "$dir/$lang/*.tr" );
-      push @tf, glob( "$dir/$lang/text/*.tr" );
+      push @tf, bsd_glob( "$dir/$lang/*.tr" );
+      push @tf, bsd_glob( "$dir/$lang/text/*.tr" );
       }
     }
 

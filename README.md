@@ -133,6 +133,20 @@ See CRYPTOGRAPHY section below.
 Data such as passwords can be encrypted with an RSA public key through rsa().
 Configure RSA\_PUB with the PEM text of the public key.
 
+Web::Reactor, and not Web::Reactor::Reflex or Web::Reactor::Core, also
+encrypts password input by itself: the value of every user input parameter
+whose name starts with PASS (PASS, PASS2, PASSWORD, ...) or contains PASSWORD
+(NEW\_PASSWORD, OLD\_PASSWORD, ...) is replaced with its RSA encryption as hex
+text, so the application never sees the plain password. The same parameters
+are masked in the debug logs, by all reactors. The rule is kept in
+$Web::Reactor::Core::RE\_PASSWORD\_PARAM\_NAMES. Only the backend holding the
+private key reads the value back, with decrypt\_hex() of Data::Tools::Crypto::RSA.
+Empty values stay empty, and a value that fails to encrypt becomes empty. A password
+parameter sent more than once is not supported: it is dropped and logged.
+A request with a non-empty password parameter booms when RSA\_PUB is not
+configured, unless DISABLE\_PASSWORD\_ENCRYPT is set, which leaves all user
+input as it arrives.
+
 ## Content Security Policy (Optional)
 
 Set HTTP\_CSP config to add Content-Security-Policy header:
@@ -423,6 +437,7 @@ Upon creation, Web::Reactor instance gets hash with config entries/keys.
     DISABLE_SECURE_COOKIES    -- Disable HTTPS enforcement (default: 0, NOT RECOMMENDED)
     CRY_KEY                   -- 32 raw bytes key for cry() and argsx() (required if used)
     RSA_PUB                   -- RSA public key PEM text for rsa() (required if used)
+    DISABLE_PASSWORD_ENCRYPT  -- Do not RSA encrypt PASS* and *PASSWORD* user input, Web::Reactor only (default: 0)
     HTTP_CSP                  -- Content-Security-Policy header (optional)
     CLOUDFLARE                -- behind Cloudflare: client IP from CF-Connecting-IP
     PROXY_REMOTE              -- behind a trusted reverse proxy: client IP from X-Real-IP
@@ -451,7 +466,7 @@ documentation, see the method source code and examples in the demo/ directory.
 
 ## Input Data Functions
 
-    get_user_input()        -- Get all user (unsafe) input from request
+    get_user_input()        -- Get all user (unsafe) input, PASS* and *PASSWORD* values RSA encrypted
     get_safe_input()        -- Get safe input resolved from the _ token (links and forms)
     param( @names )         -- Get and cache safe input parameters
     param_unsafe( @names )  -- Get and cache unsafe user input parameters
@@ -580,7 +595,9 @@ a LINK session instead. Both arrive the same way in get\_safe\_input().
     my $ok    = $rsa->verify_base64url( $message, $signature );
 
 rsa() booms if RSA\_PUB is not configured. The reactor holds only the public
-key, decrypting with the private key belongs to the backend.
+key, decrypting with the private key belongs to the backend. User input
+parameters named PASS\* or containing PASSWORD arrive encrypted this way, see
+Password Encryption above.
 
 ## Security Considerations
 
@@ -783,8 +800,9 @@ When deploying Web::Reactor applications:
 
     'RSA_PUB' => $public_key_pem_text
 
-    rsa() gives the key object, the framework does not encrypt password
-    fields in the browser by itself
+    Web::Reactor encrypts PASS* and *PASSWORD* input parameters with it, see
+    Password Encryption above; rsa() gives the key object for anything else.
+    Nothing is encrypted in the browser, HTTPS protects the transport.
 
 2\. Never log passwords (application responsibility)
 

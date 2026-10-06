@@ -1,0 +1,7 @@
+#!/usr/bin/perl
+use strict;
+use Storable;
+use Data::Tools;
+use Data::Dumper;
+
+print Dumper( hash_load_json(shift));

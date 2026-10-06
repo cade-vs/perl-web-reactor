@@ -112,12 +112,18 @@ sub _storage_save
 
 #print STDERR Dumper( "******* _storage_save [$fn] *******", $out_data );
 
-  # FIXME: the temp file is left behind when hash_save_json() fails part way
-  #        or rename() fails, unlink it on both failures
+  # the data goes into a temp file first and is renamed over the session file,
+  # so a reader never sees a partial file; a failed temp file is removed
   my $tmp = "$fn.tmp.$$.part";
-  return undef unless hash_save_json( $tmp, $shr );
+  if( ! hash_save_json( $tmp, $shr ) )
+    {
+    unlink( $tmp ); # a partial file may be left
+    return undef;
+    }
   chmod( 0600, $tmp ); # FIXME: must be moved to file_save()
-  return rename( $tmp, $fn );
+  my $rc = rename( $tmp, $fn );
+  unlink( $tmp ) unless $rc; # do not litter the session dir
+  return $rc;
 }
 
 # deletes session data from the storage

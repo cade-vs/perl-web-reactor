@@ -111,6 +111,9 @@ diag( "Data::Tools::Crypto::Symmetric not installed, safe input / forward tests 
 ##  html/default/epostrequired/index.html require_post_method() page
 ##  html/default/empty/index.html         empty page file
 ##  html/bg/main/index.html               language override of the root page
+##  html/default/trpage/                  [~text] and <~text> literals in a page,
+##                                        include, action and hold
+##  html/default/trnest/index.html        literals whose translations hold literals
 ##  actions/*.pm                          Files dispatcher actions (default),
 ##                                        broken ones too (syntax, missing
 ##                                        method, no main)
@@ -122,6 +125,7 @@ diag( "Data::Tools::Crypto::Symmetric not installed, safe input / forward tests 
 ##  lib/Web/Reactor/Actions/Base/         Packages dispatcher fallback set
 ##  trans/bg/ui.tr                        translation file
 ##  trans/single.tr                       single translation file (TRANS_FILE)
+##  trans2/bg/nest.tr                     translations holding literals
 ##
 
 my $ROOT = tempdir( CLEANUP => 1 );
@@ -142,6 +146,9 @@ put( 'html/default/withact/index.html',       'act=[<&hello a=1>]' );
 put( 'html/default/epostrequired/index.html', 'POST REQUIRED' );
 put( 'html/default/empty/index.html',         '' );
 put( 'html/bg/main/index.html',               'BG MAIN' );
+put( 'html/default/trpage/index.html',         'TR [~hello] <~bye> [~no such] inc=[<#trinc>] act=[<&tract>] hold=[<$trhold>]' );
+put( 'html/default/trpage/trinc.html',         '<~hello>' );
+put( 'html/default/trnest/index.html',         '<~nest> [~nest2] <~hello]' );
 
 put( 'actions/hello.pm', <<'EOF' );
 package reactor::actions::hello;
@@ -163,6 +170,7 @@ sub main { my $reo = shift; return $reo->portray( 'raw <$foo>', 'text' ) }
 1;
 EOF
 
+put( 'actions/tract.pm',  "package reactor::actions::tract;\nuse strict;\nsub main { return '[~bye]' }\n1;\n" );
 put( 'actions/empty.pm',  "package reactor::actions::empty;\nuse strict;\nsub main { return '' }\n1;\n" );
 put( 'actions/undef.pm',  "package reactor::actions::undef;\nuse strict;\nsub main { return undef }\n1;\n" );
 put( 'actions/dies.pm',   "package reactor::actions::dies;\nuse strict;\nsub main { die \"action died on purpose\\n\" }\n1;\n" );
@@ -216,6 +224,7 @@ put( 'lib/Web/Reactor/Actions/testreflex/brokenmeth.pm', "package Web::Reactor::
 put( 'actions/brokenfile.pm', "package reactor::actions::brokenfile;\nuse strict;\nsub main { 'X' \n1;\n" );
 
 put( 'trans/bg/ui.tr', "hello=  Hi there  \nbye=Bye\n" );
+put( 'trans2/bg/nest.tr', "nest=N[~hello]<~bye>\nnest2=M<~hello>\n" ); # translations holding literals
 put( 'trans/single.tr', "only=one\n" );
 put( 'trans sp/bg/sp.tr', "spaced=yes\n" ); # a directory with a space in its name
 
@@ -684,6 +693,24 @@ is( $o6->{ 'TRANS' }{ 'bg' }{ 'spaced' }, 'yes', 'translation files in a directo
 my $o4 = app( env(), { LANG => '', TRANS_DIRS => [ "$ROOT/trans" ] } );
 is( $o4->load_trans(), 0, 'load_trans() returns 0 with an empty LANG' );
 ok( ! exists $o4->{ 'TRANS' }, 'load_trans() loads nothing with an empty LANG' );
+}
+
+# [~text] and <~text> are remapped to the loaded language by the preprocessor
+{
+my %tr = ( LANG => 'bg', TRANS_DIRS => [ "$ROOT/trans" ] );
+my $hold = sub { $_[0]->html_hold_set( trhold => '[~hello]' ) };
+is( body( req( get( '_pn=trpage' ), \%tr, $hold ) ), 'TR Hi there Bye no such inc=[Hi there] act=[Bye] hold=[Hi there]',
+    'page, include, action output and hold values are translated, a missing translation keeps the literal' );
+is( body( req( get( '_an=tract' ), \%tr ) ), 'Bye', 'a rendered action result is translated' );
+is( body( req( get( '_pn=trpage' ), { LANG => 'en', TRANS_DIRS => [ "$ROOT/trans" ] }, $hold ) ), 'TR hello bye no such inc=[hello] act=[bye] hold=[hello]',
+    'a language without translations keeps the literals and drops the markers' );
+is( body( req( get( '_pn=trpage' ), {}, $hold ) ), 'TR hello bye no such inc=[hello] act=[bye] hold=[hello]',
+    'without TRANS_DIRS the markers are dropped' );
+my $o = app( env(), \%tr );
+is_deeply( $o->get_trans(), { hello => 'Hi there', bye => 'Bye' }, 'get_trans() returns the table of the current language' );
+is_deeply( app( env(), { LANG => '' } )->get_trans(), {}, 'get_trans() is empty without LANG' );
+is( body( req( get( '_pn=trnest' ), { LANG => 'bg', TRANS_DIRS => [ "$ROOT/trans", "$ROOT/trans2" ] } ) ), 'N[~hello]<~bye> M<~hello> <~hello]',
+    'literals inside a translation are not translated again, in either form, a marker without its own closing bracket is left alone' );
 }
 
 ##############################################################################

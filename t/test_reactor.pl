@@ -315,10 +315,14 @@ is( $reo->__ses, $reo->__ses, 'session backend is attached once' );
   isa_ok( $ok, 'Web::Reactor', 'plain http accepted with DISABLE_SECURE_COOKIES' );
 }
 
-# rsa() needs RSA_PUB
+# rsa() needs RSA_PUB_KEY, the name of a readable public key file
 {
   eval { $reo->rsa() };
-  like( $@, qr/RSA_PUB/, 'rsa() booms without RSA_PUB' );
+  like( $@, qr/does not have RSA_PUB_KEY/, 'rsa() booms without RSA_PUB_KEY' );
+
+  my $r = make_reo( make_env(), make_cfg( RSA_PUB_KEY => "$APP_ROOT/no-such-key.pem" ) );
+  eval { $r->rsa() };
+  like( $@, qr/cannot read RSA_PUB_KEY file \[\Q$APP_ROOT\E\/no-such-key\.pem\]/, 'rsa() booms on a missing RSA_PUB_KEY file and names it' );
 }
 
 ##############################################################################
@@ -1022,7 +1026,11 @@ my ( $COOKIE, $USID, $PSID );
   my $priv_pem = $pk->export_key_pem( 'private' );
   my $priv     = Data::Tools::Crypto::RSA->new( $priv_pem );
 
-  my %rsa_cfg = ( RSA_PUB => $pub_pem );
+  my $pub_fn   = "$APP_ROOT/pub.pem";
+  file_save( $pub_fn, $pub_pem ) or die "cannot write [$pub_fn]\n";
+
+  my %rsa_cfg = ( RSA_PUB_KEY => $pub_fn );
+  isa_ok( make_reo( make_env(), make_cfg( %rsa_cfg ) )->rsa(), 'Data::Tools::Crypto::RSA', 'rsa() loads the RSA_PUB_KEY file' );
 
   my $mark = scalar @LOG;
   request( COOKIE => $COOKIE, CFG => \%rsa_cfg, QS => 'password=pw1&new_password=pw2&pass2=&passwd=pw3&user_passwd=pw4&name=n', HOOK => sub
@@ -1061,12 +1069,12 @@ my ( $COOKIE, $USID, $PSID );
     is( $ui->{ 'NEW_PASSWORD' }, 'plain-new', 'DISABLE_PASSWORD_ENCRYPT leaves NEW_PASSWORD as it arrives' );
     } );
 
-  # without RSA_PUB a non-empty password fails the request, an empty one does not
+  # without RSA_PUB_KEY a non-empty password fails the request, an empty one does not
   $mark = scalar @LOG;
   my ( $rn, $resn ) = request( COOKIE => $COOKIE, QS => 'password=no-key-pw' );
-  ok( ! $rn->{ 'HOOK_DONE' } && log_since( $mark, qr/RSA_PUB/ ), 'a password without RSA_PUB booms' );
+  ok( ! $rn->{ 'HOOK_DONE' } && log_since( $mark, qr/RSA_PUB_KEY/ ), 'a password without RSA_PUB_KEY booms' );
   ok( ! log_since( $mark, qr/no-key-pw/ ), 'the failed request does not log the password' );
-  request( COOKIE => $COOKIE, QS => 'password=', HOOK => sub { is( $_[0]->get_user_input()->{ 'PASSWORD' }, '', 'an empty password needs no RSA_PUB' ) } );
+  request( COOKIE => $COOKIE, QS => 'password=', HOOK => sub { is( $_[0]->get_user_input()->{ 'PASSWORD' }, '', 'an empty password needs no RSA_PUB_KEY' ) } );
 }
 
 ##############################################################################

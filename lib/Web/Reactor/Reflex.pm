@@ -457,6 +457,16 @@ sub load_trans_file
   return hash_load( shift );
 }
 
+# the translation table of the current language, loaded on first use, an
+# empty one without LANG or without translation files
+sub get_trans
+{
+  my $self = shift;
+
+  return {} unless $self->load_trans();
+  return $self->{ 'TRANS' }{ $self->{ 'TRANS' }{ 'LANG' } } || {};
+}
+
 ##############################################################################
 
 sub set_browser_window_title
@@ -721,7 +731,18 @@ language is not a two letter code.
 
 Loads one translation file, returns a hashref.
 
+=item C<get_trans()>
+
+The translation table of the current language, loaded with C<load_trans()> on
+first use. Empty without LANG or without translation files.
+
 =back
+
+Page text marks translatable literals as C<[~text]> or C<E<lt>~textE<gt>>. The
+preprocessor replaces each one with the translation of C<text> from the loaded
+language, or with C<text> itself when there is no translation. This runs once
+per rendered page or action result, after all tags are processed, so it covers
+includes and action output too.
 
 =head1 SEE ALSO
 

@@ -172,10 +172,29 @@ sub process
     {
     delete $opt->{ ':REPEAT_PROCESSING_REQUESTED' };
     $text = $self->process_single_pass( $pn, $text, $opt, $ctx );
-    return $text unless $opt->{ ':REPEAT_PROCESSING_REQUESTED' };
+    return $self->__translate( $text ) unless $opt->{ ':REPEAT_PROCESSING_REQUESTED' };
     }
 
   boom "too many processing passes at page [$pn], deferred tags never settle, probable bug in actions or page files";
+}
+
+# remaps the [~text] and <~text> literals to the loaded language, a literal
+# without a translation keeps its own text. runs once, after all passes settle
+sub __translate
+{
+  my $self = shift;
+  my $text = shift;
+
+  return $text unless $text =~ /\[~|<~/; # no literals, no need to load the translation files
+
+  my $tr = $self->reo->get_trans();
+
+  # one pass for both forms, the branch reset (?|) puts the literal in $1 for
+  # either of them. a replacement is never scanned again, so literals inside a
+  # translation stay as they are, whichever form they use
+  $text =~ s/(?|<~([^<>]*)>|\[~([^\[\]]*)\])/$tr->{ $1 } || $1/ge;
+
+  return $text;
 }
 
 sub process_single_pass

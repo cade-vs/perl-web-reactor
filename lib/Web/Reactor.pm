@@ -87,10 +87,13 @@ sub rsa
 
   return $self->{ "REO_RSA" } if exists $self->{ "REO_RSA" };
 
-  my $pub = $self->cfg->{ 'RSA_PUB_KEY' };
-  boom "RSA encryption requested but configuration does not have RSA_PUB_KEY key in it" unless $pub;
+  my $pub_fn = $self->cfg->{ 'RSA_PUB_KEY' }; # public key PEM file name
+  boom "RSA encryption requested but configuration does not have RSA_PUB_KEY key in it" unless $pub_fn;
 
-  return $self->{ "REO_RSA" } = $self->__load_and_attach_module( 'RSA', 'Data::Tools::Crypto::RSA', file_load( $pub ) );
+  my $pub = file_load( $pub_fn );
+  boom "cannot read RSA_PUB_KEY file [$pub_fn]" unless defined $pub;
+
+  return $self->{ "REO_RSA" } = $self->__load_and_attach_module( 'RSA', 'Data::Tools::Crypto::RSA', $pub );
 }
 
 ##############################################################################
@@ -1610,7 +1613,7 @@ See CRYPTOGRAPHY section below.
 =head2 Password Encryption (Optional)
 
 Data such as passwords can be encrypted with an RSA public key through rsa().
-Configure RSA_PUB with the PEM text of the public key.
+Configure RSA_PUB_KEY with the name of the public key PEM file.
 
 Web::Reactor, and not Web::Reactor::Reflex or Web::Reactor::Core, also
 encrypts password input by itself: the value of every user input parameter
@@ -1622,8 +1625,8 @@ $Web::Reactor::Core::RE_PASSWORD_PARAM_NAMES. Only the backend holding the
 private key reads the value back, with decrypt_hex() of Data::Tools::Crypto::RSA.
 Empty values stay empty, and a value that fails to encrypt becomes empty. A password
 parameter sent more than once is not supported: it is dropped and logged.
-A request with a non-empty password parameter booms when RSA_PUB is not
-configured, unless DISABLE_PASSWORD_ENCRYPT is set, which leaves all user
+A request with a non-empty password parameter booms when RSA_PUB_KEY is not
+configured or its file cannot be read, unless DISABLE_PASSWORD_ENCRYPT is set, which leaves all user
 input as it arrives.
 
 =head2 Content Security Policy (Optional)
@@ -1915,7 +1918,7 @@ Upon creation, Web::Reactor instance gets hash with config entries/keys.
 
   DISABLE_SECURE_COOKIES    -- Disable HTTPS enforcement (default: 0, NOT RECOMMENDED)
   CRY_KEY                   -- 32 raw bytes key for cry() and argsx() (required if used)
-  RSA_PUB                   -- RSA public key PEM text for rsa() (required if used)
+  RSA_PUB_KEY               -- RSA public key PEM file name for rsa() (required if used)
   DISABLE_PASSWORD_ENCRYPT  -- Do not RSA encrypt PASS* and *PASSWORD* user input, Web::Reactor only (default: 0)
   HTTP_CSP                  -- Content-Security-Policy header (optional)
   CLOUDFLARE                -- behind Cloudflare: client IP from CF-Connecting-IP
@@ -1937,6 +1940,10 @@ default, so a client cannot fake its address with those headers.
 
   TRANS_DIRS                -- Directories with .tr translation files (array ref)
   TRANS_FILE                -- Specific translation file to load (string)
+
+Page text marks translatable literals as [~text] or <~text>, the preprocessor
+replaces them with the translation from the loaded LANG, or with the literal
+text itself when there is none.
 
 =head1 API FUNCTIONS
 
@@ -2020,7 +2027,7 @@ documentation, see the method source code and examples in the demo/ directory.
 =head2 Encryption Functions
 
   cry()                   -- Symmetric crypto object (CRY_KEY), see CRYPTOGRAPHY API
-  rsa()                   -- RSA public key object (RSA_PUB), see CRYPTOGRAPHY API
+  rsa()                   -- RSA public key object (RSA_PUB_KEY), see CRYPTOGRAPHY API
   argsx( %args )          -- Encrypted safe input token, carries data in the link
 
 =head1 CRYPTOGRAPHY API
@@ -2033,8 +2040,8 @@ application data and for the argsx() tokens inherited from Web::Reactor::Reflex.
 =head2 Configuration
 
   my %cfg = (
-            'CRY_KEY' => $key,  # exactly 32 raw bytes, for cry() and argsx()
-            'RSA_PUB' => $pem,  # RSA public key PEM text, for rsa()
+            'CRY_KEY'     => $key,            # exactly 32 raw bytes, for cry() and argsx()
+            'RSA_PUB_KEY' => 'keys/pub.pem',  # RSA public key PEM file name, for rsa()
             );
 
 The plug classes can be replaced with REO_CRY_CLASS and REO_RSA_CLASS.
@@ -2068,12 +2075,13 @@ a LINK session instead. Both arrive the same way in get_safe_input().
 
 =head2 Public Key Encryption: rsa()
 
-  my $rsa = $reo->rsa(); # Data::Tools::Crypto::RSA with the RSA_PUB key
+  my $rsa = $reo->rsa(); # Data::Tools::Crypto::RSA with the RSA_PUB_KEY key
 
   my $ctext = $rsa->encrypt_base64url( $secret ); # only the private key decrypts
   my $ok    = $rsa->verify_base64url( $message, $signature );
 
-rsa() booms if RSA_PUB is not configured. The reactor holds only the public
+rsa() booms if RSA_PUB_KEY is not configured or its file cannot be read. The
+file is read once per reactor object, on the first rsa() call. The reactor holds only the public
 key, decrypting with the private key belongs to the backend. User input
 parameters named PASS* or containing PASSWORD arrive encrypted this way, see
 Password Encryption above.
@@ -2277,7 +2285,7 @@ When deploying Web::Reactor applications:
 
 1. Encrypt passwords with an RSA public key if needed (optional):
 
-   'RSA_PUB' => $public_key_pem_text
+   'RSA_PUB_KEY' => $public_key_pem_file_name
 
    Web::Reactor encrypts PASS* and *PASSWORD* input parameters with it, see
    Password Encryption above; rsa() gives the key object for anything else.

@@ -648,6 +648,25 @@ sub log_dumper
   $self->log_debug( Dumper( @_ ) );
 }
 
+# prefixed log levels, always logged regardless of the debug level
+
+sub __log_prefixed
+{
+  my $self   = shift;
+  my $prefix = shift;
+
+  my @args = @_;
+  chomp( @args );
+  my $msg = join( "\n", @args );
+  $msg = "$prefix: $msg" unless $msg =~ /^\Q$prefix\E:/i;
+  $self->log( $msg );
+}
+
+sub log_info    { my $self = shift; $self->__log_prefixed( 'info',    @_ ); }
+sub log_notice  { my $self = shift; $self->__log_prefixed( 'notice',  @_ ); }
+sub log_status  { my $self = shift; $self->__log_prefixed( 'status',  @_ ); }
+sub log_warning { my $self = shift; $self->__log_prefixed( 'warning', @_ ); }
+
 ##############################################################################
 
 sub render
@@ -1094,6 +1113,11 @@ C<log_debug> plus a stack trace.
 =item C<log_dumper( @data )>
 
 C<log_debug> of Data::Dumper output, keys sorted.
+
+=item C<log_info( @text )>, C<log_notice( @text )>, C<log_status( @text )>, C<log_warning( @text )>
+
+Always logged, regardless of the debug level, prefixed with C<info:>,
+C<notice:>, C<status:> or C<warning:> if not already.
 
 =back
 

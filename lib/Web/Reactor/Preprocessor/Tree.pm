@@ -192,9 +192,22 @@ sub __translate
   # one pass for both forms, the branch reset (?|) puts the literal in $1 for
   # either of them. a replacement is never scanned again, so literals inside a
   # translation stay as they are, whichever form they use
-  $text =~ s/(?|<~([^<>]*)>|\[~([^\[\]]*)\])/$tr->{ $1 } || $1/ge;
+  # literals stay on one line, so a stray <~ or [~ cannot swallow markup
+  $text =~ s/(?|<~([^<>\r\n]*)>|\[~([^\[\]\r\n]*)\])/__translate_literal( $tr, $1 )/ge;
 
   return $text;
+}
+
+# looks a literal up trimmed, as load_trans() trims the translation keys, and
+# keeps the literal as written when there is no translation
+sub __translate_literal
+{
+  my $tr  = shift;
+  my $lit = shift;
+
+  ( my $key = $lit ) =~ s/^\s+|\s+$//g;
+
+  return $tr->{ $key } || $lit;
 }
 
 sub process_single_pass

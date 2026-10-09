@@ -114,6 +114,7 @@ diag( "Data::Tools::Crypto::Symmetric not installed, safe input / forward tests 
 ##  html/default/trpage/                  [~text] and <~text> literals in a page,
 ##                                        include, action and hold
 ##  html/default/trnest/index.html        literals whose translations hold literals
+##  html/default/trspace/index.html       padded literals, literals broken by a newline # cc20261009
 ##  actions/*.pm                          Files dispatcher actions (default),
 ##                                        broken ones too (syntax, missing
 ##                                        method, no main)
@@ -149,6 +150,7 @@ put( 'html/bg/main/index.html',               'BG MAIN' );
 put( 'html/default/trpage/index.html',         'TR [~hello] <~bye> [~no such] inc=[<#trinc>] act=[<&tract>] hold=[<$trhold>]' );
 put( 'html/default/trpage/trinc.html',         '<~hello>' );
 put( 'html/default/trnest/index.html',         '<~nest> [~nest2] <~hello]' );
+put( 'html/default/trspace/index.html',        "[~ hello ] <~  bye> [~ no such ] <~hello\n> [~bye\n]" ); # cc20261009
 
 put( 'actions/hello.pm', <<'EOF' );
 package reactor::actions::hello;
@@ -711,6 +713,8 @@ is_deeply( $o->get_trans(), { hello => 'Hi there', bye => 'Bye' }, 'get_trans() 
 is_deeply( app( env(), { LANG => '' } )->get_trans(), {}, 'get_trans() is empty without LANG' );
 is( body( req( get( '_pn=trnest' ), { LANG => 'bg', TRANS_DIRS => [ "$ROOT/trans", "$ROOT/trans2" ] } ) ), 'N[~hello]<~bye> M<~hello> <~hello]',
     'literals inside a translation are not translated again, in either form, a marker without its own closing bracket is left alone' );
+is( body( req( get( '_pn=trspace' ), \%tr ) ), "Hi there Bye  no such  <~hello\n> [~bye\n]", # cc20261009
+    'padded literals are looked up trimmed and kept as written without a translation, a literal never spans lines' );
 }
 
 ##############################################################################

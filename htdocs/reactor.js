@@ -617,7 +617,9 @@ function reactor_popup_show( el )
 
   var popup_layer = reactor_get_popup_layer( el );
   popup_layer.style.display  = "block";
-  popup_layer.style.position = "absolute";
+  // an element in a fixed bar keeps its place while the page scrolls, so does
+  // its popup. any other one scrolls with the page, and its popup with it
+  popup_layer.style.position = reactor_element_is_fixed( el ) ? "fixed" : "absolute";
 
   reactor_reposition_div_next_to( popup_layer, el );
 
@@ -648,35 +650,69 @@ function reactor_popup_hide_by_id( id )
 
 /*-------------------------------------------------------------------*/
 
+// places the (shown, absolute) div under the element, inside the viewport.
+// the element position comes from getBoundingClientRect(), which is in
+// viewport coordinates and already counts every scroll: the document, scrolled
+// containers and fixed bars (offsetTop sums miss the last two). the place is
+// found in the viewport and then moved into the coordinates of the div's own
+// containing block, so it also holds when the div sits in a positioned element
 function reactor_reposition_div_next_to( div, el )
 {
-  var abs_pos = element_absolute_position( el );
+  var doc = document.documentElement;
 
-  var doc  = document.documentElement;
-  var body = document.body;
-
-  var vw = Math.max( doc && doc.clientWidth  || 0, window.innerWidth  || 0 );
-  var vh = Math.max( doc && doc.clientHeight || 0, window.innerHeight || 0 );
+  // the viewport without scrollbars
+  var vw = doc && doc.clientWidth  || window.innerWidth;
+  var vh = doc && doc.clientHeight || window.innerHeight;
 
   var dw = div.offsetWidth;
   var dh = div.offsetHeight;
 
-  var ex = abs_pos.x;
-  var ey = abs_pos.y;
-  var eh = abs_pos.h;
-
-  var scrollLeft = (doc && doc.scrollLeft || body && body.scrollLeft || 0);
-  var scrollTop  = (doc && doc.scrollTop  || body && body.scrollTop  || 0);
-
-  var pw = vw + scrollLeft;
-  var ph = vh + scrollTop;
+  var er = el.getBoundingClientRect();
 
   // the div goes under the element, so its height counts for the edge check
-  var left = (ex + 16 + dw)      > pw ? pw - dw - 16 : ex;
-  var top  = (ey + eh + 16 + dh) > ph ? ph - dh - 16 : ey + eh;
+  var left = ( er.left   + 16 + dw ) > vw ? vw - dw - 16 : er.left;
+  var top  = ( er.bottom + 16 + dh ) > vh ? vh - dh - 16 : er.bottom;
+  if( left < 0 ) left = 0; // a div larger than the viewport keeps its top left corner visible
+  if( top  < 0 ) top  = 0;
 
-  div.style.left = left + 'px';
-  div.style.top  = top  + 'px';
+  var cb = reactor_containing_block_origin( div );
+
+  div.style.left = ( left - cb.x ) + 'px';
+  div.style.top  = ( top  - cb.y ) + 'px';
+}
+
+// true if the element or one of its ancestors is position: fixed, i.e. the
+// element does not move when the page scrolls
+function reactor_element_is_fixed( el )
+{
+  for( var e = el; e && e.nodeType === 1; e = e.parentNode )
+    if( window.getComputedStyle( e ).position == 'fixed' ) return true;
+
+  return false;
+}
+
+// viewport position of the origin, which the div's left and top count from:
+// the viewport for a fixed div, else the document, or the positioned ancestor
+// (its padding box, scrolled)
+function reactor_containing_block_origin( div )
+{
+  var doc  = document.documentElement;
+  var body = document.body;
+
+  if( window.getComputedStyle( div ).position == 'fixed' ) return { x: 0, y: 0 };
+
+  var cb = div.offsetParent;
+
+  // offsetParent is the body also when nothing is positioned, the document then
+  if( ! cb || ( ( cb === body || cb === doc ) && window.getComputedStyle( cb ).position == 'static' ) )
+    {
+    var sx = window.pageXOffset || doc && doc.scrollLeft || body && body.scrollLeft || 0;
+    var sy = window.pageYOffset || doc && doc.scrollTop  || body && body.scrollTop  || 0;
+    return { x: -sx, y: -sy };
+    }
+
+  var r = cb.getBoundingClientRect();
+  return { x: r.left + cb.clientLeft - cb.scrollLeft, y: r.top + cb.clientTop - cb.scrollTop };
 }
 
 function reactor_reposition_div_to_xy( div, x, y )

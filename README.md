@@ -140,12 +140,13 @@ whose name starts with PASS (PASS, PASS2, PASSWORD, ...) or contains PASSWORD
 text, so the application never sees the plain password. The same parameters
 are masked in the debug logs, by all reactors. The rule is kept in
 $Web::Reactor::Core::RE\_PASSWORD\_PARAM\_NAMES. Only the backend holding the
-private key reads the value back, with decrypt\_hex() of Data::Tools::Crypto::RSA.
-Empty values stay empty, and a value that fails to encrypt becomes empty. A password
-parameter sent more than once is not supported: it is dropped and logged.
-A request with a non-empty password parameter booms when RSA\_PUB\_KEY is not
-configured or its file cannot be read, unless DISABLE\_PASSWORD\_ENCRYPT is set, which leaves all user
-input as it arrives.
+private key reads the value back, with decrypt\_hex() of
+Data::Tools::Crypto::RSA. Empty values stay empty, and a value that fails to
+encrypt becomes empty. A password parameter sent more than once is not
+supported: it is dropped and logged. A request with a non-empty password
+parameter booms when RSA\_PUB\_KEY is not configured or its file cannot be read,
+unless DISABLE\_PASSWORD\_ENCRYPT is set, which leaves all user input as it
+arrives.
 
 ## Content Security Policy (Optional)
 
@@ -599,10 +600,10 @@ a LINK session instead. Both arrive the same way in get\_safe\_input().
     my $ok    = $rsa->verify_base64url( $message, $signature );
 
 rsa() booms if RSA\_PUB\_KEY is not configured or its file cannot be read. The
-file is read once per reactor object, on the first rsa() call. The reactor holds only the public
-key, decrypting with the private key belongs to the backend. User input
-parameters named PASS\* or containing PASSWORD arrive encrypted this way, see
-Password Encryption above.
+file is read once per reactor object, on the first rsa() call. The reactor
+holds only the public key, decrypting with the private key belongs to the
+backend. User input parameters named PASS\* or containing PASSWORD arrive
+encrypted this way, see Password Encryption above.
 
 ## Security Considerations
 

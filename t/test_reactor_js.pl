@@ -80,6 +80,7 @@ var __ids = {};
 function El( tag, id )
 {
   var self = this;
+  this.nodeType   = 1;    // an element, the document and plain objects have none
   this.tagName    = tag.toUpperCase();
   this.id         = id || "";
   this.style      = {};
@@ -92,6 +93,11 @@ function El( tag, id )
   this.offsetLeft = 0;
   this.offsetTop  = 0;
   this.offsetParent = null;
+  this.clientLeft = 0;    // border widths and own scroll, for a containing block
+  this.clientTop  = 0;
+  this.scrollLeft = 0;
+  this.scrollTop  = 0;
+  this.__rect = null;     // a viewport rect for getBoundingClientRect, else from the offsets
   this.__w = 0;           // size when shown, a hidden element has none
   this.__h = 0;
   this.checked = false;
@@ -111,6 +117,17 @@ function El( tag, id )
 }
 
 El.prototype.appendChild = function( c ) { c.parentNode = this; this.children.push( c ); return c; };
+// viewport coordinates: the offsets chain minus the document scroll, unless a
+// test sets the rect itself (fixed bars, scrolled containers)
+El.prototype.getBoundingClientRect = function()
+{
+  var w = this.offsetWidth, h = this.offsetHeight;
+  if( this.__rect ) return { left: this.__rect.left, top: this.__rect.top, right: this.__rect.left + w, bottom: this.__rect.top + h, width: w, height: h };
+  var x = 0, y = 0;
+  for( var e = this; e; e = e.offsetParent ) { x += e.offsetLeft; y += e.offsetTop; }
+  x -= window.pageXOffset; y -= window.pageYOffset;
+  return { left: x, top: y, right: x + w, bottom: y + h, width: w, height: h };
+};
 El.prototype.getAttribute = function( n ) { return n in this.attrs ? this.attrs[n] : null; };
 El.prototype.setAttribute = function( n, v ) { this.attrs[n] = String( v ); };
 El.prototype.closest = function( tag )
@@ -145,22 +162,31 @@ El.prototype.dispatchEvent = function( ev )
 var document = {
                 getElementById:  function( id ) { return __ids[id] || null; },
                 documentElement: { clientWidth: 1000, clientHeight: 800, scrollLeft: 0, scrollTop: 0 },
-                body:            { scrollLeft: 0, scrollTop: 0 },
+                body:            { scrollLeft: 0, scrollTop: 0, computed: {}, style: {} },
                 };
 
 var window = {
               innerWidth:  1000,
               innerHeight: 800,
+              pageXOffset: 0,   // document scroll, see scroll_to()
+              pageYOffset: 0,
               getComputedStyle: function( el )
                 {
                 return {
                        display:    el.style.display    || el.computed.display    || "block",
                        visibility: el.style.visibility || el.computed.visibility || "visible",
+                       position:   el.style.position   || el.computed.position   || "static",
                        };
                 },
               };
 
 // helpers for the tests
+function scroll_to( x, y )
+{
+  window.pageXOffset = document.documentElement.scrollLeft = x;
+  window.pageYOffset = document.documentElement.scrollTop  = y;
+}
+
 function mk( tag, id, dataset, classes )
 {
   var e = new El( tag, id );
@@ -410,6 +436,95 @@ my $TESTS = <<'JS';
   t_is( pending_timers(), 1, 'leaving the popup starts the close timer again' );
   run_timers();
   t_is( pb.style.display, "none", 'the popup closes after the timeout' );
+}
+
+/*** popup position, whatever is scrolled ***********************************/
+{
+  // viewport 1000x800, popup 200x150, element 50x30
+  var pl = mk( 'DIV', 'PL' ); pl.style.display = "none"; pl.__w = 200; pl.__h = 150;
+  var el = mk( 'SPAN', 'EL', { popupLayerId: 'PL' } ); el.__w = 50; el.__h = 30;
+
+  // the document scrolled down, the element in the normal flow
+  scroll_to( 0, 1000 );
+  el.offsetLeft = 100; el.offsetTop = 1200; // 200 in the viewport
+  reactor_popup_show( el );
+  t_is( pl.style.top,  "1230px", 'scrolled document: the popup is right under the element' );
+  t_is( pl.style.left, "100px",  'scrolled document: the popup is aligned with the element' );
+  reactor_popup_hide( el );
+
+  el.offsetTop = 1650; // 650 in the viewport, no room under it
+  reactor_popup_show( el );
+  t_is( pl.style.top, "1634px", 'scrolled document: the popup is pulled up at the bottom of the viewport, not of the page top' );
+  reactor_popup_hide( el );
+
+  t_is( pl.style.position, "absolute", 'an element in the normal flow gets an absolute popup, it scrolls with the page' );
+
+  // an element in a fixed bar: the popup is fixed too, in viewport coordinates
+  var bar = mk( 'DIV', 'BAR' ); bar.computed.position = "fixed";
+  bar.appendChild( el );
+  el.offsetLeft = 300; el.offsetTop = 10; el.__rect = { left: 300, top: 10 };
+  reactor_popup_show( el );
+  t_is( pl.style.position, "fixed", 'an element in a fixed bar gets a fixed popup' );
+  t_is( pl.style.top,  "40px",  'fixed bar on a scrolled document: the popup is under the element in viewport coordinates' );
+  t_is( pl.style.left, "300px", 'fixed bar: the popup is aligned with the element' );
+  reactor_popup_hide( el );
+  scroll_to( 0, 0 );
+  reactor_popup_show( el );
+  t_is( pl.style.top, "40px", 'fixed bar: the place does not depend on the page scroll' );
+  reactor_popup_hide( el );
+  el.parentNode = null;
+
+  el.computed.position = "fixed"; // the element itself fixed
+  el.__rect = { left: 300, top: 700 };
+  reactor_popup_show( el );
+  t_is( pl.style.position, "fixed", 'a fixed element gets a fixed popup' );
+  t_is( pl.style.top, "634px", 'a fixed popup is pulled up at the bottom of the viewport' );
+  reactor_popup_hide( el );
+  el.computed.position = "relative"; // a relative element scrolls with the page
+  scroll_to( 0, 1000 );
+  reactor_popup_show( el );
+  t_is( pl.style.position, "absolute", 'a relative element gets an absolute popup, it scrolls with the page' );
+  t_is( pl.style.top, "1634px", 'the popup of a relative element is placed in page coordinates' );
+  reactor_popup_hide( el );
+  el.computed.position = "";
+  scroll_to( 0, 1000 );
+
+  // an element in a container scrolled by 500, the document not scrolled
+  scroll_to( 0, 0 );
+  el.offsetLeft = 100; el.offsetTop = 900; el.__rect = { left: 100, top: 400 };
+  reactor_popup_show( el );
+  t_is( pl.style.top, "430px", 'scrolled container: the popup follows the scrolled element' );
+  reactor_popup_hide( el );
+
+  // the popup inside a positioned ancestor at 100,200 in the viewport, itself scrolled by 20
+  var cb = mk( 'DIV', 'CB' ); cb.style.position = "relative"; cb.__rect = { left: 100, top: 200 }; cb.scrollTop = 20; cb.clientLeft = 2; cb.clientTop = 2;
+  pl.offsetParent = cb;
+  el.__rect = { left: 300, top: 300 };
+  reactor_popup_show( el );
+  t_is( pl.style.left, "198px", 'positioned ancestor: left counts from its padding box' );
+  t_is( pl.style.top,  "148px", 'positioned ancestor: top counts from its padding box and its own scroll' );
+  reactor_popup_hide( el );
+
+  // a static body as offsetParent means the document
+  pl.offsetParent = document.body;
+  scroll_to( 0, 300 );
+  el.__rect = null; el.offsetLeft = 300; el.offsetTop = 600; // 300 in the viewport
+  reactor_popup_show( el );
+  t_is( pl.style.top, "630px", 'a static body as offsetParent counts from the document' );
+  reactor_popup_hide( el );
+
+  // the edges
+  scroll_to( 0, 0 );
+  pl.offsetParent = null;
+  el.offsetLeft = 950; el.offsetTop = 100;
+  reactor_popup_show( el );
+  t_is( pl.style.left, "784px", 'the popup is pulled in at the right edge of the viewport' );
+  reactor_popup_hide( el );
+  pl.__w = 1200; pl.__h = 900;
+  el.offsetLeft = 10; el.offsetTop = 10;
+  reactor_popup_show( el );
+  t_is( pl.style.left + " " + pl.style.top, "0px 0px", 'a popup larger than the viewport keeps its top left corner visible' );
+  reactor_popup_hide( el );
 }
 
 /*** disable on click ******************************************************/

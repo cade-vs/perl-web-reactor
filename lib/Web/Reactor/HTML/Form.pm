@@ -9,7 +9,6 @@
 ##############################################################################
 package Web::Reactor::HTML::Form;
 use strict;
-use Exporter;
 use Data::Tools 1.31;
 use Exception::Sink;
 
@@ -33,16 +32,63 @@ sub create_uniq_id
 {
   my $self = shift;
 
-  return $self->reo()->create_uniq_id( shift() );
+  return $self->reo()->create_uniq_id();
 }
 
+# optional identifiers (ID, etc.), empty or undef is allowed
 sub __check_ident
 {
   for( @_ )
     {
-    /^([a-zA-Z_0-9_:.]+|)$/ or boom "invalid or empty IDENTIFIER [$_]";
+    /^([a-zA-Z0-9_:.]+|)$/ or boom "invalid IDENTIFIER [$_]";
     }
   return 1;
+}
+
+# element names, must not be empty
+sub __check_name
+{
+  for( @_ )
+    {
+    /^[a-zA-Z0-9_:.]+$/ or boom "invalid or empty NAME [$_]";
+    }
+  return 1;
+}
+
+# javascript string literal, double quoted, for inline event handlers
+# (html_element() escapes the attribute value itself)
+sub __js_str
+{
+  my $s = shift;
+
+  $s =~ s/([\\"'])/\\$1/g;
+  $s =~ s/\n/\\n/g;
+  $s =~ s/\r/\\r/g;
+
+  return qq["$s"];
+}
+
+# onclick handler for the CONFIRM option, undef if no confirmation is needed
+sub __confirm_js
+{
+  my $confirm = shift;
+
+  return undef unless $confirm;
+  $confirm = "[~Are you sure?]" if $confirm eq '1';
+  return "return confirm(" . __js_str( $confirm ) . ");";
+}
+
+# onchange handler for the SUBMIT_ON_CHANGE option:
+#   positive number -- submit the form
+#   other string    -- javascript code to run
+#   false           -- undef, no handler
+sub __submit_on_change_js
+{
+  my $soc = shift;
+
+  return undef unless $soc;
+  return 'this.form.submit()' if $soc =~ /^\d+$/;
+  return $soc;
 }
 
 ##############################################################################
@@ -67,17 +113,18 @@ sub begin
 
   $name ||= $reo->create_uniq_id();
   $id   ||= $name . '.' . $reo->create_uniq_id();
-  __check_ident( $name, $id );
+  __check_name( $name, $id );
 
+  # debug prefixes are only visible in the html, the form state keeps the real name
+  my $html_name = $name;
   if( $reo->is_debug() )
     {
-    $name = "FORM_$name";
-    $id   = "FORM_ID_$id";
+    $html_name = "FORM_$name";
+    $id        = "FORM_ID_$id";
     }
 
   $self->{ 'FORM_NAME'  } = $name;
   $self->{ 'FORM_ID'    } = $id;
-  $self->{ 'RADIO'      } = {};
   $self->{ 'RET_MAP'    } = {}; # return data mapping (combo, checkbox, etc.)
 
   my %at;
@@ -88,21 +135,18 @@ sub begin
 
   # FIXME: TODO: debug info inside html text, begin formname end etc.
 
+  # state set before begin() is kept, args type defaults to HERE
   $self->state( 'FORM_NAME'  => $name  ); # TODO: replace with _FRO
   $self->state( 'FORM_ID'    => $id    ); # TODO: replace with _FRI
-  $self->state( ':ARGS_TYPE' => 'HERE' );
+  $self->state( ':ARGS_TYPE' => $self->{ 'FORM_STATE' }{ ':ARGS_TYPE' } || 'HERE' );
 
-  my $ps = $reo->get_page_session();
-  $ps->{ ':FORM_DEF' }{ $name } = {};
-
-
-  $text .= html_element( 'FORM', '', name => $name, id => $id, action => $action, method => $method, enctype => 'multipart/form-data', %at );
+  $text .= html_element( 'FORM', '', name => $html_name, id => $id, action => $action, method => $method, enctype => 'multipart/form-data', %at );
 
 #### REMOVE ###  $text .= "<form name='$form_name' id='$form_id' action='$action' method='$method' enctype='multipart/form-data' $options></form>";
 #### REMOVE ###  ### $text .= "<input style='display: none;' name='__avoidiebug__' form='$form_id'>"; # stupid IE bugs
   if( $default_button )
     {
-    $text .= html_element( 'INPUT', undef, form => $id, type => 'image', name => "BUTTON:$default_button", src => 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQI12NgYGBgAAAABQABXvMqOgAAAABJRU5ErkJggg==', border => 0, height => 0, width => 0, style => 'display: none;', onDblClick => 'return false;' );
+    $text .= html_element( 'INPUT', undef, form => $id, type => 'image', name => "button:$default_button", src => 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQI12NgYGBgAAAABQABXvMqOgAAAABJRU5ErkJggg==', border => 0, height => 0, width => 0, style => 'display: none;', onDblClick => 'return false;' );
 #### REMOVE ###      $text .= "<input style='display: none;' type='image' name='BUTTON:$default_button' src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQI12NgYGBgAAAABQABXvMqOgAAAABJRU5ErkJggg==' border=0 height=0 width=0 onDblClick='return false;' form='$form_id'>"
     }
   return $text;
@@ -151,21 +195,22 @@ sub end
 
   my $text;
 
-  $text .= $self->end_radios();
   # $text .= "</form>";
 
 # FIXME: TODO: debug info inside html text, begin formname end etc.
 
   my $reo = $self->reo();
-  my $page_session = $reo->get_page_session();
 
-  my $form_name = $self->{ 'FORM_NAME' };
-  my $form_id   = $self->{ 'FORM_ID'   };
+  my $form_id = $self->{ 'FORM_ID' };
 
   my $link_shr = $reo->get_link_session();
   $link_shr->{ 'FORM_RET_MAP' }{ $form_id } = $self->{ 'RET_MAP' };
 
-  my $state_keeper = $reo->args_type( $self->{ 'FORM_STATE'  }{ ':ARGS_TYPE' }, %{ $self->{ 'FORM_STATE'  } } );
+  # the form state is used once, a reused form object starts with a clean state
+  my %state     = %{ delete $self->{ 'FORM_STATE' } || {} };
+  my $args_type = delete $state{ ':ARGS_TYPE' } || 'HERE';
+
+  my $state_keeper = $reo->args_type( $args_type, %state );
 
 ##### REMOVE #####  #$text .= "<input type=hidden name='_' value='$state_keeper' form='$form_id'>";
   $text .= html_element( 'INPUT', undef, form => $form_id, type => 'hidden', name => '_', value => $state_keeper );
@@ -180,12 +225,12 @@ sub __ret_map_name
   my $self = shift;
   my $name = shift; # input element name to be hidden
 
-  my $key = uc $self->create_uniq_id( 1 ); # upper case
+  my $key = uc $self->create_uniq_id(); # upper case
   $self->{ 'RET_MAP' }{ 'NAME' }{ $key } = $name;
   return $key;
 }
 
-# $self->__ret_map_set( $input_element_name, visible_key1 => return_value1, visible_key2 => return_value2, ... );
+# $self->__ret_map_data( $input_element_name, visible_key1 => return_value1, visible_key2 => return_value2, ... );
 sub __ret_map_data
 {
   my $self = shift;
@@ -211,18 +256,17 @@ sub checkbox
 
   my %opt = @_;
 
-  my $name  = $opt{ 'NAME'  };
-  my $class = $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'CHECKBOX' } || 'checkbox';
-  my $value = $opt{ 'VALUE' } ? 1 : 0;
-  my $args  = $opt{ 'ARGS'  };
+  my $name  = uc $opt{ 'NAME'  };
+  my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'CHECKBOX' } || 'checkbox';
+  my $value =    $opt{ 'VALUE' } ? 1 : 0;
 
 die "error: Form.pm: EXTRA used but it is removed, content is [$opt{ 'EXTRA' }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'EXTRA' };
 die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'ARGS'   };
 
-  __check_ident( $name );
+  __check_name( $name );
 
-  my $options;
-  $options .= $value ? " checked " : undef;
+  my %options;
+  $options{ 'checked' } = undef if $value; # bare attribute
 
   my $text;
 
@@ -230,13 +274,9 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
 
   my $form_id = $self->{ 'FORM_ID' };
   #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
-  #$text .= "<input type='checkbox' name='$name' value='1' $options>";
   $text .= "\n";
-  $text .= "<input type='hidden' name='$name' id='$ch_id' value='$value' form='$form_id' $args>";
-  # --> $text .= html_element( "input", undef, type => 'hidden', name => $name, id => $ch_id, value => $value, form => $form_id, extra => $args );
-#  $text .= qq[ <input type='checkbox' $options checkbox_data_input_id="$ch_id" onclick='document.getElementById( "$ch_id" ).value = this.checked ? 1 : 0'> ];
-  $text .= qq[ <input type='checkbox' $options data-checkbox-input-id="$ch_id" form='$form_id' onclick='reactor_form_checkbox_toggle(this)' class='$class'> ];
-  # --> $text .= html_element( "input", undef, type => 'checkbox', 'data-checkbox-input-id' => $ch_id, form => $form_id, onclick='reactor_form_checkbox_toggle(this)', class => $class, extra => $options );
+  $text .= html_element( 'input', undef, type => 'hidden', name => $name, id => $ch_id, value => $value, form => $form_id );
+  $text .= html_element( 'input', undef, %options, type => 'checkbox', 'data-checkbox-input-id' => $ch_id, form => $form_id, onclick => 'reactor_form_checkbox_toggle(this)', class => $class );
   $text .= "\n";
 
   return $text;
@@ -251,17 +291,19 @@ sub checkbox_multi
 
   my %opt = @_;
 
-  my $name   = $opt{ 'NAME'   };
-  my $class  = $opt{ 'CLASS'  } || $self->{ 'CLASS_MAP' }{ 'CHECKBOX' } || 'checkbox';
-  my $value  = $opt{ 'VALUE'  };
-  my $stages = $opt{ 'STAGES' } || 2;
-  my $labels = $opt{ 'LABELS' } || [ 'x', '&radic;' ];
-  my $hint   = $opt{ 'HINT'   };
+  my $name   = uc $opt{ 'NAME'   };
+  my $class  =    $opt{ 'CLASS'  } || $self->{ 'CLASS_MAP' }{ 'CHECKBOX' } || 'checkbox';
+  my $value  =    $opt{ 'VALUE'  };
+  my $stages =    $opt{ 'STAGES' } || 2;
+  my $labels =    $opt{ 'LABELS' } || [ 'x', '&radic;' ];
+  my $hint   =    $opt{ 'HINT'   };
+  my $id     =    $opt{ 'ID'     };
 
 die "error: Form.pm: EXTRA used but it is removed, content is [$opt{ 'EXTRA' }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'EXTRA' };
 die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'ARGS'   };
 
-  __check_ident( $name );
+  __check_name( $name );
+  __check_ident( $id );
 
   $value = abs( int( $value ) );
   $value = 0 if $value >= $stages;
@@ -272,18 +314,19 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
   for my $s ( 0 .. $stages - 1 )
     {
     my $display = $value == $s ? 'inline' : 'none';
-    $labels_spans .= html_element( 'span', $labels->[$s], style => "display: $display" );
+    # stages without a label show the stage number
+    $labels_spans .= html_element( 'span', $labels->[$s] // $s, style => "display: $display" );
     }
 
-  my $reo = $self->reo();
-  my $hint_handler = $hint ? html_hover_layer( $reo, VALUE => $hint ) : undef;
+  my %options;
+  $options{ 'onmouseover' } = html_hover_layer( $self->reo(), VALUE => $hint ) if $hint;
 
   my $cb_id = $self->create_uniq_id(); # checkbox id
-  my $el_id = $opt{ 'ID' } || $self->create_uniq_id(); # checkbox label element id
+  my $el_id = $id || $self->create_uniq_id(); # checkbox label element id
 
   my $form_id = $self->{ 'FORM_ID' };
   $text .= html_element( "input", undef, type => 'hidden', name => $name, id => $cb_id, value => $value, form => $form_id );
-  $text .= html_element( "span", $labels_spans, id => $el_id, 'data-stages' => $stages, 'data-checkbox-input-id' => $cb_id, onclick => 'reactor_form_multi_checkbox_toggle(this)', onmouseover => $hint_handler );
+  $text .= html_element( "span", $labels_spans, %options, id => $el_id, class => $class, 'data-stages' => $stages, 'data-checkbox-input-id' => $cb_id, onclick => 'reactor_form_multi_checkbox_toggle(this)' );
 #  $text .= html_element( "script", "reactor_form_multi_checkbox_setup_id( '$el_id' )" );
   $text .= "\n";
 
@@ -299,7 +342,7 @@ sub checkbox_3state
   my $self = shift;
 
   my %args = @_; # to fix uneven args
-  return $self->checkbox_multi( %args, STAGES => 3, LABELS => [ '?', '&radic;', 'x' ] );
+  return $self->checkbox_multi( %args, STAGES => 3, LABELS => $args{ 'LABELS' } || [ '?', '&radic;', 'x' ] );
 }
 
 ##############################################################################
@@ -310,24 +353,26 @@ sub radio
 
   my %opt = @_;
 
-  my $name  = $opt{ 'NAME'  }; # FIXME:escape or check?
-  my $class = $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'RADIO' } || 'radio';
-  my $on    = $opt{ 'ON'    }; # active?
-  my $ret   = $opt{ 'RET'   }; # map return value!
-  my $key   = $opt{ 'KEY'   };
+  my $name  = uc $opt{ 'NAME'  };
+  my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'RADIO' } || 'radio';
+  my $on    =    $opt{ 'ON'    }; # active?
+  my $ret   =    $opt{ 'RET'   }; # map return value!
+  my $key   =    $opt{ 'KEY'   };
 
 die "error: Form.pm: EXTRA used but it is removed, content is [$opt{ 'EXTRA' }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'EXTRA' };
 die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'ARGS'   };
 
-  __check_ident( $name );
+  __check_name( $name );
 
   my $text;
 
-  my $val = defined $ret ? $self->create_uniq_id() : $key;
+  my $val = defined $ret ? $self->create_uniq_id() : $key // '';
+
+  my %options;
+  $options{ 'checked' } = undef if $on; # bare attribute
 
   my $form_id = $self->{ 'FORM_ID' };
-  my $checked = $on ? 'checked' : undef;
-  $text .= "<input type='radio' $checked name='$name' value='$val' form='$form_id' >";
+  $text .= html_element( 'input', undef, %options, type => 'radio', name => $name, value => $val, class => $class, form => $form_id );
 
   $self->__ret_map_data( $name, $val => $ret ) if defined $ret;
 
@@ -335,28 +380,17 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
   return $text;
 }
 
-sub end_radios
-{
-  my $self = shift;
-
-  my $text;
-
-  # nothing for now
-
-  return $text;
-}
-
 ##############################################################################
 =pod
 
-$form->select( DATA => $data );
+$form->select( NAME => $name, DATA => $data, SELECTED => $selected );
 
 $data = [
          {
-         KEY   => string      # visible html key
-         VALUE => string      # return value, safely stored or encrypted
-         LABEL => string      # visible text for this key/value
-         ORDER => \d+
+         KEY      => string      # visible html key, '*' or empty generates one
+         VALUE    => string      # return value, safely stored or encrypted
+         LABEL    => string      # visible text for this key/value
+         SELECTED => bool        # this option is selected
          },
        ];
 
@@ -364,12 +398,16 @@ $data = {
          KEY => {
                 VALUE => string      # return value, safely stored or encrypted
                 LABEL => string      # visible text for this key/value
-                ORDER => \d+
+                ORDER => \d+         # sort order, then by KEY
                 },
          KEY => label_string,
         };
 
 if VALUE is missing, KEY will be returned
+
+array data keeps its order, hash data is sorted by ORDER and KEY
+
+$selected is a return value, or a hashref or arrayref of selected return values
 
 =cut
 
@@ -379,32 +417,32 @@ sub select
 
   my %opt = @_;
 
-  my $name  = $opt{ 'NAME'  };
-  my $id    = $opt{ 'ID'    };
-  my $class = $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'SELECT' } || 'select';
-  my $rows  = $opt{ 'SIZE'  } || $opt{ 'ROWS'  } || 1;
-  my $attrs = $opt{ 'ATTRS' };
+  my $name  = uc $opt{ 'NAME'  };
+  my $id    =    $opt{ 'ID'    };
+  my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'SELECT' } || 'select';
+  my $rows  =    $opt{ 'SIZE'  } || $opt{ 'ROWS'  } || 1;
+  my $attrs =    $opt{ 'ATTRS' };
 
-  __check_ident( $name, $id );
+  __check_name( $name );
+  __check_ident( $id );
 
   my $data     = $opt{ 'DATA'     }; # array reference or hash reference, inside hashesh are the same
-  my $selected = $opt{ 'SELECTED' }; # hashref with selected keys (values are true's)
+  my $selected = $opt{ 'SELECTED' }; # selected return value, hashref or arrayref of them
   my $sel_data;
+
+  $selected = { map { $_ => 1 } @$selected } if ref( $selected ) eq 'ARRAY';
 
   my %at;
 
-  $at{ 'form' } = $self->{ 'FORM_ID' };
-
-  $at{ 'name' } = $self->__ret_map_name( $name );
-  for( qw( id class rows ) )
-    {
-    $at{ $_ } = $opt{ uc $_ } if $opt{ uc $_ };
-    }
+  $at{ 'form'  } = $self->{ 'FORM_ID' };
+  $at{ 'name'  } = $self->__ret_map_name( $name );
+  $at{ 'class' } = $class;
+  $at{ 'id'    } = $id   if $id ne '';
+  $at{ 'size'  } = $rows if $rows > 1;
 
   if( ref($data) eq 'HASH' )
     {
     $sel_data = [];
-    my %res;
     while( my ( $k, $v ) = each %$data )
       {
       my %e = ( 'KEY' => $k );
@@ -416,95 +454,70 @@ sub select
         {
         $e{ 'LABEL' } = $v;
         }
+      hash_uc_ipl( \%e );
       push @$sel_data, \%e;
       }
-    # FIXME: @$sel_data = sort { ... } @$sel_data;
+    @$sel_data = sort { $a->{ 'ORDER' } <=> $b->{ 'ORDER' } or $a->{ 'KEY' } cmp $b->{ 'KEY' } } @$sel_data;
     }
   elsif( ref($data) eq 'ARRAY' )
     {
-    $sel_data = $data;
+    # copies, the caller's data is not changed
+    $sel_data = [ map { my %e = %$_; hash_uc_ipl( \%e ); \%e } @$data ];
     }
   else
     {
     boom "DATA must be either ARRAY or HASH reference";
     }
-  hash_uc_ipl( $_ ) for @$sel_data;
 
   my $text;
 
-  # TODO: FIXME: FIXME: FIXME: FIXME: FIXME: cleanup this mess!
-  $at{ 'onChange' } = 'this.form.submit()'       if $opt{ 'SUBMIT_ON_CHANGE' } and $opt{ 'SUBMIT_ON_CHANGE' }  > 0;
-  $at{ 'onChange' } = $opt{ 'SUBMIT_ON_CHANGE' } if $opt{ 'SUBMIT_ON_CHANGE' } and $opt{ 'SUBMIT_ON_CHANGE' } == 0;
+  my $on_change = __submit_on_change_js( $opt{ 'SUBMIT_ON_CHANGE' } );
+  $at{ 'onChange' } = $on_change if $on_change;
 
-=pod
-  if( $opt{ 'RADIO' } )
+  $at{ 'multiple' } = 'multiple' if $opt{ 'MULTIPLE' };
+
+  my $opt_text;
+  for my $hr ( @$sel_data )
     {
-    for my $hr ( @$sel_data )
-      {
-      my $sel   = $hr->{ 'SELECTED' } ? 'selected' : ''; # is selected?
-      my $key   = $hr->{ 'KEY'      };
-      my $ret   = $hr->{ 'RET'      };
-      my $value = $hr->{ 'VALUE'    };
+    my $key    = $hr->{ 'KEY'   };
+    my $value  = $hr->{ 'VALUE' };
+    my $label  = $hr->{ 'LABEL' } // '';
 
-      $sel = 'selected' if ( ref( $selected ) and $selected->{ $key } ) or ( $selected eq $key );
-#print STDERR "sssssssssssssssssssssssss RADIO [$name] [$value] [$key] $sel -- {$extra}\n";
-      $text .= $self->radio( NAME => $name, RET => $ret, KEY => $key, ON => $sel, EXTRA => $extra, DISABLED => $disabled ) . " $value";
-      $text .= "<br>" if $opt{ 'RADIO' } != 2;
-      }
-    # FIXME: kakvo stava ako nqma dadeno selected pri submit na formata?
-    }
-  else
-=cut
-    {
-    $at{ 'multiple' } = 'multiple' if $opt{ 'MULTIPLE' };
+    $value = $key if ! defined $value and $key ne '*';
 
-    my $opt_text;
-    my $pad = '&nbsp;' x 3;
-    for my $hr ( @$sel_data )
-      {
-      my $key    = $hr->{ 'KEY'   };
-      my $value  = $hr->{ 'VALUE' };
-      my $label  = $hr->{ 'LABEL' } || '';
+    my %at_opt;
+    $at_opt{ 'selected' } = 'selected' if $hr->{ 'SELECTED' } or ( ref( $selected ) ? $selected->{ $value } : defined $selected && $selected eq $value );
 
-      my %at_opt;
-      $at_opt{ 'selected' } = 'selected' if $hr->{ 'SELECTED' } or ( ref( $selected ) ? $selected->{ $value } : $selected eq $value );
+    $key = $self->create_uniq_id() if $key eq '*';
+    $key = $value                  if $key eq ''; # the value is visible, still mapped so mixed options work
 
-      $key = $self->create_uniq_id() if $key eq '*';
+    $self->__ret_map_data( $name, $key => $value );
 
-      if( $key ne '' )
-        {
-        $key ||= $self->create_uniq_id();
-        $self->__ret_map_data( $name, $key => $value );
-        }
-      else
-        {
-        $key = $value;
-        }
-
-      $at_opt{ 'value' } = $key;
+    $at_opt{ 'value' } = $key;
 #print STDERR "sssssssssssssssssssssssss COMBO [$name] [$value] [$key] $sel\n";
-      #$opt_text .= "<option value='$val_id' $sel>$value$pad</option>\n";
-      $opt_text .= html_element( 'OPTION', $label, %at_opt );
-      }
-
-#    $text .= "</select>";
-#    $text .=
-#    $text .= "<select class='$class' id='$id' name='$name' size='$rows' $multiple form='$form_id' $args $extra $options>";
-    $text .= html_element( 'SELECT', $opt_text, %at, %$attrs );
+    #$opt_text .= "<option value='$val_id' $sel>$value$pad</option>\n";
+    $opt_text .= html_element( 'OPTION', $label, %at_opt );
     }
+
+  # extra attributes cannot replace name and form, the return mapping needs them
+  my %ah = %{ $attrs || {} };
+  hash_lc_ipl( \%ah );
+  delete @ah{ qw( name form ) };
+
+#    $text .= "<select class='$class' id='$id' name='$name' size='$rows' $multiple form='$form_id' $args $extra $options>";
+  $text .= html_element( 'SELECT', $opt_text, %at, %ah );
 # print STDERR "FOOOOOOOOOOOOOOOOOOOOOORM[$text](@$sel){@$order}";
 
   $text .= "\n";
   return $text;
 }
 
+# combo is a select with one row, which is the select() default
 sub combo
 {
   my $self = shift;
 
-  my %opt = @_;
-  $opt{ 'ROWS'  } ||= 1;
-  return $self->select( %opt );
+  return $self->select( @_ );
 }
 
 ##############################################################################
@@ -520,16 +533,17 @@ sub textarea
   my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'TEXTAREA' } || 'textarea';
   my $data  =    $opt{ 'VALUE' };
   my $rows  =    $opt{ 'ROWS'  } || 10;
-  my $cols  =    $opt{ 'COLS'  } ||  5;
+  my $cols  =    $opt{ 'COLS'  } || 50;
   my $maxl  =    $opt{ 'MAXLEN'  } || $opt{ 'MAX' };
   my $geo   =    $opt{ 'GEOMETRY' }  || $opt{ 'GEO' };
 
 die "error: Form.pm: EXTRA used but it is removed, content is [$opt{ 'EXTRA' }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'EXTRA' };
 die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'ARGS'   };
 
-  __check_ident( $name, $id );
+  __check_name( $name );
+  __check_ident( $id );
 
-  ( $cols, $rows ) = ( $1, $2 ) if $geo =~ /(\d+)[\*\/\\](\d+)/i;
+  ( $cols, $rows ) = ( $1, $2 ) if $geo =~ /(\d+)[\*\/\\](\d+)/;
 
 
   my %options;
@@ -541,7 +555,8 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
   $options{ 'required'  } = 'required'      if $opt{ 'REQUIRED' } || $opt{ 'REQ' };
   $options{ 'onFocus'   } = "this.value=''" if $opt{ 'FOCUS_AUTO_CLEAR' };
 
-  $data = str_html_escape( $data );
+  # never undef, html_element() would make a self-closed <textarea/>
+  $data = str_html_escape( $data // '' );
 
   my $text;
   my $form_id = $self->{ 'FORM_ID' };
@@ -563,13 +578,12 @@ sub input
   my $name  = uc $opt{ 'NAME'    };
   my $id    =    $opt{ 'ID'      };
   my $class =    $opt{ 'CLASS'   } || $self->{ 'CLASS_MAP' }{ 'INPUT' } || 'line';
-  my $value =    $opt{ 'VALUE'   } || "";
+  my $value =    $opt{ 'VALUE'   } // "";
   # FIXME: default data?
-  my $size  =    $opt{ 'SIZE'    } || $opt{ 'LEN' } || $opt{ 'WIDTH' };
+  my $size  =    $opt{ 'SIZE'    } || $opt{ 'WIDTH' };
   my $maxl  =    $opt{ 'MAXLEN'  } || $opt{ 'MAX' };
 
-  my $len   =    $opt{ 'LEN'     };
-  my $args  =    $opt{ 'ARGS'    };
+  my $len   =    $opt{ 'LEN'     }; # sets both size and maxlength
   my $hid   =    $opt{ 'HIDDEN'  };
   my $ret   =    $opt{ 'RET'     } || $opt{ 'RETURN'  }; # if return value should be mapped, works only with HIDDEN
 
@@ -578,15 +592,22 @@ sub input
   my $clear =    $opt{ 'DISABLED' } ? undef : $opt{ 'CLEAR'   };
 
   my $datalist    = $opt{ 'DATALIST'              }; # array ref with 'key', 'value' and 'label' hash
-  my $datalist_sk = $opt{ 'DATALIST_SELECTED_KEY' }; # key of the selected item
+  my $datalist_sv = $opt{ 'DATALIST_SELECTED_VALUE' } // $opt{ 'DATALIST_SELECTED_KEY' }; # VALUE of the selected item, DATALIST_SELECTED_KEY is the old name
 
-  __check_ident( $name, $id );
+die "error: Form.pm: EXTRA used but it is removed, content is [$opt{ 'EXTRA' }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'EXTRA' };
+die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'ARGS'   };
+
+  __check_name( $name );
+  __check_ident( $id );
 
   $size = $maxl = $len if $len > 0;
 
+  # the clear tag and the datalist need the id of the visible input
+  $id = $self->create_uniq_id() if $id eq '' and ( $clear or $datalist );
+
   my %options;
 
-  $options{ 'type'     } = $opt{ 'TYPE' };
+  $options{ 'type'     } = $opt{ 'TYPE' } if $opt{ 'TYPE' };
   $options{ 'disabled' } = 'disabled' if $opt{ 'DISABLED' };
   $options{ 'size'     } = $size      if $size > 0;
   $options{ 'maxlength'} = $maxl      if $maxl > 0;
@@ -601,9 +622,6 @@ sub input
 
   $options{ 'onFocus'  } = "this.value=''" if $opt{ 'FOCUS_AUTO_CLEAR' };
 
-die "error: Form.pm: EXTRA used but it is removed, content is [$opt{ 'EXTRA' }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'EXTRA' };
-die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'ARGS'   };
-
   if( $hid and defined $ret )
     {
     # if input is hidden and return value mapping requested, VALUE is not used!
@@ -611,23 +629,23 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
     $self->__ret_map_data( $name, $value => $ret );
     }
 
-  my $name_hidden = $self->__ret_map_name( $name );  # FIXME: TODO: check if works?
-
-
   my $clear_tag;
   if( $clear )
     {
     my $reo = $self->reo();
     my $clear_hint_handler = html_hover_layer( $reo, VALUE => 'Clear field' );
 
+    # a datalist input clears its hidden key too
+    my $clear_js = $datalist ? "set_value('$id', ''); reactor_datalist_change( q('$id'), 0 ); return false;" : "return set_value('$id', '')";
+
     if( $clear =~ /^[a-z_\-0-9\/]+\.(png|jpg|jpeg|gif|svg)$/ )
       {
-      $clear_tag = html_element( 'img', undef, class => 'icon-clear',  border => '0', onClick => "return set_value('$id', '')", src => $clear, onmouseover => $clear_hint_handler );
+      $clear_tag = html_element( 'img', undef, class => 'icon-clear', onClick => $clear_js, src => $clear, onmouseover => $clear_hint_handler );
       }
     else
       {
       my $s = $clear eq 1 ? '&times;' : $clear;
-      $clear_tag = html_element( 'span', $s, class => 'icon-clear',  border => '0', onClick => "return set_value('$id', '')", onmouseover => $clear_hint_handler );
+      $clear_tag = html_element( 'span', $s, class => 'icon-clear', onClick => $clear_js, onmouseover => $clear_hint_handler );
       }
     }
 
@@ -637,19 +655,14 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
 
   if( $datalist )
     {
-    my $on_change;
-    # TODO: FIXME: FIXME: FIXME: FIXME: FIXME: cleanup this mess!
-    $on_change = 'this.form.submit()'       if $opt{ 'SUBMIT_ON_CHANGE' } and $opt{ 'SUBMIT_ON_CHANGE' }  > 0;
-    $on_change = $opt{ 'SUBMIT_ON_CHANGE' } if $opt{ 'SUBMIT_ON_CHANGE' } and $opt{ 'SUBMIT_ON_CHANGE' } == 0;
+    my $on_change = __submit_on_change_js( $opt{ 'SUBMIT_ON_CHANGE' } );
 
-    my $empty_key   = $opt{ 'EMPTY_KEY' };
+    my $name_hidden = $self->__ret_map_name( $name );
+
+    my $empty_key   = $opt{ 'EMPTY_KEY' }; # never undef in the html, javascript would send "undefined"
     my $input_id    = $self->create_uniq_id();
     my $datalist_id = $self->create_uniq_id();
     $class .= " search_list";
-
-#    $text  .= "\n\n\n\n\n<input           id=$input_id     type=hidden    name='$name' value='$key'          form='$form_id'      >";
-#    $text  .= "\n<input                             class='$class' value='$value' list=$datalist_id $options form='$form_id' $args data-input-id=$input_id data-empty-key='$empty_key' onchange='return reactor_datalist_change( this, $resub )'>$clear_tag";
-#    $text  .= "\n<datalist id=$datalist_id>";
 
     my $datalist_key;
     my $datalist_label;
@@ -662,24 +675,18 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
       my $l = $e->{ 'LABEL' }; # html-visible text label
 
       $k = $self->create_uniq_id() if $k eq '*';
+      $k = $v                      if $k eq ''; # the value is visible, still mapped so mixed entries work
 
-      if( $k ne '' )
-        {
-        $self->__ret_map_data( $name, $k => $v );
-        }
-      else
-        {
-        $k = $v;
-        }
+      $self->__ret_map_data( $name, $k => $v );
 
-      ( $datalist_key, $datalist_label ) = ( $k, $l ) if $v eq $datalist_sk;
+      ( $datalist_key, $datalist_label ) = ( $k, $l ) if $v eq $datalist_sv;
       $datalist_text .= html_element( 'option', undef, name => $l, value => $l, 'data-key' => $k );
       }
 
     $datalist_text = html_element( 'datalist', $datalist_text, id => $datalist_id );
 
-    $text .= html_element( 'input', undef,           id => $input_id, type => 'hidden', class => $class, name => $name_hidden, value => $datalist_key,   form => $form_id );
-    $text .= html_element( 'input', undef, %options, id => $input_id,                   class => $class,                       value => $datalist_label, form => $form_id, list => $datalist_id, 'data-input-id' => $input_id, 'data-empty-key' => $empty_key, onChange => "reactor_datalist_change( this, 0 ); $on_change; return" ) . $clear_tag;
+    $text .= html_element( 'input', undef, id => $input_id, type => 'hidden', name => $name_hidden, value => $datalist_key, form => $form_id );
+    $text .= html_element( 'input', undef, %options, class => $class, value => $datalist_label, form => $form_id, list => $datalist_id, 'data-input-id' => $input_id, 'data-empty-key' => $empty_key // '', onChange => "reactor_datalist_change( this, 0 ); $on_change; return" ) . $clear_tag;
     $text .= $datalist_text;
     }
   else
@@ -703,23 +710,23 @@ sub file_upload
   my $name  = uc $opt{ 'NAME'    };
   my $id    =    $opt{ 'ID'      };
   my $class =    $opt{ 'CLASS'   } || $self->{ 'CLASS_MAP' }{ 'FILE_UPLOAD' } || 'file_upload';
-  my $args  =    $opt{ 'ARGS'    };
 
 die "error: Form.pm: EXTRA used but it is removed, content is [$opt{ 'EXTRA' }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'EXTRA' };
 die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'ARGS'   };
 
-  __check_ident( $name, $id );
+  __check_name( $name );
+  __check_ident( $id );
 
-  my $options;
+  my %options;
 
-  $options .= "multiple " if $opt{ 'MULTI' };
-  $options .= "id='$id' " if $id ne '';
+  $options{ 'multiple' } = 'multiple' if $opt{ 'MULTI' };
+  $options{ 'id'       } = $id        if $id ne '';
 
   my $text;
 
   my $form_id = $self->{ 'FORM_ID' };
 
-  $text .= "<input class='$class' name='$name' type=file $options form='$form_id' $args>";
+  $text .= html_element( 'input', undef, %options, class => $class, name => $name, type => 'file', form => $form_id );
 
   $text .= "\n";
   return $text;
@@ -742,14 +749,16 @@ sub button
 
   my $name    = uc $opt{ 'NAME'    };
   my $id      =    $opt{ 'ID'      };
-  my $class   =    $opt{ 'CLASS'   } || 'button';
-  my $value   =    $opt{ 'VALUE'   };
+  my $class   =    $opt{ 'CLASS'   } || $self->{ 'CLASS_MAP' }{ 'BUTTON' } || 'button';
+  my $value   =    $opt{ 'VALUE'   } // ''; # never undef, html_element() would make a self-closed <button/>
   my $confirm =    $opt{ 'CONFIRM' };
+  my $hint    =    $opt{ 'HINT'    }; # hover layer text, see html_hover_layer()
 
 die "error: Form.pm: EXTRA used but it is removed, content is [$opt{ 'EXTRA' }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'EXTRA' };
 die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'ARGS'   };
 
-  __check_ident( $name, $id );
+  __check_name( $name );
+  __check_ident( $id );
 
   my %options;
 
@@ -759,6 +768,11 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
     $class   .= " disabled-button";
     }
 
+  $options{ 'id'      } = $id                       if $id ne '';
+  $options{ 'onClick' } = __confirm_js( $confirm ) if $confirm;
+  # a disabled button has no hint, as html_alink()
+  $options{ 'onmouseover' } = html_hover_layer( $self->reo(), VALUE => $hint, DELAY => 1000 ) if $hint and ! $opt{ 'DISABLED' };
+
   my $text;
 
   $name =~ s/^button://i;
@@ -767,13 +781,7 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
 #  $text .= "<input class='$class' id='$id' type='submit' name='button:$name' value='$value' onDblClick='return false;' form='$form_id' $options $args>";
   #$text .= "<button class='$class' id='$id' type='submit' name='button:$name' value='1' onDblClick='return false;' form='$form_id' $options $args>$value</button>";
 
-  if( $confirm )
-    {
-    $confirm = "[~Are you sure?]" if $confirm == 1;
-    $confirm = qq[return confirm("$confirm");];
-    }
-
-  $text .= html_element( 'button', $value, %options, form => $form_id, class => $class, id => $id, name => "button:$name", onDblClick => 'return false;', onClick => $confirm );
+  $text .= html_element( 'button', $value, %options, form => $form_id, class => $class, name => "button:$name", onDblClick => 'return false;' );
 
   $text .= "\n";
   return $text;
@@ -787,12 +795,16 @@ sub image_button
 
   my $name  = uc $opt{ 'NAME'  };
   my $id    =    $opt{ 'ID'    };
-  my $class =    $opt{ 'CLASS' } || 'image_button';
+  my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'IMAGE_BUTTON' } || 'image_button';
   my $src   =    $opt{ 'SRC'   } || $opt{ 'IMG'  };
   my $confirm =    $opt{ 'CONFIRM' };
+  my $hint    =    $opt{ 'HINT'    }; # hover layer text, see html_hover_layer()
 
 die "error: Form.pm: EXTRA used but it is removed, content is [$opt{ 'EXTRA' }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'EXTRA' };
 die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\n" . Exception::Sink::get_stack_trace() if $opt{ 'ARGS'   };
+
+  __check_name( $name );
+  __check_ident( $id );
 
   my %options;
 
@@ -803,13 +815,10 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
     $options{ $o }  = $e if $e ne '';
     }
 
-  __check_ident( $name, $id );
-
-  if( $confirm )
-    {
-    $confirm = "[~Are you sure?]" if $confirm == 1;
-    $confirm = qq[return confirm("$confirm");];
-    }
+  $options{ 'id'      } = $id                       if $id ne '';
+  $options{ 'onClick' } = __confirm_js( $confirm ) if $confirm;
+  # HINT replaces ONMOUSEOVER (same key), a disabled button has no hint, as html_alink()
+  $options{ 'ONMOUSEOVER' } = html_hover_layer( $self->reo(), VALUE => $hint, DELAY => 1000 ) if $hint and ! $opt{ 'DISABLED' };
 
   my $text;
 
@@ -817,7 +826,7 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
   $name =~ s/^button://i;
 
   ### $text .= "<input class='$class' id='$id' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;'>";
-  $text .= html_element( 'input', undef, %options, form => $form_id, class => $class, id => $id, name => "button:$name", src => $src, onDblClick => 'return false;', onClick => $confirm );
+  $text .= html_element( 'input', undef, %options, type => 'image', form => $form_id, class => $class, name => "button:$name", src => $src, onDblClick => 'return false;' );
 
   $text .= "\n";
   return $text;
@@ -831,8 +840,9 @@ sub image_button_default
 
   my $user_agent = $self->reo()->get_user_session_agent();
 
+  # msie and the real safari only, chrome, edge and opera also claim "Safari"
   my $default_class = 'hidden';
-  $default_class = 'hidden2' if $user_agent =~ /MSIE|Safari/;
+  $default_class = 'hidden2' if $user_agent =~ /MSIE|Trident/ or ( $user_agent =~ /Safari/ and $user_agent !~ /Chrome|Chromium|CriOS|Edg|OPR/ );
 
   $opt{ 'HEIGHT' } = 0;
   $opt{ 'WIDTH'  } = 0;
@@ -850,30 +860,25 @@ sub get_id
 
 =pod
 
-  my $form = new Review::HTML::Form;
+  my $form = $reo->new_form();
 
-  $text .= $form->image_submit_default( NAME => 'def_but', SRC => 'img/empty.png' );
+  $text .= $form->begin( NAME => 'try1', DEFAULT_BUTTON => 'def_but' );
 
-  $text .= $form->line( NAME => 'line_one', DATA => ( $I{ 'LINE_ONE' } || 'ne se chete' ) );
+  $text .= $form->input( NAME => 'line_one', VALUE => ( $I{ 'LINE_ONE' } || 'ne se chete' ) );
 
-  $text .= $form->begin( NAME => 'try1' );
-  $text .= 'cb1' . $form->cb( NAME => 'cb1', VAL => 1 );
-  $text .= 'cb2' . $form->cb( NAME => 'cb2', VAL => 0 );
-  $text .= 'cb3' . $form->cb( NAME => 'cb3', VAL => 0, MAX => 3, RET => [ 'qwe', 'asd', '[-]' ] );
+  $text .= 'cb1' . $form->checkbox( NAME => 'cb1', VALUE => 1 );
+  $text .= 'cb2' . $form->checkbox( NAME => 'cb2', VALUE => 0 );
+  $text .= 'cb3' . $form->checkbox_3state( NAME => 'cb3', VALUE => 0 );
   $text .= "<p>";
 
   $text .= "<hr noshade>";
-  $text .= 'r1' . $form->radio( NAME => 'r1' );
-  $text .= 'r2' . $form->radio( NAME => 'r1' );
-  $text .= 'r3' . $form->radio( NAME => 'r1', ON => 1 );
-  $text .= 'r4' . $form->radio( NAME => 'r1' );
-  $text .= 'r5' . $form->radio( NAME => 'r1' );
+  $text .= 'r1' . $form->radio( NAME => 'r1', KEY => 1 );
+  $text .= 'r2' . $form->radio( NAME => 'r1', KEY => 2 );
+  $text .= 'r3' . $form->radio( NAME => 'r1', KEY => 3, ON => 1 );
   $text .= "<hr noshade>";
-  $text .= 'r1' . $form->radio( NAME => 'r2', ON => 1 );
-  $text .= 'r2' . $form->radio( NAME => 'r2', RET => 'asd' );
-  $text .= 'r3' . $form->radio( NAME => 'r2', RET => 'qwe' );
-  $text .= 'r4' . $form->radio( NAME => 'r2', RET => 'zxc' );
-  $text .= 'r5' . $form->radio( NAME => 'r2', RET => '[-]' );
+  $text .= 'r1' . $form->radio( NAME => 'r2', RET => 'asd', ON => 1 );
+  $text .= 'r2' . $form->radio( NAME => 'r2', RET => 'qwe' );
+  $text .= 'r3' . $form->radio( NAME => 'r2', RET => 'zxc' );
   $text .= "<hr noshade>";
 
   my $data = {

@@ -1199,15 +1199,16 @@ my ( $COOKIE, $USID, $PSID );
 my ( $APP ) = request( COOKIE => $COOKIE );
 
 {
-  is( html_escape( '<a href="x">&' ), '&#60;a href&#61;&#34;x&#34;&#62;&#38;', 'html_escape()' );
+  ok( ! defined &html_escape, 'html_escape() is removed, str_html_escape() of Data::Tools is used instead' );
 
-  is( html_element( 'br', undef ), '<br />', 'html_element() self closing without text' );
-  is( html_element( 'b', 'txt' ), '<b >txt</b>', 'html_element() with text' );
-  is( html_element( 'div', '', class => 'c' ), "<div class='c' ></div>", 'html_element() with an attribute' );
+  is( html_element( 'br', undef ), '<br/>', 'html_element() self closing without text' );
+  is( html_element( 'b', 'txt' ), '<b>txt</b>', 'html_element() with text' );
+  is( html_element( 'div', '', class => 'c' ), "<div class='c'></div>", 'html_element() with an attribute' );
+  is( html_element( 'DIV', '' ), '<div></div>', 'html_element() lower-cases the tag name' );
   like( html_element( 'div', 'x', CLASS => 'c' ), qr/class='c'/, 'html_element() lower-cases attribute names' );
   like( html_element( 'div', 'x', title => "it's" ), qr/&#39;|&#x27;|&apos;/, 'html_element() escapes attribute values' );
 
-  is( html_element_e( 'b', '<i>' ), '<b >&#60;i&#62;</b>', 'html_element_e() escapes the text' );
+  is( html_element_e( 'b', '<i>' ), '<b>&#60;i&#62;</b>', 'html_element_e() escapes the text' );
 
   eval { html_element( 'bad tag', 'x' ) };
   ok( $@, 'html_element() booms on an invalid tag name' );
@@ -1217,6 +1218,7 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   ok(   html_check_tag_name( 'div'  ), 'html_check_tag_name() accepts a plain name' );
   ok(   html_check_tag_name( 'h1'   ), 'html_check_tag_name() accepts digits' );
   ok( ! html_check_tag_name( 'a b'  ), 'html_check_tag_name() rejects whitespace' );
+  ok( ! html_check_tag_name( '1a'   ), 'html_check_tag_name() rejects a leading digit' );
   ok( ! html_check_tag_name( 'a-b'  ), 'html_check_tag_name() rejects dashes' );
 
   ok(   html_check_attr_name( 'data-x' ), 'html_check_attr_name() accepts dashes' );
@@ -1239,6 +1241,9 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( $tree, qr/display: none/, 'html_ftree() hides collapsed branches' );
   like( html_ftree( [ 'a' ], CLASS => 'tr' ), qr/class='tr'/, 'html_ftree() quotes the table class' );
   like( html_ftree( [ { LABEL => 'row', CLASS => 'rc' } ] ), qr/class='rc'/, 'html_ftree() quotes the row class' );
+  like( html_ftree( [ 'a' ], CLASS => q{t'c} ), qr/class='t&#39;c'/, 'html_ftree() escapes the table class' );
+  like( html_ftree( [ { LABEL => 'row', CLASS => q{r'c} } ] ), qr/class='r&#39;c'/, 'html_ftree() escapes the row class' );
+  like( html_ftree( [ { LABEL => 'b', DATA => [ 'leaf' ] } ] ), qr/ftree_click.*leaf/s, 'html_ftree() renders the sub rows of a branch' );
   like( html_ftree( [ 'a' ], ARGS_TR => "data-r='1'", ARGS_TD => "data-c='1'" ), qr/<tr [^>]*data-r='1'[^>]*><td [^>]*data-c='1'/, 'html_ftree() ARGS_TR and ARGS_TD go to the rows and cells' );
   my $fo = html_ftree( [ { LABEL => 'a', ARGS => "data-own='1'" } ], ARGS_TR => "data-r='1'" );
   like(   $fo, qr/<tr [^>]*data-own='1'/, 'html_ftree() row ARGS win over ARGS_TR' );
@@ -1251,31 +1256,35 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   eval { html_ctable( [] ) };
   like( $@, qr/html_ctable\(\) is not implemented yet/, 'html_ctable() booms instead of returning nothing' );
 
-  like( html_debug( { A => 1 } ), qr/<xmp>.*'A' => 1.*<\/xmp>/s, 'html_debug() dumps its arguments' );
+  like( html_debug( { A => 1 } ), qr/<pre>.*'A' =&#62; 1.*<\/pre>/s, 'html_debug() dumps its arguments' );
+  like( html_debug( '</pre><b>x' ), qr/&#60;\/pre&#62;&#60;b&#62;x/, 'html_debug() escapes the dump, it cannot close the block' );
 
   my $al = html_alink( $APP, 'here', 'CLICK', { CLASS => 'btn' }, X => 1 );
-  like( $al, qr/^<a href=\?_=[A-Za-z0-9]+\.[A-Za-z0-9]+/, 'html_alink() builds a reactor link' );
+  like( $al, qr/^<a [^>]*href='\?_=[A-Za-z0-9]+\.[A-Za-z0-9]+'/, 'html_alink() builds a reactor link' );
   like( $al, qr/>CLICK<\/a>$/, 'html_alink() wraps the value' );
   like( $al, qr/class='btn'/,  'html_alink() honours CLASS' );
   unlike( $al, qr/id=/i, 'html_alink() emits no id without one' );
   like( html_alink( $APP, 'here', 'C', { ID => 'lnk' } ), qr/ id='lnk'/, 'html_alink() writes the id lowercase' );
   unlike( html_alink( $APP, 'here', 'C', {} ), qr/class=|id=/i, 'html_alink() emits no empty class or ID' );
 
-  like( html_alink( $APP, 'here', 'C', { CONFIRM => 'sure?' } ), qr/confirm\('sure\?'\)/, 'html_alink() CONFIRM' );
+  like( html_alink( $APP, 'here', 'C', { CONFIRM => 'sure?' } ), qr/confirm\(&#39;sure\?&#39;\)/, 'html_alink() CONFIRM' );
   like( html_alink( $APP, 'here', 'C', { DISABLED => 1 } ), qr/disabled-button/, 'html_alink() DISABLED' );
   is( scalar( () = html_alink( $APP, 'here', 'C', { DISABLED => 1, CONFIRM => 'sure' } ) =~ /onclick=/g ), 1, 'html_alink() DISABLED with CONFIRM has one onclick' );
-  like( html_alink( $APP, 'here', 'C', { DISABLED => 1, CONFIRM => 'sure' } ), qr/onclick="return false;"/, 'html_alink() DISABLED wins over CONFIRM' );
+  like( html_alink( $APP, 'here', 'C', { DISABLED => 1, CONFIRM => 'sure' } ), qr/onclick='return false;'/, 'html_alink() DISABLED wins over CONFIRM' );
   is( scalar( () = html_alink( $APP, 'here', 'C', { DISABLED => 1, DISABLE_ON_CLICK => 3 } ) =~ /onclick=/g ), 1, 'html_alink() DISABLED with DISABLE_ON_CLICK has one onclick' );
   my $dc = html_alink( $APP, 'here', 'C', { CLASS => 'b', DISABLE_ON_CLICK => 3, DISABLE_ON_CLICK_CLASS => 'off' } );
   is( scalar( () = $dc =~ /onclick=/g ), 1, 'html_alink() DISABLE_ON_CLICK has one onclick' );
-  like( $dc, qr/onclick="return reactor_element_disable_on_click\( this, 3 \);"/, 'html_alink() DISABLE_ON_CLICK calls the disable handler' );
-  like( $dc, qr/data-class-on='b' data-class-off='off'/, 'html_alink() DISABLE_ON_CLICK sets the on and off classes' );
+  like( $dc, qr/onclick='return reactor_element_disable_on_click\( this, 3 \);'/, 'html_alink() DISABLE_ON_CLICK calls the disable handler' );
+  like( $dc, qr/data-class-on='b'/,    'html_alink() DISABLE_ON_CLICK sets the on class' );
+  like( $dc, qr/data-class-off='off'/, 'html_alink() DISABLE_ON_CLICK sets the off class' );
   my $cd = html_alink( $APP, 'here', 'C', { CONFIRM => 'sure', DISABLE_ON_CLICK => 3 } );
   is( scalar( () = $cd =~ /onclick=/g ), 1, 'html_alink() CONFIRM with DISABLE_ON_CLICK has one onclick' );
-  like( $cd, qr/onclick="return confirm\('sure'\);"/, 'html_alink() CONFIRM wins over DISABLE_ON_CLICK' );
-  like( html_alink( $APP, 'here', 'C', { CONFIRM => q{it's "x" & y} } ), qr/onclick="return confirm\('it\\'s &quot;x&quot; &amp; y'\);"/, 'html_alink() CONFIRM with quotes is escaped, not dropped' );
-  like( html_alink( $APP, 'here', 'C', { CONFIRM => "a\\b\nc" } ), qr/confirm\('a\\\\b\\nc'\)/, 'html_alink() CONFIRM escapes backslashes and newlines' );
-  like( html_alink( $APP, 'here', 'C', { CONFIRM => "a\rb\r\nc" } ), qr/confirm\('a\\nb\\nc'\)/, 'html_alink() CONFIRM escapes lone CR and CRLF line endings' );
+  like( $cd, qr/onclick='return confirm\(&#39;sure&#39;\);'/, 'html_alink() CONFIRM wins over DISABLE_ON_CLICK' );
+  like( html_alink( $APP, 'here', 'C', { CONFIRM => q{it's "x" & y} } ), qr/onclick='return confirm\(&#39;it\\&#39;s &#34;x&#34; &#38; y&#39;\);'/, 'html_alink() CONFIRM with quotes is escaped, not dropped' );
+  like( html_alink( $APP, 'here', 'C', { CONFIRM => "a\\b\nc" } ), qr/confirm\(&#39;a\\\\b\\nc&#39;\)/, 'html_alink() CONFIRM escapes backslashes and newlines' );
+  like( html_alink( $APP, 'here', 'C', { CONFIRM => "a\rb\r\nc" } ), qr/confirm\(&#39;a\\nb\\nc&#39;\)/, 'html_alink() CONFIRM escapes lone CR and CRLF line endings' );
+  like( html_alink( $APP, 'here', 'C', { CLASS => q{a'b}, ID => q{i"d} } ), qr/class='a&#39;b'/, 'html_alink() escapes CLASS' );
+  like( html_alink( $APP, 'here', 'C', { CLASS => q{a'b}, ID => q{i"d} } ), qr/id='i&#34;d'/,   'html_alink() escapes ID' );
   like( html_alink( $APP, 'here', 'C', { DISABLED => 1 } ), qr/class='disabled-button'/, 'html_alink() DISABLED without CLASS has no leading space' );
   like( html_alink( $APP, 'here', 'C', { DISABLED => 1, CLASS => 'b' } ), qr/class='b disabled-button'/, 'html_alink() DISABLED adds to CLASS' );
   {
@@ -1310,7 +1319,7 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   # Web::Reactor::Reflex::html_hold_kit_add()
   {
     my $hl = html_alink( $APP, 'here', 'C', { HINT => 'go' } );
-    like( $hl, qr/ onmouseover='\s*reactor_hover_show_delay\( this, "R_HOVER_LAYER_[^"]+", 1000, event \)\s*'/, 'html_alink() HINT wires the hover layer to onmouseover' );
+    like( $hl, qr/ onmouseover='\s*reactor_hover_show_delay\( this, &#34;R_HOVER_LAYER_[^&]+&#34;, 1000, event \)\s*'/, 'html_alink() HINT wires the hover layer to onmouseover' );
     unlike( html_alink( $APP, 'here', 'C', { HINT => 'go', DISABLED => 1 } ), qr/onmouseover/, 'html_alink() a DISABLED link has no hint' );
     my $ps = html_popup_layer( $APP, VALUE => 'accumulated popup' );
     like( $ps, qr/data-popup-layer-id=/, 'html_popup_layer() scalar context returns the handle' );
@@ -1326,12 +1335,18 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   my ( undef, $et ) = html_hover_layer( $APP );
   like( $et, qr{<div [^>]*></div>$}, 'html_hover_layer() without VALUE still closes the div' );
   like( html_hover_layer( $APP, VALUE => 'v', DELAY => 0 ), qr/, 0, event/, 'html_hover_layer() DELAY 0 shows at once' );
+  my ( undef, $sf ) = html_hover_layer( $APP, 'short form txt' );
+  like( $sf, qr{>short form txt</div>$}, 'html_hover_layer() short form takes the layer html' );
   my ( $ph, $pt ) = html_popup_layer( $APP, VALUE => 'popup text' );
   like( $ph, qr/data-popup-layer-id="R_POPUP_LAYER_/, 'html_popup_layer() handle carries the layer id' );
+  my ( undef, $psf ) = html_popup_layer( $APP, 'popup short form' );
+  like( $psf, qr{>popup short form</div>$}, 'html_popup_layer() short form takes the layer html' );
   like( $ph, qr/onClick=/, 'html_popup_layer() CLICK trigger by default' );
   like( $ph, qr/reactor_popup_mouse_over\( this, \{ click_open: 1, timeout: 200, single: 0 \} \)/, 'html_popup_layer() CLICK default options' );
   my ( $cs ) = html_popup_layer( $APP, VALUE => 'v', TIMEOUT => 500, SINGLE => 1 );
   like( $cs, qr/\{ click_open: 1, timeout: 500, single: 1 \}/, 'html_popup_layer() CLICK passes TIMEOUT and SINGLE' );
+  like( scalar html_popup_layer( $APP, VALUE => 'v', TIMEOUT => '5abc' ), qr/timeout: 5,/, 'html_popup_layer() TIMEOUT is made a number' );
+  like( scalar html_popup_layer( $APP, VALUE => 'v', TIMEOUT => 'abc'  ), qr/timeout: 200,/, 'html_popup_layer() a non-numeric TIMEOUT falls back to 200' );
   like( html_popup_layer( $APP, VALUE => 'v', TYPE => 'context' ), qr/onContextMenu/, 'html_popup_layer() TYPE is case insensitive' );
   eval { html_popup_layer( $APP, VALUE => 'v', TYPE => 'hover' ) };
   like( $@, qr/invalid popup TYPE \[HOVER\]/, 'html_popup_layer() booms on an unknown TYPE' );
@@ -1526,7 +1541,7 @@ my ( $APP ) = request( COOKIE => $COOKIE );
 
   my ( $r2 ) = request( COOKIE => $COOKIE, QS => "_=$state&$hidden_name=$opt_value" );
 
-  is( $r2->get_safe_input()->{ 'colour' }, 'RED', 'form return map turns the posted key back into real data' );
+  is( $r2->get_safe_input()->{ 'COLOUR' }, 'RED', 'form return map turns the posted key back into real data (names are upper case)' );
   ok( ! exists $r2->get_user_input()->{ uc $hidden_name }, 'the mapped input name is removed from user input' );
   is( $r2->get_input_form_name(), 'roundtrip', 'get_input_form_name() after a round trip' );
 }

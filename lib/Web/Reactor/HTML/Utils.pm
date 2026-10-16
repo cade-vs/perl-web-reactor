@@ -12,17 +12,16 @@
 ##
 ## HTML Utils
 ##
-## All checks and escaping is done accordingly to HTML Living standard from
+## All checks and escaping is done according to HTML Living standard from
 ## 5 September 2022, chapter notes are given in the comments
 ## https://html.spec.whatwg.org/multipage/
 ##
 ##############################################################################
 package Web::Reactor::HTML::Utils;
+use strict;
 use Exporter;
 our @ISA = qw( Exporter );
 our @EXPORT = qw(
-                html_escape
-
                 html_element
                 html_element_e
 
@@ -45,7 +44,6 @@ our @EXPORT = qw(
                 html_check_attr_name_boom
 
                 );
-use strict;
 use Exception::Sink;
 use Data::Dumper;
 use Data::Tools;
@@ -54,41 +52,59 @@ use Web::Reactor::HTML::Layout;
 
 ##############################################################################
 
-*html_escape = *Data::Tools::str_html_escape;
 
-##############################################################################
-
+# void elements have no content and no end tag, $13.1.2
+my %HTML_VOID_ELEMENTS = map { $_ => 1 } qw( area base br col embed hr img input link meta source track wbr );
 
 sub html_element
 {
   my $tag = shift;
   my $txt = shift;
-  my %atr = @_;
 
-  hash_lc_ipl( \%atr );
+  boom "expected even number of attribute arguments for tag [$tag]" if @_ % 2;
 
   html_check_tag_name_boom( $tag );
+  $tag = lc $tag;
+
+  # names are lower-cased in argument order, so a later attribute replaces an
+  # earlier one also when they differ only in case (onClick, onclick)
+  my %attr;
+  while( @_ )
+    {
+    my $k = lc shift;
+    $attr{ $k } = shift;
+    }
 
   my $html;
 
-  $html .= "<$tag ";
+  $html .= "<$tag";
 
-  while( my ( $k, $v ) = each %atr )
+  for my $k ( sort keys %attr ) # sorted, the same call gives the same html
     {
     html_check_attr_name_boom( $k, "invalid attribute name [$k] for tag [$tag]" );
-    $html .= $k;
+    my $v = $attr{ $k };
+    $html .= " $k";
     if( defined $v )
       {
       my $vv = str_html_escape_attr( $v );
       $html .= "='$vv'";
       }
-    $html .= " ";
     }
 
-  $html .= defined $txt ? ">$txt</$tag>" : "/>";
+  if( $HTML_VOID_ELEMENTS{ $tag } )
+    {
+    boom "void element [$tag] cannot have content" if $txt ne '';
+    $html .= "/>";
+    }
+  else
+    {
+    # a non-void element is always closed, browsers ignore "/>" on them and
+    # the following markup would end up inside
+    $html .= ">" . ( $txt // '' ) . "</$tag>";
+    }
 
 #use Data::Dumper;
-#print STDERR Dumper( "\n"x10, \@_, $tag, $txt, \%atr, $html, "\n"x100 );
+#print STDERR Dumper( "\n"x10, \@_, $tag, $txt, \%attr, $html, "\n"x100 );
 
   return $html;
 }
@@ -170,9 +186,8 @@ sub html_ftree
   my $data = shift;
   my %opt  = @_;
 
-  my $t_args;
-  $t_args ||= $opt{ 'ARGS' };
-  $t_args ||= "class='" . $opt{ 'CLASS' } . "'" if $opt{ 'CLASS' };
+  my $t_args = $opt{ 'ARGS' };
+  $t_args ||= "class='" . str_html_escape_attr( $opt{ 'CLASS' } ) . "'" if $opt{ 'CLASS' };
 
   if( ! $ftree_pid or $ftree_pid != $$ )
     {
@@ -212,18 +227,18 @@ sub __html_ftree_branch
   for my $row ( @$data )
     {
     my $label;
-    my $data;
+    my $sub_data; # sub rows of a branch
 
     my $r_args; # row  args
-    my $c_args; # cell args
+    my $c_args = $opt->{ 'ARGS_TD' }; # cell args
 
     if( ref( $row ) eq 'HASH' )
       {
-      $label = $row->{ 'LABEL' };
-      $data  = $row->{ 'DATA'  };
+      $label    = $row->{ 'LABEL' };
+      $sub_data = $row->{ 'DATA'  };
 
-      $r_args ||= $row->{ 'ARGS' };
-      $r_args ||= "class='" . $row->{ 'CLASS' } . "'" if $row->{ 'CLASS' };
+      $r_args   = $row->{ 'ARGS' };
+      $r_args ||= "class='" . str_html_escape_attr( $row->{ 'CLASS' } ) . "'" if $row->{ 'CLASS' };
       }
     else
       {
@@ -231,7 +246,6 @@ sub __html_ftree_branch
       }
 
     $r_args ||= $opt->{ 'ARGS_TR' };
-    $c_args ||= $opt->{ 'ARGS_TD' };
 
     $ftree_item_id++;
 
@@ -251,11 +265,11 @@ sub __html_ftree_branch
     my $pad = $level * 6 + 1;
     my $cell = html_layout_2lr( '&nbsp;', $label, "$pad=<" );
 
-    if( ref( $data ) eq 'ARRAY' )
+    if( ref( $sub_data ) eq 'ARRAY' )
       {
       my $open_code = qq{ onclick='ftree_click( "$ftree_table_id", "$row_id" )' };
       $html .= "<tr id='$row_id' $open_code $r_args $hidden><td $c_args>$cell</td></tr>";
-      $html .= __html_ftree_branch( $data, $ftree_table_id, $row_id, $level + 1, $opt );
+      $html .= __html_ftree_branch( $sub_data, $ftree_table_id, $row_id, $level + 1, $opt );
       }
     else
       {
@@ -339,6 +353,24 @@ sub html_ctable
 
 ##############################################################################
 
+# booms unless $reo is a reactor object (a Web::Reactor:: class) which can $method
+# args:
+#       reo    -- the reactor object to check
+#       func   -- caller name for the message
+#       method -- method the caller needs
+#       what   -- the needed object, for the message
+sub __check_reo
+{
+  my ( $reo, $func, $method, $what ) = @_;
+
+  boom "missing REO reactor object" if ref( $reo ) !~ /^Web::Reactor(::|$)/;
+  boom "$func() needs $what, got [" . ref( $reo ) . "]" unless $reo->can( $method );
+
+  return 1;
+}
+
+##############################################################################
+
 =pod
 
 html_hover_layer( $reo, VALUE => $html, %opt ) or html_hover_layer( $reo, $html )
@@ -349,8 +381,14 @@ the element (the handle); the layer itself goes into the KIT_HTML hold,
 pages show it with <$$kit_html>. in list context returns ( handle, layer
 html ) and nothing goes into the hold.
 
+the handle is an attribute VALUE, not an attribute: it goes into
+onmouseover='...' (it has double quotes only) or to html_element() as the
+onmouseover value. html_popup_layer() returns whole attributes instead,
+it needs two of them.
+
   my $h = html_hover_layer( $reo, VALUE => 'more info', DELAY => 500 );
   print "<span onmouseover='$h'>?</span>";
+  print html_element( 'span', '?', onmouseover => $h );
 
 options:
 
@@ -366,20 +404,11 @@ $reo must be a Web::Reactor::Reflex or Web::Reactor object.
 sub html_hover_layer
 {
   my $reo = shift;
-  my %opt  = @_;
+  my %opt = @_ == 1 ? ( VALUE => $_[0] ) : @_; # short form: the layer html only
 
-  if( ref( $reo ) !~ /^Web::Reactor(::|$)/ )
-    {
-    boom "missing REO reactor object";
-    }
-  boom "html_hover_layer() needs a Web::Reactor::Reflex or Web::Reactor object, got [" . ref( $reo ) . "]" unless $reo->can( 'html_hold_kit_add' );
+  __check_reo( $reo, 'html_hover_layer', 'html_hold_kit_add', 'a Web::Reactor::Reflex or Web::Reactor object' );
 
-  if( @_ == 1 )
-    {
-    %opt = ( VALUE => shift() );
-    }
-
-  my $value = $opt{ 'VALUE' } // ''; # undef would make an unclosed <div/>
+  my $value = $opt{ 'VALUE' };
   my $class = $opt{ 'CLASS' } || 'hover-layer';
   my $delay = int( $opt{ 'DELAY' } // 250 ); # 0 shows the layer at once, a number for the javascript
 
@@ -392,16 +421,10 @@ sub html_hover_layer
   $handle = qq{ reactor_hover_show_delay( this, "$hover_layer_id", $delay, event ) };
   $html   = html_element( 'div', $value, class => $class, id => $hover_layer_id );
 
-  if ( wantarray )
-    {
-    # will not use the KIT_HTML hold
-    return ( $handle, $html );
-    }
-  else
-    {
-    $reo->html_hold_kit_add( 'KIT_HTML', $html ); # pages show it with <$$kit_html>
-    return $handle;
-    }
+  return ( $handle, $html ) if wantarray; # list context does not use the KIT_HTML hold
+
+  $reo->html_hold_kit_add( 'KIT_HTML', $html ); # pages show it with <$$kit_html>
+  return $handle;
 }
 
 ##############################################################################
@@ -416,6 +439,10 @@ attributes for the element (the handle: onClick or onContextMenu and
 data-popup-layer-id); the layer itself goes into the KIT_HTML hold, pages
 show it with <$$kit_html>. in list context returns ( handle, layer html )
 and nothing goes into the hold.
+
+the handle is whole attributes, put as they are inside a hand-written tag;
+it cannot be given to html_element(). html_hover_layer() returns a single
+attribute value instead.
 
   my $h = html_popup_layer( $reo, VALUE => $menu_html, SINGLE => 1 );
   print "<span $h>menu</span>";
@@ -438,26 +465,17 @@ $reo must be a Web::Reactor::Reflex or Web::Reactor object.
 sub html_popup_layer
 {
   my $reo = shift;
-  my %opt  = @_;
+  my %opt = @_ == 1 ? ( VALUE => $_[0] ) : @_; # short form: the layer html only
 
-  if( ref( $reo ) !~ /^Web::Reactor(::|$)/ )
-    {
-    boom "missing REO reactor object";
-    }
-  boom "html_popup_layer() needs a Web::Reactor::Reflex or Web::Reactor object, got [" . ref( $reo ) . "]" unless $reo->can( 'html_hold_kit_add' );
+  __check_reo( $reo, 'html_popup_layer', 'html_hold_kit_add', 'a Web::Reactor::Reflex or Web::Reactor object' );
 
-  if( @_ == 1 )
-    {
-    %opt = ( VALUE => shift() );
-    }
-
-  my $value   =    $opt{ 'VALUE'   } // ''; # undef would make an unclosed <div/>
+  my $value   =    $opt{ 'VALUE'   };
   my $class   =    $opt{ 'CLASS'   } || 'popup-layer';
-  my $timeout =    $opt{ 'TIMEOUT' } || 200;
+  my $timeout = int( $opt{ 'TIMEOUT' } ); # a number for the javascript
   my $type    = uc $opt{ 'TYPE'    } || 'CLICK';
 
   boom "invalid popup TYPE [$type], expected CLICK or CONTEXT" unless $type =~ /^(CLICK|CONTEXT)$/;
-  my $single  = !! $opt{ 'SINGLE'  } || 0;
+  my $single  = $opt{ 'SINGLE'  } ? 1 : 0;
 
   $timeout = 200 unless $timeout > 0;
 
@@ -477,16 +495,10 @@ sub html_popup_layer
   my $handle  = qq( $trigger data-popup-layer-id="$popup_layer_id" );
   my $html    = html_element( 'div', $value, class => $class, id => $popup_layer_id ); # escapes the class
 
-  if ( wantarray )
-    {
-    # will not use the KIT_HTML hold
-    return ( $handle, $html );
-    }
-  else
-    {
-    $reo->html_hold_kit_add( 'KIT_HTML', $html ); # pages show it with <$$kit_html>
-    return $handle;
-    }
+  return ( $handle, $html ) if wantarray; # list context does not use the KIT_HTML hold
+
+  $reo->html_hold_kit_add( 'KIT_HTML', $html ); # pages show it with <$$kit_html>
+  return $handle;
 }
 
 ##############################################################################
@@ -521,20 +533,16 @@ $reo must be a Web::Reactor object (args_type()).
 sub html_alink
 {
   my $reo   =    shift;
-  my $type  = lc shift;
+  my $type  =    shift; # args_type() lower-cases it
   my $value =    shift;
   my $opts  =    shift; # hashref with alink options
   my @args  = @_;
 
-  if( ref( $reo ) !~ /^Web::Reactor(::|$)/ )
-    {
-    boom "missing REO reactor object";
-    }
-  boom "html_alink() needs a Web::Reactor object (args_type), got [" . ref( $reo ) . "]" unless $reo->can( 'args_type' );
+  __check_reo( $reo, 'html_alink', 'args_type', 'a Web::Reactor object (args_type)' );
 
   my $href = $reo->args_type( $type, @args );
 
-  my $tag_args;
+  my %attr; # html_element() escapes all attribute values
 
   my $tag_id = $opts->{ 'ID' };
 
@@ -546,40 +554,34 @@ sub html_alink
 
   if( $opts->{ 'DISABLED' } )
     {
-    $tag_args .= '  ' . qq( onclick="return false;" ) ;
+    $attr{ 'onclick' } = "return false;";
     $class = join ' ', grep { $_ ne '' } ( $class, 'disabled-button' );
     $hint = undef; # remove button hints for disabled buttons
     }
 
-  $tag_args .= '  ' . "id='$tag_id'"  if $tag_id ne '';
-  $tag_args .= '  ' . "class='$class'" if $class  ne '';
-  if( $hint )
-    {
-    my $hint_tag_arg = html_hover_layer( $reo, VALUE => $hint, DELAY => 1000 );
-    $tag_args  .= '  ' . "onmouseover='$hint_tag_arg'"; # the handle is the attribute value, it has double quotes
-    }
+  $attr{ 'id'    } = $tag_id if $tag_id ne '';
+  $attr{ 'class' } = $class  if $class  ne '';
+  $attr{ 'onmouseover' } = html_hover_layer( $reo, VALUE => $hint, DELAY => 1000 ) if $hint;
 
   # FIXME: FIX REACTOR TO HAVE SENSIBLE HTML_LINK FUNCTIONS, I.E. CONVERT HINT TO HASHREF!
   # one onclick only: a disabled link has its "return false" above, else
   # confirm, else disable on click
   if( ! $opts->{ 'DISABLED' } and $confirm ne '' )
     {
-    # the text goes into a javascript string inside a double-quoted attribute
+    # the text goes into a single-quoted javascript string
     $confirm =~ s/\\/\\\\/g;
     $confirm =~ s/'/\\'/g;
     $confirm =~ s/\r\n?|\n/\\n/g; # any line ending, a raw one breaks the string
-    $confirm =~ s/&/&amp;/g;
-    $confirm =~ s/"/&quot;/g;
-    $tag_args .= '  ' . qq( onclick="return confirm('$confirm');" );
+    $attr{ 'onclick' } = "return confirm('$confirm');";
     }
   elsif( ! $opts->{ 'DISABLED' } and $disable_on_click > 0 )
     {
-    my $class_off = $opts->{ 'DISABLE_ON_CLICK_CLASS' };
-    $tag_args .= '  ' . "data-class-on='$class' data-class-off='$class_off'";
-    $tag_args .= '  ' . qq( onclick="return reactor_element_disable_on_click( this, $disable_on_click );" );
+    $attr{ 'data-class-on'  } = $class;
+    $attr{ 'data-class-off' } = $opts->{ 'DISABLE_ON_CLICK_CLASS' };
+    $attr{ 'onclick'        } = "return reactor_element_disable_on_click( this, $disable_on_click );";
     }
 
-  return "<a href=?_=$href $tag_args>$value</a>";
+  return html_element( 'a', $value // '', %attr, href => "?_=$href" );
 }
 
 ##############################################################################
@@ -724,14 +726,15 @@ sub html_tabs_table
 sub html_debug
 {
   # TODO: pass colors for background, border...
-  return "<div style='text-align: left; border: dotted 1px #A00'><xmp>" . Dumper( @_ ) . "</xmp></div>";
+  # escaped, dumped data cannot close the block and turn into live html
+  return "<div style='text-align: left; border: dotted 1px #A00'><pre>" . str_html_escape_text( Dumper( @_ ) ) . "</pre></div>";
 }
 
 ##############################################################################
 
 sub html_check_tag_name
 {
-  return $_[0] =~ /^[a-zA-Z0-9]+$/; # $13.1.2.1
+  return $_[0] =~ /^[a-zA-Z][a-zA-Z0-9]*$/; # $13.1.2.1, starts with a letter
 }
 
 sub html_check_tag_name_boom

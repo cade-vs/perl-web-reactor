@@ -553,18 +553,21 @@ sub __import_hidden_safe_input
     # remap input data
     for my $n ( keys %$user_input_hr )
       {
-      my $nn = $n;
-      if( exists $rmn->{ $n } )
+      # repeated parameters (multiple select, etc.) come as "@NAME" with an array of values
+      my ( $at, $bn ) = $n =~ /^(\@?)(.*)$/s;
+      my $rn = exists $rmn->{ $bn } ? $rmn->{ $bn } : $bn; # real name
+      my $nn = $at . $rn;
+      if( $nn ne $n )
         {
         # remap names
-        $nn = $rmn->{ $n };
         $user_input_hr->{ $nn } = $user_input_hr->{ $n };
         delete $user_input_hr->{ $n };
         }
-      if( exists $rmd->{ $nn } )
+      if( exists $rmd->{ $rn } )
         {
         # remap values
-        $safe_input_hr{ $nn } = $rmd->{ $nn }{ $user_input_hr->{ $nn } };
+        my $v = $user_input_hr->{ $nn };
+        $safe_input_hr{ $nn } = $at ? [ map { $rmd->{ $rn }{ $_ } } @$v ] : $rmd->{ $rn }{ $v };
         delete $user_input_hr->{ $nn };
         }
       }
@@ -638,7 +641,7 @@ sub run_print_final_debug
   if( $self->is_debug() > 2 )
     {
     $self->log_dumper( "USER SESSION [$usid]---------------------------", $user_shr );
-    $self->log_dumper( "FINAL LINK SESSION  [$lsid]-----------------------------------", $link_shr );
+    # $self->log_dumper( "FINAL LINK SESSION  [$lsid]-----------------------------------", $link_shr );
     }
 }
 

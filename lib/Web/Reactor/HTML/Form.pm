@@ -91,6 +91,27 @@ sub __submit_on_change_js
   return $soc;
 }
 
+# the ATTRS option of all elements: { attribute => value, ... } extra html
+# attributes, escaped by html_element(). they are given last, so they win
+# over the generated ones, except name, form and id (use NAME and ID) and the
+# ones the element needs to work (@keep)
+# returns:
+#       attribute name/value pairs, empty without ATTRS
+sub __attrs
+{
+  my $opt  = shift;
+  my @keep = @_;
+
+  my $attrs = $opt->{ 'ATTRS' } or return ();
+  boom "ATTRS must be a HASH reference" unless ref( $attrs ) eq 'HASH';
+
+  my %ah = %$attrs;
+  hash_lc_ipl( \%ah );
+  delete @ah{ 'name', 'form', 'id', map { lc } @keep };
+
+  return %ah;
+}
+
 ##############################################################################
 
 sub begin
@@ -276,7 +297,7 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
   #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
   $text .= "\n";
   $text .= html_element( 'input', undef, type => 'hidden', name => $name, id => $ch_id, value => $value, form => $form_id );
-  $text .= html_element( 'input', undef, %options, type => 'checkbox', 'data-checkbox-input-id' => $ch_id, form => $form_id, onclick => 'reactor_form_checkbox_toggle(this)', class => $class );
+  $text .= html_element( 'input', undef, %options, type => 'checkbox', 'data-checkbox-input-id' => $ch_id, form => $form_id, onclick => 'reactor_form_checkbox_toggle(this)', class => $class, __attrs( \%opt, qw( type onclick data-checkbox-input-id ) ) );
   $text .= "\n";
 
   return $text;
@@ -326,7 +347,7 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
 
   my $form_id = $self->{ 'FORM_ID' };
   $text .= html_element( "input", undef, type => 'hidden', name => $name, id => $cb_id, value => $value, form => $form_id );
-  $text .= html_element( "span", $labels_spans, %options, id => $el_id, class => $class, 'data-stages' => $stages, 'data-checkbox-input-id' => $cb_id, onclick => 'reactor_form_multi_checkbox_toggle(this)' );
+  $text .= html_element( "span", $labels_spans, %options, id => $el_id, class => $class, 'data-stages' => $stages, 'data-checkbox-input-id' => $cb_id, onclick => 'reactor_form_multi_checkbox_toggle(this)', __attrs( \%opt, qw( onclick data-stages data-checkbox-input-id ) ) );
 #  $text .= html_element( "script", "reactor_form_multi_checkbox_setup_id( '$el_id' )" );
   $text .= "\n";
 
@@ -372,7 +393,7 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
   $options{ 'checked' } = undef if $on; # bare attribute
 
   my $form_id = $self->{ 'FORM_ID' };
-  $text .= html_element( 'input', undef, %options, type => 'radio', name => $name, value => $val, class => $class, form => $form_id );
+  $text .= html_element( 'input', undef, %options, type => 'radio', name => $name, value => $val, class => $class, form => $form_id, __attrs( \%opt, qw( type value ) ) );
 
   $self->__ret_map_data( $name, $val => $ret ) if defined $ret;
 
@@ -421,7 +442,6 @@ sub select
   my $id    =    $opt{ 'ID'    };
   my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'SELECT' } || 'select';
   my $rows  =    $opt{ 'SIZE'  } || $opt{ 'ROWS'  } || 1;
-  my $attrs =    $opt{ 'ATTRS' };
 
   __check_name( $name );
   __check_ident( $id );
@@ -499,13 +519,8 @@ sub select
     $opt_text .= html_element( 'OPTION', $label, %at_opt );
     }
 
-  # extra attributes cannot replace name and form, the return mapping needs them
-  my %ah = %{ $attrs || {} };
-  hash_lc_ipl( \%ah );
-  delete @ah{ qw( name form ) };
-
 #    $text .= "<select class='$class' id='$id' name='$name' size='$rows' $multiple form='$form_id' $args $extra $options>";
-  $text .= html_element( 'SELECT', $opt_text, %at, %ah );
+  $text .= html_element( 'SELECT', $opt_text, %at, __attrs( \%opt ) );
 # print STDERR "FOOOOOOOOOOOOOOOOOOOOOORM[$text](@$sel){@$order}";
 
   $text .= "\n";
@@ -561,7 +576,7 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
   my $text;
   my $form_id = $self->{ 'FORM_ID' };
 
-  $text .= html_element( 'textarea', $data, %options, class => $class, name => $name, rows => $rows, cols => $cols, form => $form_id );
+  $text .= html_element( 'textarea', $data, %options, class => $class, name => $name, rows => $rows, cols => $cols, form => $form_id, __attrs( \%opt ) );
 
   $text .= "\n";
   return $text;
@@ -686,13 +701,13 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
     $datalist_text = html_element( 'datalist', $datalist_text, id => $datalist_id );
 
     $text .= html_element( 'input', undef, id => $input_id, type => 'hidden', name => $name_hidden, value => $datalist_key, form => $form_id );
-    $text .= html_element( 'input', undef, %options, class => $class, value => $datalist_label, form => $form_id, list => $datalist_id, 'data-input-id' => $input_id, 'data-empty-key' => $empty_key // '', onChange => "reactor_datalist_change( this, 0 ); $on_change; return" ) . $clear_tag;
+    $text .= html_element( 'input', undef, %options, class => $class, value => $datalist_label, form => $form_id, list => $datalist_id, 'data-input-id' => $input_id, 'data-empty-key' => $empty_key // '', onChange => "reactor_datalist_change( this, 0 ); $on_change; return", __attrs( \%opt, qw( value list data-input-id data-empty-key onchange ) ) ) . $clear_tag;
     $text .= $datalist_text;
     }
   else
     {
 #    $text .= "<input class='$class' name='$name' value='$value' $options form='$form_id' $args>$clear_tag";
-    $text .= html_element( 'input', undef, %options, class => $class, name => $name, value => $value, form => $form_id ) . $clear_tag;
+    $text .= html_element( 'input', undef, %options, class => $class, name => $name, value => $value, form => $form_id, __attrs( \%opt, qw( value ) ) ) . $clear_tag;
     }
 
   $text .= "\n";
@@ -726,7 +741,7 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
 
   my $form_id = $self->{ 'FORM_ID' };
 
-  $text .= html_element( 'input', undef, %options, class => $class, name => $name, type => 'file', form => $form_id );
+  $text .= html_element( 'input', undef, %options, class => $class, name => $name, type => 'file', form => $form_id, __attrs( \%opt, qw( type ) ) );
 
   $text .= "\n";
   return $text;
@@ -781,7 +796,7 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
 #  $text .= "<input class='$class' id='$id' type='submit' name='button:$name' value='$value' onDblClick='return false;' form='$form_id' $options $args>";
   #$text .= "<button class='$class' id='$id' type='submit' name='button:$name' value='1' onDblClick='return false;' form='$form_id' $options $args>$value</button>";
 
-  $text .= html_element( 'button', $value, %options, form => $form_id, class => $class, name => "button:$name", onDblClick => 'return false;' );
+  $text .= html_element( 'button', $value, %options, form => $form_id, class => $class, name => "button:$name", onDblClick => 'return false;', __attrs( \%opt ) );
 
   $text .= "\n";
   return $text;
@@ -826,7 +841,7 @@ die "error: Form.pm: ARGS used but it is removed, content is [$opt{ 'ARGS'   }]\
   $name =~ s/^button://i;
 
   ### $text .= "<input class='$class' id='$id' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;'>";
-  $text .= html_element( 'input', undef, %options, type => 'image', form => $form_id, class => $class, name => "button:$name", src => $src, onDblClick => 'return false;' );
+  $text .= html_element( 'input', undef, %options, type => 'image', form => $form_id, class => $class, name => "button:$name", src => $src, onDblClick => 'return false;', __attrs( \%opt, qw( type ) ) );
 
   $text .= "\n";
   return $text;

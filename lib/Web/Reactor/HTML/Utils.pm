@@ -30,6 +30,7 @@ our @EXPORT = qw(
 
                 html_hover_layer
                 html_popup_layer
+                html_popup_layer_attrs
 
                 html_alink
 
@@ -447,6 +448,14 @@ attribute value instead.
   my $h = html_popup_layer( $reo, VALUE => $menu_html, SINGLE => 1 );
   print "<span $h>menu</span>";
 
+html_popup_layer_attrs() takes the same arguments and returns the handle as
+attribute name/value pairs for html_element() or the ATTRS option of
+Web::Reactor::HTML::Form, the layer always goes into the KIT_HTML hold:
+
+  my %pa = html_popup_layer_attrs( $reo, VALUE => $menu_html, TYPE => 'CONTEXT' );
+  print html_element( 'span', 'menu', %pa );
+  print $form->input( NAME => 'date', ATTRS => \%pa );
+
 options:
 
   VALUE    -- layer html (the only argument in the short form)
@@ -464,10 +473,34 @@ $reo must be a Web::Reactor::Reflex or Web::Reactor object.
 
 sub html_popup_layer
 {
-  my $reo = shift;
-  my %opt = @_ == 1 ? ( VALUE => $_[0] ) : @_; # short form: the layer html only
+  my ( $reo, $event, $js, $layer_id, $html ) = __popup_layer( 'html_popup_layer', @_ );
 
-  __check_reo( $reo, 'html_popup_layer', 'html_hold_kit_add', 'a Web::Reactor::Reflex or Web::Reactor object' );
+  my $handle = qq( $event="$js" data-popup-layer-id="$layer_id" );
+
+  return ( $handle, $html ) if wantarray; # list context does not use the KIT_HTML hold
+
+  $reo->html_hold_kit_add( 'KIT_HTML', $html ); # pages show it with <$$kit_html>
+  return $handle;
+}
+
+sub html_popup_layer_attrs
+{
+  my ( $reo, $event, $js, $layer_id, $html ) = __popup_layer( 'html_popup_layer_attrs', @_ );
+
+  $reo->html_hold_kit_add( 'KIT_HTML', $html ); # pages show it with <$$kit_html>
+  return ( $event => $js, 'data-popup-layer-id' => $layer_id );
+}
+
+# common part of html_popup_layer() and html_popup_layer_attrs()
+# returns:
+#       ( reo, event attribute name, its javascript, layer id, layer html )
+sub __popup_layer
+{
+  my $func = shift;
+  my $reo  = shift;
+  my %opt  = @_ == 1 ? ( VALUE => $_[0] ) : @_; # short form: the layer html only
+
+  __check_reo( $reo, $func, 'html_hold_kit_add', 'a Web::Reactor::Reflex or Web::Reactor object' );
 
   my $value   =    $opt{ 'VALUE'   };
   my $class   =    $opt{ 'CLASS'   } || 'popup-layer';
@@ -479,26 +512,22 @@ sub html_popup_layer
 
   $timeout = 200 unless $timeout > 0;
 
-  my $trigger;
+  my ( $event, $js );
   if( $type eq 'CONTEXT' )
     {
-    $trigger = qq( onContextMenu="return reactor_popup_mouse_over( this, { timeout: $timeout, single: $single } )" );
+    ( $event, $js ) = ( 'onContextMenu', "return reactor_popup_mouse_over( this, { timeout: $timeout, single: $single } )" );
     }
   else # ( $type eq 'CLICK' )
     {
-    $trigger = qq( onClick="return reactor_popup_mouse_over( this, { click_open: 1, timeout: $timeout, single: $single } )" );
+    ( $event, $js ) = ( 'onClick', "return reactor_popup_mouse_over( this, { click_open: 1, timeout: $timeout, single: $single } )" );
     }
 
   my $popup_layer_id_counter = $reo->create_uniq_id();
   my $popup_layer_id = "R_POPUP_LAYER_$popup_layer_id_counter";
 
-  my $handle  = qq( $trigger data-popup-layer-id="$popup_layer_id" );
-  my $html    = html_element( 'div', $value, class => $class, id => $popup_layer_id ); # escapes the class
+  my $html = html_element( 'div', $value, class => $class, id => $popup_layer_id ); # escapes the class
 
-  return ( $handle, $html ) if wantarray; # list context does not use the KIT_HTML hold
-
-  $reo->html_hold_kit_add( 'KIT_HTML', $html ); # pages show it with <$$kit_html>
-  return $handle;
+  return ( $reo, $event, $js, $popup_layer_id, $html );
 }
 
 ##############################################################################

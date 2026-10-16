@@ -1341,6 +1341,11 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( $ph, qr/data-popup-layer-id="R_POPUP_LAYER_/, 'html_popup_layer() handle carries the layer id' );
   my ( undef, $psf ) = html_popup_layer( $APP, 'popup short form' );
   like( $psf, qr{>popup short form</div>$}, 'html_popup_layer() short form takes the layer html' );
+  my %pa = html_popup_layer_attrs( $APP, VALUE => 'attrs popup', TYPE => 'CONTEXT', TIMEOUT => 300 );
+  is( $pa{ 'onContextMenu' }, 'return reactor_popup_mouse_over( this, { timeout: 300, single: 0 } )', 'html_popup_layer_attrs() gives the event attribute and its javascript' );
+  like( $pa{ 'data-popup-layer-id' }, qr/^R_POPUP_LAYER_/, 'html_popup_layer_attrs() gives the layer id' );
+  like( html_element( 'span', 'm', %pa ), qr/oncontextmenu='return reactor_popup_mouse_over\( this, \{ timeout: 300, single: 0 \} \)'/, 'html_popup_layer_attrs() pairs work with html_element()' );
+  like( $APP->html_hold_get( 'kit_html' ), qr/attrs popup/, 'html_popup_layer_attrs() layer goes into the kit_html hold' );
   like( $ph, qr/onClick=/, 'html_popup_layer() CLICK trigger by default' );
   like( $ph, qr/reactor_popup_mouse_over\( this, \{ click_open: 1, timeout: 200, single: 0 \} \)/, 'html_popup_layer() CLICK default options' );
   my ( $cs ) = html_popup_layer( $APP, VALUE => 'v', TIMEOUT => 500, SINGLE => 1 );
@@ -1544,6 +1549,25 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   is( $r2->get_safe_input()->{ 'COLOUR' }, 'RED', 'form return map turns the posted key back into real data (names are upper case)' );
   ok( ! exists $r2->get_user_input()->{ uc $hidden_name }, 'the mapped input name is removed from user input' );
   is( $r2->get_input_form_name(), 'roundtrip', 'get_input_form_name() after a round trip' );
+}
+
+# ATTRS: extra attributes on all elements, escaped, name/form/id and the
+# attributes an element needs to work cannot be replaced
+{
+  my $f = Web::Reactor::HTML::Form->new( $APP, $APP->cfg() );
+  $f->begin( NAME => 'attrs' );
+  my $fu = $f->file_upload( NAME => 'up', ATTRS => { onChange => 'this.form.submit();', style => 'display: none', type => 'text', name => 'X' } );
+  like(   $fu, qr/onchange='this.form.submit\(\);'/, 'ATTRS adds attributes' );
+  like(   $fu, qr/style='display: none'/,              'ATTRS adds more attributes' );
+  like(   $fu, qr/type='file'/,                         'ATTRS cannot replace an attribute the element needs' );
+  like(   $fu, qr/name='UP'/,                           'ATTRS cannot replace name' );
+  like( $f->button( NAME => 'b', VALUE => 'v', ATTRS => { onClick => q{a("x")} } ), qr/onclick='a\(&#34;x&#34;\)'/, 'ATTRS values are escaped' );
+  like( $f->checkbox( NAME => 'c', ATTRS => { onclick => 'x()', title => 't' } ), qr/onclick='reactor_form_checkbox_toggle\(this\)'.*title='t'|title='t'.*onclick='reactor_form_checkbox_toggle\(this\)'/, 'ATTRS keeps the checkbox toggle' );
+  like( $f->textarea( NAME => 't', ATTRS => { id => 'nope' } ), qr/^(?!.*id='nope')/s, 'ATTRS cannot set id' );
+  eval { $f->input( NAME => 'i', ATTRS => 'style=x' ) };
+  like( $@, qr/ATTRS must be a HASH reference/, 'ATTRS must be a hash reference' );
+  my %pa = html_popup_layer_attrs( $APP, VALUE => 'picker', TYPE => 'CONTEXT' );
+  like( $f->input( NAME => 'd', ATTRS => \%pa ), qr/data-popup-layer-id='R_POPUP_LAYER_/, 'ATTRS takes html_popup_layer_attrs() pairs' );
 }
 
 ##############################################################################

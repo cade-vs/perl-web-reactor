@@ -1511,11 +1511,9 @@ my ( $APP ) = request( COOKIE => $COOKIE );
 ##
 
 {
-  {
-    local $TODO = 'Web::Reactor::new_form() passes hash arguments to Base::new( $reo, $cfg )';
-    my $f = eval { $APP->new_form() };
-    isa_ok( $f, 'Web::Reactor::HTML::Form', 'new_form()' );
-  }
+  my $nf = $APP->new_form();
+  isa_ok( $nf, 'Web::Reactor::HTML::Form', 'new_form()' );
+  is( $nf->reo(), $APP, 'new_form() links the form to the reactor' );
 
   my $form = Web::Reactor::HTML::Form->new( $APP, $APP->cfg() );
   isa_ok( $form, 'Web::Reactor::HTML::Form', 'HTML::Form->new( $reo, $cfg )' );

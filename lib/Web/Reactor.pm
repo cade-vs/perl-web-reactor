@@ -1452,7 +1452,7 @@ sub new_form
 {
   my $self = shift;
 
-  my $form = Web::Reactor::HTML::Form->new( @_, REO_REACTOR => $self );
+  my $form = Web::Reactor::HTML::Form->new( $self, $self->cfg() ); # Base::new( $reo, $cfg )
 
   return $form;
 }
@@ -2017,7 +2017,7 @@ documentation, see the method source code and examples in the demo/ directory.
 =head2 HTML and Form Functions
 
   html_hold_set( %vars )  -- Set HTML template variables
-  new_form( %opt )        -- Create new form object
+  new_form()              -- Create new form object
   render_page( $name )    -- Load, preprocess and render page template
   render_action( $name )  -- Call action and render its result
   render_data( $data, $type ) -- Render data with mime type, see portray()

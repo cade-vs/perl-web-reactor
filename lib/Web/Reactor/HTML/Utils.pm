@@ -12,7 +12,7 @@
 ##
 ## HTML Utils
 ##
-## All checks and escaping is done according to HTML Living standard from
+## All checks and escaping are done according to HTML Living standard from
 ## 5 September 2022, chapter notes are given in the comments
 ## https://html.spec.whatwg.org/multipage/
 ##
@@ -26,7 +26,6 @@ our @EXPORT = qw(
                 html_element_e
 
                 html_ftree
-                html_ctable
 
                 html_hover_layer
                 html_popup_layer
@@ -44,15 +43,53 @@ our @EXPORT = qw(
                 html_check_attr_name
                 html_check_attr_name_boom
 
+                html_check_name
+                html_check_name_boom
+
+                html_check_ident
+                html_check_ident_boom
+
+                html_js_str
+                html_confirm_js
+                html_submit_on_change_js
+
+                html_attrs_filter
+
                 );
 use Exception::Sink;
 use Data::Dumper;
 use Data::Tools;
+use Crypt::PRNG;
 use Web::Reactor::HTML::Tab;
 use Web::Reactor::HTML::Layout;
 
 ##############################################################################
 
+
+=pod
+
+html_element( $tag, $html, attr1 => value1, attr2 => value2, ... )
+
+returns the html element $tag with the given attributes and content:
+
+  print html_element( 'div', 'text', class => 'box', id => 'x1' );
+  # <div class='box' id='x1'>text</div>
+  print html_element( 'input', undef, type => 'checkbox', checked => undef );
+  # <input checked type='checkbox'/>
+
+  - $html is raw html, it is not escaped (see html_element_e())
+  - void elements (input, img, br, hr, meta, link, ...) are written as
+    <tag .../> and cannot have content, it booms if $html is not empty
+  - all other elements are always closed, an undef $html gives <tag ...></tag>
+  - the tag and the attribute names are lower-cased and checked, an
+    invalid name booms
+  - attribute values are escaped, an undef value gives a bare attribute
+    (checked, disabled, ...)
+  - attributes are written sorted by name, the same call gives the same
+    html; a later attribute replaces an earlier one with the same name, also
+    when they differ only in case (onClick, onclick)
+
+=cut
 
 # void elements have no content and no end tag, $13.1.2
 my %HTML_VOID_ELEMENTS = map { $_ => 1 } qw( area base br col embed hr img input link meta source track wbr );
@@ -110,12 +147,22 @@ sub html_element
   return $html;
 }
 
+=pod
+
+html_element_e( $tag, $text, attr1 => value1, ... )
+
+same as html_element() but $text is plain text, it is escaped:
+
+  print html_element_e( 'b', '1 < 2' ); # <b>1 &#60; 2</b>
+
+=cut
+
 sub html_element_e
 {
   my $tag = shift;
   my $txt = shift;
 
-  $txt = str_html_escape( $txt ) if defined $txt;
+  $txt = str_html_escape_text( $txt ) if defined $txt; # element content needs only & < > escaped
 
   return html_element( $tag, $txt, @_ );
 }
@@ -124,11 +171,14 @@ sub html_element_e
 
 =pod
 
-flat tree, represented by single table with rows
+html_ftree( $data, %opt )
+
+flat tree, represented by single table with rows, a click on a branch row
+shows or hides its sub rows (ftree_click() in js/reactor.js)
 
 DEMO:
 
-  my $a = [
+  my $tree = [
           'opa',
           'tralala',
           'heyo',
@@ -156,7 +206,7 @@ DEMO:
           'yoyo',
           ];
 
-  print html_ftree( $a, 'ARGS' => 'cellpadding=10 width=100% border=0' );
+  print html_ftree( $tree, 'ARGS' => 'cellpadding=10 width=100% border=0' );
 
 options:
 
@@ -176,9 +226,10 @@ a row is a label (scalar) or a hash ref:
 
 =cut
 
-# ftree ids: a per-process scope (pid and the time of the first ftree in the
-# process), so ftrees served by different processes into one page do not
-# repeat ids, and a counter
+# ftree ids: a per-process scope (pid, the time of the first ftree in the
+# process and a random part, also against a pid reused within a second), so
+# ftrees served by different processes into one page do not repeat ids, and
+# a counter. independent of reactor objects on purpose
 my $ftree_item_id;
 my $ftree_scope;
 my $ftree_pid;
@@ -193,7 +244,7 @@ sub html_ftree
   if( ! $ftree_pid or $ftree_pid != $$ )
     {
     $ftree_pid     = $$;
-    $ftree_scope   = "$$" . '_' . time();
+    $ftree_scope   = join '_', $$, time(), Crypt::PRNG::random_string_from( 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', 8 );
     $ftree_item_id = 0;
     }
   $ftree_item_id++;
@@ -285,75 +336,6 @@ sub __html_ftree_branch
 
 ##############################################################################
 
-=pod
-
-collapsable rows table, NOT IMPLEMENTED YET, html_ctable() booms when called
-
-first level items are always visible, click on cell1 on each row will show
-or hide all nested rows. visually collapsed rows will not be indented by
-default but can have separate per-level css classes
-
-DEMO:
-
-  my $t = [
-             [
-               'opa',
-               'tralala',
-               'heyo',
-               {
-                 DATA  => [
-                           'next opa',
-                           'next tralala',
-                           'next heyo',
-                          ]
-                 SUB => [
-                           [
-                               'heyo',
-                               {
-                                 DATA  => [
-                                           'next opa',
-                                           'next tralala',
-                                           'next heyo',
-                                          ]
-                                 SUB => [
-                                           [
-                                           ],
-                                        ]
-                               }
-                           ],
-                        ]
-               }
-             ],
-          ];
-
-
-  my $t = [
-            [ id, 1, 2, 3, 4, 5 ],
-            [ { id, class etc. }, 1, 2, 3, 4, 5 ],
-          ];
-
-
-          tr: data
-          tr: { id, class, args }, data
-          td: data
-          td: { id, class, args }, data
-
-  print html_ctable( $a, 'ARGS' => 'cellpadding=10 width=100% border=0' );
-
-=cut
-
-# FIXME: not implemented yet
-sub html_ctable
-{
-  my $data = shift;
-  my $opt  = shift;
-
-  boom "html_ctable() is not implemented yet";
-}
-
-
-##############################################################################
-
 # booms unless $reo is a reactor object (a Web::Reactor:: class) which can $method
 # args:
 #       reo    -- the reactor object to check
@@ -413,14 +395,10 @@ sub html_hover_layer
   my $class = $opt{ 'CLASS' } || 'hover-layer';
   my $delay = int( $opt{ 'DELAY' } // 250 ); # 0 shows the layer at once, a number for the javascript
 
-  my $hover_layer_counter = $reo->create_uniq_id();
-  my $hover_layer_id = "R_HOVER_LAYER_$hover_layer_counter";
+  my $hover_layer_id = 'R_HOVER_LAYER_' . $reo->create_uniq_id();
 
-  my $html;
-  my $handle;
-
-  $handle = qq{ reactor_hover_show_delay( this, "$hover_layer_id", $delay, event ) };
-  $html   = html_element( 'div', $value, class => $class, id => $hover_layer_id );
+  my $handle = qq{ reactor_hover_show_delay( this, "$hover_layer_id", $delay, event ) };
+  my $html   = html_element( 'div', $value, class => $class, id => $hover_layer_id );
 
   return ( $handle, $html ) if wantarray; # list context does not use the KIT_HTML hold
 
@@ -522,8 +500,7 @@ sub __popup_layer
     ( $event, $js ) = ( 'onClick', "return reactor_popup_mouse_over( this, { click_open: 1, timeout: $timeout, single: $single } )" );
     }
 
-  my $popup_layer_id_counter = $reo->create_uniq_id();
-  my $popup_layer_id = "R_POPUP_LAYER_$popup_layer_id_counter";
+  my $popup_layer_id = 'R_POPUP_LAYER_' . $reo->create_uniq_id();
 
   my $html = html_element( 'div', $value, class => $class, id => $popup_layer_id ); # escapes the class
 
@@ -547,14 +524,17 @@ options (hash reference):
   ID                      -- element id
   CLASS                   -- element class
   HINT                    -- hover layer text, see html_hover_layer()
-  CONFIRM                 -- confirm() question before the link is followed
-  DISABLED                -- the link does nothing, gets class "disabled-button"
-                             and no HINT or CONFIRM
+  CONFIRM                 -- confirm() question before the link is followed,
+                             1 asks the default question, see html_confirm_js()
+  DISABLED                -- the link does nothing: it has no href (no LINK
+                             session entry is made, middle-click or "open in
+                             new tab" have nothing to follow), gets class
+                             "disabled-button" and no HINT or CONFIRM
   DISABLE_ON_CLICK        -- seconds the link is disabled after a click
   DISABLE_ON_CLICK_CLASS  -- class of the link while it is disabled, swapped
                              with CLASS
 
-only one onclick is made: DISABLED, else CONFIRM, else DISABLE_ON_CLICK.
+only one onclick is made: CONFIRM, else DISABLE_ON_CLICK, none if DISABLED.
 $reo must be a Web::Reactor object (args_type()).
 
 =cut
@@ -569,8 +549,6 @@ sub html_alink
 
   __check_reo( $reo, 'html_alink', 'args_type', 'a Web::Reactor object (args_type)' );
 
-  my $href = $reo->args_type( $type, @args );
-
   my %attr; # html_element() escapes all attribute values
 
   my $tag_id = $opts->{ 'ID' };
@@ -583,7 +561,6 @@ sub html_alink
 
   if( $opts->{ 'DISABLED' } )
     {
-    $attr{ 'onclick' } = "return false;";
     $class = join ' ', grep { $_ ne '' } ( $class, 'disabled-button' );
     $hint = undef; # remove button hints for disabled buttons
     }
@@ -592,16 +569,11 @@ sub html_alink
   $attr{ 'class' } = $class  if $class  ne '';
   $attr{ 'onmouseover' } = html_hover_layer( $reo, VALUE => $hint, DELAY => 1000 ) if $hint;
 
-  # FIXME: FIX REACTOR TO HAVE SENSIBLE HTML_LINK FUNCTIONS, I.E. CONVERT HINT TO HASHREF!
-  # one onclick only: a disabled link has its "return false" above, else
-  # confirm, else disable on click
-  if( ! $opts->{ 'DISABLED' } and $confirm ne '' )
+  # one onclick only: confirm, else disable on click. a disabled link has
+  # none, it has no href, so there is nothing to stop
+  if( ! $opts->{ 'DISABLED' } and $confirm )
     {
-    # the text goes into a single-quoted javascript string
-    $confirm =~ s/\\/\\\\/g;
-    $confirm =~ s/'/\\'/g;
-    $confirm =~ s/\r\n?|\n/\\n/g; # any line ending, a raw one breaks the string
-    $attr{ 'onclick' } = "return confirm('$confirm');";
+    $attr{ 'onclick' } = html_confirm_js( $confirm );
     }
   elsif( ! $opts->{ 'DISABLED' } and $disable_on_click > 0 )
     {
@@ -610,18 +582,21 @@ sub html_alink
     $attr{ 'onclick'        } = "return reactor_element_disable_on_click( this, $disable_on_click );";
     }
 
-  return html_element( 'a', $value // '', %attr, href => "?_=$href" );
+  # a disabled link gets no href, so there is nothing to follow
+  $attr{ 'href' } = '?_=' . $reo->args_type( $type, @args ) unless $opts->{ 'DISABLED' };
+
+  return html_element( 'a', $value, %attr );
 }
 
 ##############################################################################
 
 =pod
 
-sub html_tabs_table
+html_tabs_table( $reo, \@tabs, %opt )
 
-arguments: reactor, array_ref, opt_hash
+table with tabs, one tab is visible at a time, see Web::Reactor::HTML::Tab.
 
-array_ref is list of hash refs with this content:
+@tabs is a list of hash refs with this content:
 
     LABEL          -- label text for this tab handle
     LABEL_TD_ARGS  -- further optional arguments for the label TD
@@ -631,7 +606,7 @@ array_ref is list of hash refs with this content:
                       entry may be ON
     TAB_ID         -- html id for this tab
 
-opt_hash is inline with the following items:
+%opt has the following items:
 
     LABELS_TABLE_ARGS -- args for the table holding the labels, horizontal only
 
@@ -696,10 +671,10 @@ sub html_tabs_table
     my $on         = $e->{ 'ON'            };
     my $tab_id     = $e->{ 'TAB_ID'        };
 
-    if( ! $vert and $label_args !~ /WIDTH=/i )
+    if( ! $vert and $label_args !~ /width=/i )
       {
       my $w = int( 100 / $cnt );
-      $label_args .= " WIDTH=$w%";
+      $label_args .= " width=$w%";
       }
 
     # a class in LABEL_TD_ARGS goes to the handle classes, so the label TD gets
@@ -707,9 +682,9 @@ sub html_tabs_table
     my $handle_class;
     $handle_class = $2 if $label_args =~ s/(?<![\w-])class\s*=\s*(['"])(.*?)\1//i or $label_args =~ s/(?<![\w-])class\s*=\s*()([^\s>'"]+)//i;
 
-    my ( $tab_handle, $tab_html ) = $tab->add( "<TD $text_args>$text</TD>", TYPE => 'TR', ON => $on, TAB_ID => $tab_id, HANDLE_CLASS => $handle_class );
+    my ( $tab_handle, $tab_html ) = $tab->add( "<td $text_args>$text</td>", TYPE => 'TR', ON => $on, TAB_ID => $tab_id, HANDLE_CLASS => $handle_class );
 
-    push @label_td, "<TD $label_args $tab_handle>$label</TD>";
+    push @label_td, "<td $label_args $tab_handle>$label</td>";
     push @text_td,  $tab_html;
     }
   $tab->finish();
@@ -718,39 +693,50 @@ sub html_tabs_table
 
   my $text;
 
-  $text .= "<TABLE $args>\n";
+  $text .= "<table $args>\n";
   if( $vert )
     {
     my $label_args  = $opt{ 'VERT_LABEL_TD_ARGS' };
     my $text_args   = $opt{ 'VERT_TEXT_TD_ARGS' };
 
-    $label_args .= " WIDTH=50%" if $label_args !~ /WIDTH=/i;
+    $label_args .= " width=50%" if $label_args !~ /width=/i;
 
-    $text .= "<TR>";
-    $text .= "<TD $label_args><TABLE WIDTH=100%>";
-    $text .= "<TR>" . join( "</TR><TR>", @label_td ) . "</TR>";
-    $text .= "</TABLE></TD>";
+    $text .= "<tr>";
+    $text .= "<td $label_args><table width=100%>";
+    $text .= "<tr>" . join( "</tr><tr>", @label_td ) . "</tr>";
+    $text .= "</table></td>";
 
-    $text .= "<TD $text_args><TABLE WIDTH=100%>";
+    $text .= "<td $text_args><table width=100%>";
     $text .= join( '', @text_td );
-    $text .= "</TABLE></TD>";
+    $text .= "</table></td>";
 
-    $text .= "</TR>";
+    $text .= "</tr>";
     }
   else
     {
     my $labels_table_args = $opt{ 'LABELS_TABLE_ARGS' };
-    $labels_table_args .= " WIDTH=100%" if $labels_table_args !~ /WIDTH=/i;
-    $text .= "<TR><TD><TABLE $labels_table_args><TR>" . join( '', @label_td ) . "</TR></TABLE></TD></TR>";
+    $labels_table_args .= " width=100%" if $labels_table_args !~ /width=/i;
+    $text .= "<tr><td><table $labels_table_args><tr>" . join( '', @label_td ) . "</tr></table></td></tr>";
     $text .= join( '', @text_td );
     }
-  $text .= "</TABLE>\n";
+  $text .= "</table>\n";
 
 
   return $text;
 }
 
 ##############################################################################
+
+=pod
+
+html_debug( @data )
+
+returns a Data::Dumper dump of @data as an html block (escaped, inside
+<pre>), for debug output in pages:
+
+  $text .= html_debug( $row_data, \%opt );
+
+=cut
 
 sub html_debug
 {
@@ -761,9 +747,25 @@ sub html_debug
 
 ##############################################################################
 
+=pod
+
+html_check_tag_name( $name ), html_check_attr_name( $name )
+
+return true if $name is a valid html tag or attribute name. tag names start
+with a letter, followed by letters and digits, custom element names
+(my-widget) may also have "-", "." and "_" after the first "-". attribute
+names are letters, digits, "_", ":" and "-" (stricter than the standard).
+
+html_check_tag_name_boom( $name, $msg ), html_check_attr_name_boom( $name, $msg )
+
+boom with $msg (or a default message) if $name is not valid.
+
+=cut
+
 sub html_check_tag_name
 {
-  return $_[0] =~ /^[a-zA-Z][a-zA-Z0-9]*$/; # $13.1.2.1, starts with a letter
+  # $13.1.2.1, starts with a letter; $4.13.3 custom elements have a "-"
+  return $_[0] =~ /^[a-zA-Z](?:[a-zA-Z0-9]*|[a-zA-Z0-9._]*-[a-zA-Z0-9._-]*)$/;
 }
 
 sub html_check_tag_name_boom
@@ -779,6 +781,128 @@ sub html_check_attr_name
 sub html_check_attr_name_boom
 {
   boom( $_[1] || "invalid attribute name [$_[0]]" ) unless html_check_attr_name( $_[0] );
+}
+
+##############################################################################
+
+=pod
+
+html_check_name( $name ), html_check_ident( $ident )
+
+return true if $name is a valid element (form input) name, or $ident a valid
+identifier (html id, etc.): letters, digits, "_", ":" and ".". a name must
+not be empty, an identifier is optional, empty or undef is valid.
+
+html_check_name_boom( $name, $msg ), html_check_ident_boom( $ident, $msg )
+
+boom with $msg (or a default message) if the value is not valid.
+
+=cut
+
+sub html_check_name
+{
+  return $_[0] =~ /^[a-zA-Z0-9_:.]+$/;
+}
+
+sub html_check_name_boom
+{
+  boom( $_[1] || "invalid or empty NAME [$_[0]]" ) unless html_check_name( $_[0] );
+}
+
+sub html_check_ident
+{
+  return $_[0] eq '' || html_check_name( $_[0] );
+}
+
+sub html_check_ident_boom
+{
+  boom( $_[1] || "invalid IDENTIFIER [$_[0]]" ) unless html_check_ident( $_[0] );
+}
+
+##############################################################################
+
+=pod
+
+html_js_str( $text )
+
+returns $text as a double-quoted javascript string literal for inline event
+handlers: backslashes and quotes are escaped, any line ending (CR, LF, CRLF)
+becomes \n. the handler still goes through html_element() (or another
+attribute escape), which escapes it for the html attribute.
+
+  html_element( 'span', 'x', onclick => 'alert(' . html_js_str( $msg ) . ')' );
+
+html_confirm_js( $confirm )
+
+returns the onclick handler for a CONFIRM option: "return confirm(...);",
+undef if $confirm is false. 1 asks the default question "[~Are you sure?]".
+
+html_submit_on_change_js( $submit_on_change )
+
+returns the onchange handler for a SUBMIT_ON_CHANGE option: a positive
+number submits the form, any other string is javascript code to run, false
+gives undef (no handler).
+
+=cut
+
+sub html_js_str
+{
+  my $s = shift;
+
+  $s =~ s/([\\"'])/\\$1/g;
+  $s =~ s/\r\n?|\n/\\n/g; # any line ending, a raw one breaks the string
+
+  return qq["$s"];
+}
+
+sub html_confirm_js
+{
+  my $confirm = shift;
+
+  return undef unless $confirm;
+  $confirm = "[~Are you sure?]" if $confirm eq '1';
+  return "return confirm(" . html_js_str( $confirm ) . ");";
+}
+
+sub html_submit_on_change_js
+{
+  my $soc = shift;
+
+  return undef unless $soc;
+  return 'this.form.submit()' if $soc =~ /^\d+$/;
+  return $soc;
+}
+
+##############################################################################
+
+=pod
+
+html_attrs_filter( $attrs, @drop )
+
+returns the attribute name/value pairs of the $attrs hash reference (an ATTRS
+option, extra attributes for an element) with lower-cased names, without
+the names in @drop (attributes the caller sets itself and which must not
+be replaced). empty list for undef $attrs, booms if it is not a hash
+reference. the values are escaped later by html_element():
+
+  html_element( 'input', undef, type => 'file', name => $n,
+                html_attrs_filter( $opt{ 'ATTRS' }, qw( type name ) ) );
+
+=cut
+
+sub html_attrs_filter
+{
+  my $attrs = shift;
+  my @drop  = @_;
+
+  return () unless $attrs;
+  boom "ATTRS must be a HASH reference" unless ref( $attrs ) eq 'HASH';
+
+  my %ah = %$attrs;
+  hash_lc_ipl( \%ah );
+  delete @ah{ map { lc } @drop };
+
+  return %ah;
 }
 
 ##############################################################################

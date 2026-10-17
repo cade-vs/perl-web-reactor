@@ -1209,6 +1209,7 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( html_element( 'div', 'x', title => "it's" ), qr/&#39;|&#x27;|&apos;/, 'html_element() escapes attribute values' );
 
   is( html_element_e( 'b', '<i>' ), '<b>&#60;i&#62;</b>', 'html_element_e() escapes the text' );
+  is( html_element_e( 'b', q{a="b"} ), '<b>a="b"</b>', 'html_element_e() escapes only what element content needs' );
 
   eval { html_element( 'bad tag', 'x' ) };
   ok( $@, 'html_element() booms on an invalid tag name' );
@@ -1219,7 +1220,9 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   ok(   html_check_tag_name( 'h1'   ), 'html_check_tag_name() accepts digits' );
   ok( ! html_check_tag_name( 'a b'  ), 'html_check_tag_name() rejects whitespace' );
   ok( ! html_check_tag_name( '1a'   ), 'html_check_tag_name() rejects a leading digit' );
-  ok( ! html_check_tag_name( 'a-b'  ), 'html_check_tag_name() rejects dashes' );
+  ok(   html_check_tag_name( 'my-widget' ), 'html_check_tag_name() accepts a custom element name' );
+  ok( ! html_check_tag_name( '-ab'  ), 'html_check_tag_name() rejects a leading dash' );
+  ok( ! html_check_tag_name( 'a.b'  ), 'html_check_tag_name() rejects a dot outside a custom element name' );
 
   ok(   html_check_attr_name( 'data-x' ), 'html_check_attr_name() accepts dashes' );
   ok(   html_check_attr_name( 'xml:id' ), 'html_check_attr_name() accepts colons' );
@@ -1233,8 +1236,8 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   ok( ! $@, 'html_check_tag_name_boom() is quiet on a valid name' );
 
   my $tree = html_ftree( [ 'one', { LABEL => 'group', DATA => [ 'two' ] }, 'three' ] );
-  like( $tree, qr/<table id='FTREE_TABLE_\Q$$\E_\d+_\d+'/, 'html_ftree() builds a table, its id has the pid, a time and a counter' );
-  like( $tree, qr/<tr id='FTREE_TABLE_[\d_]+\.\d+\.'/, 'html_ftree() quotes the row ids' );
+  like( $tree, qr/<table id='FTREE_TABLE_\Q$$\E_\d+_[A-Za-z0-9]{8}_\d+'/, 'html_ftree() builds a table, its id has the pid, a time, a random part and a counter' );
+  like( $tree, qr/<tr id='FTREE_TABLE_\w+\.\d+\.'/, 'html_ftree() quotes the row ids' );
   like( $tree, qr/one/,    'html_ftree() renders leaves'   );
   like( $tree, qr/group/,  'html_ftree() renders labels'   );
   like( $tree, qr/ftree_click/, 'html_ftree() wires the branch toggle' );
@@ -1252,9 +1255,7 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   unlike( $ft, qr/<tr [^>]*style=[^>]*style=/, 'html_ftree() nested rows with a style in ARGS_TR get one style attribute' );
   is( scalar( () = $ft =~ /style='display: none; color: red'/g ), 3, 'html_ftree() merges display none into the style of every nested row' );
 
-  ok( defined &html_ctable, 'html_ctable() is exported' );
-  eval { html_ctable( [] ) };
-  like( $@, qr/html_ctable\(\) is not implemented yet/, 'html_ctable() booms instead of returning nothing' );
+  ok( ! defined &html_ctable, 'html_ctable() is removed, html_ftree() does the same' );
 
   like( html_debug( { A => 1 } ), qr/<pre>.*'A' =&#62; 1.*<\/pre>/s, 'html_debug() dumps its arguments' );
   like( html_debug( '</pre><b>x' ), qr/&#60;\/pre&#62;&#60;b&#62;x/, 'html_debug() escapes the dump, it cannot close the block' );
@@ -1267,11 +1268,17 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( html_alink( $APP, 'here', 'C', { ID => 'lnk' } ), qr/ id='lnk'/, 'html_alink() writes the id lowercase' );
   unlike( html_alink( $APP, 'here', 'C', {} ), qr/class=|id=/i, 'html_alink() emits no empty class or ID' );
 
-  like( html_alink( $APP, 'here', 'C', { CONFIRM => 'sure?' } ), qr/confirm\(&#39;sure\?&#39;\)/, 'html_alink() CONFIRM' );
+  like( html_alink( $APP, 'here', 'C', { CONFIRM => 'sure?' } ), qr/confirm\(&#34;sure\?&#34;\)/, 'html_alink() CONFIRM' );
+  like( html_alink( $APP, 'here', 'C', { CONFIRM => 1 } ), qr/confirm\(&#34;\[~Are you sure\?\]&#34;\)/, 'html_alink() CONFIRM 1 asks the default question' );
   like( html_alink( $APP, 'here', 'C', { DISABLED => 1 } ), qr/disabled-button/, 'html_alink() DISABLED' );
-  is( scalar( () = html_alink( $APP, 'here', 'C', { DISABLED => 1, CONFIRM => 'sure' } ) =~ /onclick=/g ), 1, 'html_alink() DISABLED with CONFIRM has one onclick' );
-  like( html_alink( $APP, 'here', 'C', { DISABLED => 1, CONFIRM => 'sure' } ), qr/onclick='return false;'/, 'html_alink() DISABLED wins over CONFIRM' );
-  is( scalar( () = html_alink( $APP, 'here', 'C', { DISABLED => 1, DISABLE_ON_CLICK => 3 } ) =~ /onclick=/g ), 1, 'html_alink() DISABLED with DISABLE_ON_CLICK has one onclick' );
+  unlike( html_alink( $APP, 'here', 'C', { DISABLED => 1 } ), qr/href=/, 'html_alink() DISABLED link has no href' );
+  {
+    my $n = () = keys %{ $APP->get_link_session()->{ 'ARGS' } || {} };
+    html_alink( $APP, 'here', 'C', { DISABLED => 1 }, X => 1 );
+    is( scalar( () = keys %{ $APP->get_link_session()->{ 'ARGS' } || {} } ), $n, 'html_alink() DISABLED makes no link session entry' );
+  }
+  unlike( html_alink( $APP, 'here', 'C', { DISABLED => 1, CONFIRM => 'sure' } ), qr/onclick=/, 'html_alink() DISABLED has no onclick, no CONFIRM' );
+  unlike( html_alink( $APP, 'here', 'C', { DISABLED => 1, DISABLE_ON_CLICK => 3 } ), qr/onclick=/, 'html_alink() DISABLED has no onclick, no DISABLE_ON_CLICK' );
   my $dc = html_alink( $APP, 'here', 'C', { CLASS => 'b', DISABLE_ON_CLICK => 3, DISABLE_ON_CLICK_CLASS => 'off' } );
   is( scalar( () = $dc =~ /onclick=/g ), 1, 'html_alink() DISABLE_ON_CLICK has one onclick' );
   like( $dc, qr/onclick='return reactor_element_disable_on_click\( this, 3 \);'/, 'html_alink() DISABLE_ON_CLICK calls the disable handler' );
@@ -1279,10 +1286,25 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( $dc, qr/data-class-off='off'/, 'html_alink() DISABLE_ON_CLICK sets the off class' );
   my $cd = html_alink( $APP, 'here', 'C', { CONFIRM => 'sure', DISABLE_ON_CLICK => 3 } );
   is( scalar( () = $cd =~ /onclick=/g ), 1, 'html_alink() CONFIRM with DISABLE_ON_CLICK has one onclick' );
-  like( $cd, qr/onclick='return confirm\(&#39;sure&#39;\);'/, 'html_alink() CONFIRM wins over DISABLE_ON_CLICK' );
-  like( html_alink( $APP, 'here', 'C', { CONFIRM => q{it's "x" & y} } ), qr/onclick='return confirm\(&#39;it\\&#39;s &#34;x&#34; &#38; y&#39;\);'/, 'html_alink() CONFIRM with quotes is escaped, not dropped' );
-  like( html_alink( $APP, 'here', 'C', { CONFIRM => "a\\b\nc" } ), qr/confirm\(&#39;a\\\\b\\nc&#39;\)/, 'html_alink() CONFIRM escapes backslashes and newlines' );
-  like( html_alink( $APP, 'here', 'C', { CONFIRM => "a\rb\r\nc" } ), qr/confirm\(&#39;a\\nb\\nc&#39;\)/, 'html_alink() CONFIRM escapes lone CR and CRLF line endings' );
+  like( $cd, qr/onclick='return confirm\(&#34;sure&#34;\);'/, 'html_alink() CONFIRM wins over DISABLE_ON_CLICK' );
+  like( html_alink( $APP, 'here', 'C', { CONFIRM => q{it's "x" & y} } ), qr/onclick='return confirm\(&#34;it\\&#39;s \\&#34;x\\&#34; &#38; y&#34;\);'/, 'html_alink() CONFIRM with quotes is escaped, not dropped' );
+  like( html_alink( $APP, 'here', 'C', { CONFIRM => "a\\b\nc" } ), qr/confirm\(&#34;a\\\\b\\nc&#34;\)/, 'html_alink() CONFIRM escapes backslashes and newlines' );
+  like( html_alink( $APP, 'here', 'C', { CONFIRM => "a\rb\r\nc" } ), qr/confirm\(&#34;a\\nb\\nc&#34;\)/, 'html_alink() CONFIRM escapes lone CR and CRLF line endings' );
+
+  # the shared helpers Form.pm uses too
+  is( html_js_str( qq{it's "x" a\\b\r\nc} ), q{"it\'s \"x\" a\\\\b\\nc"}, 'html_js_str() escapes quotes, backslashes and line endings' );
+  is( html_confirm_js( 1 ), 'return confirm("[~Are you sure?]");', 'html_confirm_js() 1 asks the default question' );
+  ok( ! defined html_confirm_js( 0 ), 'html_confirm_js() false gives no handler' );
+  is( html_submit_on_change_js( 1 ), 'this.form.submit()', 'html_submit_on_change_js() number submits the form' );
+  is( html_submit_on_change_js( 'go()' ), 'go()', 'html_submit_on_change_js() string is javascript' );
+  is_deeply( { html_attrs_filter( { ONCLICK => 'x', Name => 'n', style => 's' }, qw( name ) ) }, { onclick => 'x', style => 's' }, 'html_attrs_filter() lower-cases names and drops the given ones' );
+  ok(   html_check_ident( '' ),      'html_check_ident() empty is valid' );
+  ok( ! html_check_name( '' ),       'html_check_name() empty is not valid' );
+  ok(   html_check_name( 'a.b:c_1' ), 'html_check_name() letters, digits, dot, colon, underscore' );
+  eval { html_check_name_boom( 'a b' ) };
+  like( $@, qr/invalid or empty NAME \[a b\]/, 'html_check_name_boom() booms' );
+  eval { html_check_ident_boom( 'a b' ) };
+  like( $@, qr/invalid IDENTIFIER \[a b\]/, 'html_check_ident_boom() booms' );
   like( html_alink( $APP, 'here', 'C', { CLASS => q{a'b}, ID => q{i"d} } ), qr/class='a&#39;b'/, 'html_alink() escapes CLASS' );
   like( html_alink( $APP, 'here', 'C', { CLASS => q{a'b}, ID => q{i"d} } ), qr/id='i&#34;d'/,   'html_alink() escapes ID' );
   like( html_alink( $APP, 'here', 'C', { DISABLED => 1 } ), qr/class='disabled-button'/, 'html_alink() DISABLED without CLASS has no leading space' );
@@ -1380,18 +1402,18 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( $tabs, qr/L1/, 'html_tabs_table() renders the first label'  );
   my $otabs = html_tabs_table( $APP, [ { LABEL => 'L1', TEXT => 'T1', ON => 1, TEXT_TD_ARGS => "data-tt='1'" }, { LABEL => 'L2', TEXT => 'T2' } ],
                                      LABEL_CLASS_ON => 'lon', LABEL_CLASS_OFF => 'loff', LABELS_TABLE_ARGS => "data-lt='1'" );
-  like( $otabs, qr/<TD [^>]*class='lon'[^>]*>L1</,  'html_tabs_table() LABEL_CLASS_ON on the active label' );
-  like( $otabs, qr/<TD [^>]*class='loff'[^>]*>L2</, 'html_tabs_table() LABEL_CLASS_OFF on the other label' );
+  like( $otabs, qr/<td [^>]*class='lon'[^>]*>L1</,  'html_tabs_table() LABEL_CLASS_ON on the active label' );
+  like( $otabs, qr/<td [^>]*class='loff'[^>]*>L2</, 'html_tabs_table() LABEL_CLASS_OFF on the other label' );
   like( $otabs, qr/<table [^>]*data-lt='1'/i,      'html_tabs_table() LABELS_TABLE_ARGS on the labels table' );
-  like( $otabs, qr/<TD data-tt='1'>T1<\/TD>/,      'html_tabs_table() TEXT_TD_ARGS on the text cell' );
-  unlike( $tabs, qr{</td>}, 'html_tabs_table() closes the cells in the case it opens them' );
+  like( $otabs, qr/<td data-tt='1'>T1<\/td>/,      'html_tabs_table() TEXT_TD_ARGS on the text cell' );
+  unlike( $tabs, qr{<[A-Z]+[\s>]|</[A-Z]+>}, 'html_tabs_table() writes lower-case tags only, also the HTML::Tab ones' );
   unlike( $tabs, qr/class=''/, 'html_tabs_table() without label classes emits no empty class' );
   like( $tabs, qr/L2/, 'html_tabs_table() renders the second label' );
   like( $tabs, qr/T1/, 'html_tabs_table() renders the first tab'    );
   like( $tabs, qr/reactor_tab_activate_id/, 'html_tabs_table() wires the tab handler' );
 
   my $vtabs = html_tabs_table( $APP, [ { LABEL => 'L', TEXT => 'T' } ], VERTICAL => 1 );
-  like( $vtabs, qr/WIDTH=50%/, 'html_tabs_table() vertical layout' );
+  like( $vtabs, qr/width=50%/, 'html_tabs_table() vertical layout' );
 
   my $ctabs = html_tabs_table( $APP, [ { LABEL => 'L1', TEXT => 'T1', ON => 1, LABEL_TD_ARGS => "class='lbl'" } ] );
   unlike( $ctabs, qr/<TD [^>]*class=[^>]*class=/i, 'html_tabs_table() gives a label TD only one class attribute' );
@@ -1566,6 +1588,23 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( $@, qr/ATTRS must be a HASH reference/, 'ATTRS must be a hash reference' );
   my %pa = html_popup_layer_attrs( $APP, VALUE => 'picker', TYPE => 'CONTEXT' );
   like( $f->input( NAME => 'd', ATTRS => \%pa ), qr/data-popup-layer-id='R_POPUP_LAYER_/, 'ATTRS takes html_popup_layer_attrs() pairs' );
+  like(   $f->select( NAME => 's', DATA => [ { KEY => 'a' } ], DISABLED => 1 ), qr/<select [^>]*disabled='disabled'/, 'select() DISABLED' ); # cc20261017
+  eval { $f->select( NAME => 's', DATA => [ { KEY => 'a' } ], EXTRA => 'x' ) };
+  like( $@, qr/EXTRA used but it is removed/, 'select() dies on the removed EXTRA option' );
+  eval { $f->input( NAME => 'i', ARGS => 'x' ) };
+  like( $@, qr/ARGS used but it is removed, use ATTRS/, 'input() dies on the removed ARGS option' );
+  my $ci = $f->input( NAME => 'ci', ID => 'ci1', CLEAR => 1 );
+  like( $ci, qr/onclick='return set_value\( &#34;ci1&#34;, &#39;&#39; \)'/, 'input() CLEAR handler quotes the id with html_js_str()' );
+  like( $APP->html_hold_get( 'kit_html' ), qr/\[~Clear field\]/, 'input() CLEAR hint is translatable' );
+  my @dl = ( { KEY => '*', VALUE => '', LABEL => 'none' }, { KEY => '*', VALUE => 5, LABEL => 'Five' } );
+  unlike( $f->input( NAME => 'dl', DATALIST => \@dl ), qr/value='none'[^>]*list=|list=[^>]*value='none'/, 'input() DATALIST without a selected value selects nothing' );
+  like(   $f->input( NAME => 'dl', DATALIST => \@dl, DATALIST_SELECTED_VALUE => 5 ), qr/<input [^>]*list=[^>]*value='Five'/, 'input() DATALIST_SELECTED_VALUE selects the entry' );
+  my $dle = $f->input( NAME => 'dle', DATALIST => [ { KEY => '*', VALUE => 1, LABEL => '&#8709; A&amp;B' } ], DATALIST_SELECTED_VALUE => 1 ); # cc20261017-item-85
+  like( $dle, qr/<option [^>]*value='\x{2205} A&#38;B'/, 'input() DATALIST decodes the label character references for the list' ); # cc20261017-item-85
+  like( $dle, qr/<input [^>]*list=[^>]*value='\x{2205} A&#38;B'/, 'input() DATALIST decoded label in the input' ); # cc20261017-item-85
+  is( $f->textarea( NAME => 'ta', VALUE => q{a<b "c"} ) =~ m{>(.*)</textarea>}s ? $1 : '', 'a&#60;b "c"', 'textarea() escapes only what element content needs' );
+  unlike( $f->checkbox_multi( NAME => 'cm' ), qr/<span [^>]*class=/, 'checkbox_multi() span has no default class' ); # cc20261017
+  like(   $f->checkbox_multi( NAME => 'cm', CLASS => 'cmc' ), qr/<span [^>]*class='cmc'/, 'checkbox_multi() CLASS on the span' ); # cc20261017
 }
 
 ##############################################################################
@@ -1587,7 +1626,7 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   my ( $handle, $text ) = $tab->add( 'CONTENT-1', TYPE => 'DIV', ON => 1 );
   like( $handle, qr/class='on'/, 'tab->add() uses CLASS_ON for a visible tab' );
   like( $handle, qr/reactor_tab_activate_id/, 'tab->add() wires the activation handler' );
-  like( $text, qr/<DIV/i, 'tab->add() wraps the content in the requested element' );
+  like( $text, qr/<div /, 'tab->add() wraps the content in the requested element, tag in lower case' );
   like( $text, qr/CONTENT-1/, 'tab->add() keeps the content' );
 
   my ( $h2, $t2 ) = $tab->add( 'CONTENT-2', TYPE => 'DIV' );

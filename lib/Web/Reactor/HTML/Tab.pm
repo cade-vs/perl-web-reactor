@@ -117,7 +117,8 @@ sub add
   my $keep = $handle_extra ne '' ? " data-class-keep='$handle_extra'" : ''; # kept by the tab switch
   my $hc   = $handle_class ne '' ? " class='$handle_class'"           : ''; # no empty class attribute
   $handle = qq{$hc$keep id='$handle_id' onclick='return reactor_tab_activate_id( "$tab_id" )' };
-  $text   = qq{ <$et id='$tab_id' class='$class' data-controller-id='$tab_controller_id' data-handle-id='$handle_id' $display $args >$content</$et> };
+  my $tag = lc $et; # html tags are written in lower case
+  $text   = qq{ <$tag id='$tab_id' class='$class' data-controller-id='$tab_controller_id' data-handle-id='$handle_id' $display $args >$content</$tag> };
 
   return ( $handle, $text );
 }
@@ -148,7 +149,7 @@ sub finish
 
   # FIXME: <input hidden> active tab element keeper to be optionally outside element (by id)
   $html = qq{
-<DIV class='reactor_tab_controller' id='$tab_controller_id' style='display: none;' data-tabs-list='$tabs_list' data-class-on='$class_on' data-class-off='$class_off'>
+<div class='reactor_tab_controller' id='$tab_controller_id' style='display: none;' data-tabs-list='$tabs_list' data-class-on='$class_on' data-class-off='$class_off'>
 
   <script type="text/javascript">
 
@@ -156,7 +157,7 @@ sub finish
 
   </script>
 
-</DIV>
+</div>
 };
 
   my $reo = $self->reo();

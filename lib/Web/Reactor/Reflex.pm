@@ -135,7 +135,14 @@ sub render_action
 
   my $portray_data = $self->act->call( $action );
 
-  boom "rendering action [$action] returns empty data" if ! ref $portray_data and $portray_data eq '';
+  if( ! ref $portray_data and $portray_data eq '' )
+    {
+    # an empty result may be valid, so it is rendered (empty) with a warning.
+    # Actions::call() also returns undef when the action died, the reason is
+    # logged there, so the warning points to it
+    $self->log( "warning: rendering action [$action] returns empty data (or the action failed, see the error logged before)" );
+    $portray_data = '';
+    }
 
   $portray_data = $self->portray( $portray_data, 'text/html' ) unless ref $portray_data;
 
@@ -316,7 +323,8 @@ sub html_hold_del
   my $self = shift;
   my $name = lc shift;
 
-  delete $self->{ 'HTML_HOLD' }{ $name };
+  delete $self->{ 'HTML_HOLD'     }{ $name };
+  delete $self->{ 'HTML_HOLD_KIT' }{ $name }; # a later kit add starts empty
 
   return 1;
 }
@@ -325,7 +333,8 @@ sub html_hold_clear
 {
   my $self = shift;
 
-  $self->{ 'HTML_HOLD' } = {};
+  $self->{ 'HTML_HOLD'     } = {};
+  $self->{ 'HTML_HOLD_KIT' } = {}; # the kit snippets too, or a later kit add brings them back
 }
 
 sub html_hold_reset
@@ -416,6 +425,9 @@ sub load_trans
   # both are optional, with neither there is nothing to load
   my $trans_dirs = $cfg->{ 'TRANS_DIRS' };
   my $trans_file = $cfg->{ 'TRANS_FILE' };
+
+  # a single directory (string) as for HTML_DIRS and ACTIONS_DIRS
+  $trans_dirs = [ $trans_dirs ] if $trans_dirs ne '' and ! ref $trans_dirs;
 
   my @tf;
   if( -e $trans_file )
@@ -551,15 +563,18 @@ C<RENDER> and returns the PSGI response.
 
 =over 4
 
-=item C<_AN>  action name, C<[a-z0-9_]>, case insensitive
+=item C<_AN>  action name, C<[a-z0-9_]>, case insensitive. C<0> is not a valid
+action name, it is taken as no action
 
 =item C<_PN>  page name, C<[a-z0-9_-]> with optional C</> separated path,
-case insensitive, defaults to C<main>
+case insensitive, defaults to C<main>. C<0> is not a valid page name, nor a
+path part, it is taken as no name (the default page or the parent path)
 
 =item C<_>    safe input token produced by C<args()>: C<~> followed by the
-encrypted, base64url encoded hash of arguments. Values found here override
-the same names from user input. An invalid or tampered token is logged and
-ignored.
+encrypted, base64url encoded hash of arguments. Its values are the safe
+input (C<get_safe_input()>), kept apart from the user input; only C<_AN> and
+C<_PN> are looked up in the safe input first. An invalid or tampered token is
+logged and ignored.
 
 =back
 
@@ -640,8 +655,10 @@ not exist or is empty.
 
 Calls the action through C<act-E<gt>call()>. A plain string result is treated
 as HTML and processed like a page. A hashref result (see C<portray()> in Core)
-is rendered as is, processed only if its type is C<text/html>. Booms if the
-action returns nothing.
+is rendered as is, processed only if its type is C<text/html>. An empty result
+(empty string or undef) may be valid: it is rendered as an empty page and
+logged as a warning. A failed (died) action gives undef too, its error is
+logged by C<act-E<gt>call()> before the warning.
 
 =item C<render_data( $data, $type, %extra )>
 
@@ -705,7 +722,8 @@ C<html_hold_del( $name )>, C<html_hold_clear()>, C<html_hold_reset( %chunks )>
 =item C<html_hold_kit_add( $name, $text )>
 
 Accumulates unique snippets under C<$name>, the hold value is the sorted
-concatenation of all snippets added so far.
+concatenation of all snippets added so far. C<html_hold_del()>,
+C<html_hold_clear()> and C<html_hold_reset()> drop the kit snippets too.
 
 =item C<html_hold_kit_js( $url )>, C<html_hold_kit_css( $url )>
 
@@ -723,8 +741,9 @@ Strips HTML and sets C<BROWSER_WINDOW_TITLE>.
 
 =item C<load_trans()>
 
-Loads C<*.tr> files for the current language from C<TRANS_DIRS> (or the
-single C<TRANS_FILE>) into the reactor. Returns 1 on success, 0 if the
+Loads C<*.tr> files for the current language from C<TRANS_DIRS>, both
+C<DIR/LANG/*.tr> and C<DIR/LANG/text/*.tr> (or the single C<TRANS_FILE>), into
+the reactor. Returns 1 on success, 0 if the
 language is not a two letter code.
 
 =item C<load_trans_file( $file_name )>

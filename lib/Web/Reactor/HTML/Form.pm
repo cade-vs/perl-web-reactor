@@ -14,9 +14,7 @@ use Exception::Sink;
 
 use Web::Reactor::HTML::Utils;
 
-# FIXME: TODO: use common func to add html elements common tags: ID,DISABLED,etc.
-# FIXME: TODO: ...including abstract ones as GEO(metry)
-# FIXME: TODO: change VALUE to be html value (currently it is DATA), and DISPLAY to be visible text (currently it is VALUE)
+# FIXME: TODO: an abstract GEO(metry) option for all elements, as textarea() GEOMETRY
 
 our $VERSION = '2.14';
 
@@ -24,16 +22,61 @@ use parent 'Web::Reactor::Base';
 
 ##############################################################################
 
-# new constructor inherited from 'Web::Reactor::Base'
+# cc20261017-reo-optional
+# new( $reo, $cfg, %opt ), new( $reo, %opt ), new( %opt ): the reactor object
+# is optional, see the POD (WITHOUT A REACTOR). options:
+#   DEBUG -- debug prefixes in the form name and id
+sub new
+{
+  my $class = shift;
 
-##############################################################################
+  # a reactor object (or undef in its place), then an optional config hash
+  my $reo = ( @_ and ( ! defined $_[0] or ( ref $_[0] and ref $_[0] ne 'HASH' ) ) ) ? shift : undef;
+  my $cfg = ref $_[0] eq 'HASH' ? shift : undef;
+  boom "expected even number of options" if @_ % 2;
+  my %opt = @_;
+
+  $class = ref( $class ) || $class;
+  my $self = bless {}, $class;
+
+  if( $reo )
+    {
+    $self->__set_reo( $reo ); # booms on a non-reactor object
+    $cfg ||= $reo->cfg();
+    }
+  $self->{ 'CFG'   } = $cfg || {};
+  $self->{ 'DEBUG' } = $opt{ 'DEBUG' };
+
+  return $self;
+}
 
 sub create_uniq_id
 {
   my $self = shift;
 
-  return $self->reo()->create_uniq_id();
+  my $reo = $self->reo_optional(); # cc20261017-reo-optional # cc20261017-2
+  return $reo ? $reo->create_uniq_id() : html_uniq_id();
 }
+
+# hover layer handle for a HINT option, undef without a reactor object (the
+# layer goes into its KIT_HTML hold) # cc20261017-reo-optional
+sub __hint
+{
+  my $self = shift;
+  my $hint = shift;
+
+  my $reo = $self->reo_optional(); # cc20261017-2
+  return undef unless $hint and $reo;
+  return html_hover_layer( $reo, VALUE => $hint, @_ );
+}
+
+# the default (Enter key) button: rendered but out of sight, a display: none
+# one is not pressed by Enter in some browsers, this works in all of them # cc20261017-reo-optional
+my %DEFAULT_BUTTON_ATTRS = (
+                           style         => 'position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden;',
+                           tabindex      => -1,
+                           'aria-hidden' => 'true',
+                           );
 
 # extra ATTRS never replace these, use NAME and ID, see html_attrs_filter()
 my @ATTRS_PROTECTED = qw( name form id );
@@ -69,16 +112,15 @@ sub begin
 
   $method =~ /^(POST|GET)$/  or boom "METHOD can be either POST or GET";
 
-  my $reo = $self->reo();
-
-  $name ||= $reo->create_uniq_id();
-  $id   ||= $name . '.' . $reo->create_uniq_id();
+  $name ||= $self->create_uniq_id(); # cc20261017-reo-optional
+  $id   ||= $name . '.' . $self->create_uniq_id();
   html_check_name_boom( $name );
   html_check_name_boom( $id );
+  html_check_button_name_boom( $default_button ) if $default_button;
 
   # debug prefixes are only visible in the html, the form state keeps the real name
   my $html_name = $name;
-  if( $reo->is_debug() )
+  if( $self->{ 'DEBUG' } ) # cc20261017-reo-optional own flag, not the reactor debug
     {
     $html_name = "FORM_$name";
     $id        = "FORM_ID_$id";
@@ -107,7 +149,7 @@ sub begin
 #### REMOVE ###  ### $text .= "<input style='display: none;' name='__avoidiebug__' form='$form_id'>"; # stupid IE bugs
   if( $default_button )
     {
-    $text .= html_element( 'input', undef, form => $id, type => 'image', name => "button:$default_button", src => 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQI12NgYGBgAAAABQABXvMqOgAAAABJRU5ErkJggg==', height => 0, width => 0, style => 'display: none;', onDblClick => 'return false;' );
+    $text .= html_element( 'input', undef, form => $id, type => 'image', name => "button:$default_button", src => 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQI12NgYGBgAAAABQABXvMqOgAAAABJRU5ErkJggg==', onDblClick => 'return false;', %DEFAULT_BUTTON_ATTRS ); # cc20261017-reo-optional
 #### REMOVE ###      $text .= "<input style='display: none;' type='image' name='BUTTON:$default_button' src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQI12NgYGBgAAAABQABXvMqOgAAAABJRU5ErkJggg==' border=0 height=0 width=0 onDblClick='return false;' form='$form_id'>"
     }
   return $text;
@@ -160,16 +202,28 @@ sub end
 
 # FIXME: TODO: debug info inside html text, begin formname end etc.
 
-  my $reo = $self->reo();
+  my $reo = $self->reo_optional(); # cc20261017-reo-optional # cc20261017-2
 
   my $form_id = $self->{ 'FORM_ID' };
-
-  my $link_shr = $reo->get_link_session();
-  $link_shr->{ 'FORM_RET_MAP' }{ $form_id } = $self->{ 'RET_MAP' };
 
   # the form state is used once, a reused form object starts with a clean state
   my %state     = %{ delete $self->{ 'FORM_STATE' } || {} };
   my $args_type = delete $state{ ':ARGS_TYPE' } || 'HERE';
+
+  if( ! $reo ) # cc20261017-reo-optional
+    {
+    # no link session: nothing is hidden, the state goes as plain hidden inputs
+    for my $k ( sort keys %state )
+      {
+      boom "form state [$k] without a reactor object can hold only plain values" if ref $state{ $k };
+      $text .= html_element( 'input', undef, form => $form_id, type => 'hidden', name => uc $k, value => $state{ $k } );
+      }
+    $text .= "\n";
+    return $text;
+    }
+
+  my $link_shr = $reo->get_link_session();
+  $link_shr->{ 'FORM_RET_MAP' }{ $form_id } = $self->{ 'RET_MAP' };
 
   my $state_keeper = $reo->args_type( $args_type, %state );
 
@@ -278,7 +332,8 @@ sub checkbox_multi
     }
 
   my %options;
-  $options{ 'onmouseover' } = html_hover_layer( $self->reo(), VALUE => $hint ) if $hint;
+  my $hint_js = $self->__hint( $hint ); # cc20261017-reo-optional
+  $options{ 'onmouseover' } = $hint_js if $hint_js; # cc20261017-reo-optional
   $options{ 'class'       } = $class if $class ne ''; # cc20261017
 
   my $cb_id = $self->create_uniq_id(); # checkbox id
@@ -325,7 +380,8 @@ sub radio
 
   my $text;
 
-  my $val = defined $ret ? $self->create_uniq_id() : $key // '';
+  my $hide = defined $ret && $self->reo_optional(); # RET is mapped only with a link session # cc20261017-reo-optional # cc20261017-2
+  my $val  = $hide ? $self->create_uniq_id() : defined $ret ? $ret : $key // '';
 
   my %options;
   $options{ 'checked' } = undef if $on; # bare attribute
@@ -333,7 +389,7 @@ sub radio
   my $form_id = $self->{ 'FORM_ID' };
   $text .= html_element( 'input', undef, %options, type => 'radio', name => $name, value => $val, class => $class, form => $form_id, html_attrs_filter( $opt{ 'ATTRS' }, @ATTRS_PROTECTED, qw( type value ) ) );
 
-  $self->__ret_map_data( $name, $val => $ret ) if defined $ret;
+  $self->__ret_map_data( $name, $val => $ret ) if $hide; # cc20261017-reo-optional
 
   $text .= "\n";
   return $text;
@@ -395,7 +451,9 @@ sub select
   my %at;
 
   $at{ 'form'  } = $self->{ 'FORM_ID' };
-  $at{ 'name'  } = $self->__ret_map_name( $name );
+  my $hide = $self->reo_optional(); # names and values are mapped only with a link session # cc20261017-reo-optional # cc20261017-2
+
+  $at{ 'name'  } = $hide ? $self->__ret_map_name( $name ) : $name; # cc20261017-reo-optional
   $at{ 'class' } = $class;
   $at{ 'id'    } = $id   if $id ne '';
   $at{ 'size'  } = $rows if $rows > 1;
@@ -452,9 +510,9 @@ sub select
     $key = $self->create_uniq_id() if $key eq '*';
     $key = $value                  if $key eq ''; # the value is visible, still mapped so mixed options work
 
-    $self->__ret_map_data( $name, $key => $value );
+    $self->__ret_map_data( $name, $key => $value ) if $hide; # cc20261017-reo-optional
 
-    $at_opt{ 'value' } = $key;
+    $at_opt{ 'value' } = $hide ? $key : $value; # cc20261017-reo-optional
 #print STDERR "sssssssssssssssssssssssss COMBO [$name] [$value] [$key] $sel\n";
     #$opt_text .= "<option value='$val_id' $sel>$value$pad</option>\n";
     $opt_text .= html_element( 'option', $label, %at_opt );
@@ -573,18 +631,23 @@ sub input
 
   $options{ 'onFocus'  } = "this.value=''" if $opt{ 'FOCUS_AUTO_CLEAR' };
 
-  if( $hid and defined $ret )
+  if( $hid and defined $ret and $self->reo_optional() ) # cc20261017-reo-optional # cc20261017-2
     {
     # if input is hidden and return value mapping requested, VALUE is not used!
     $value = $self->create_uniq_id();
     $self->__ret_map_data( $name, $value => $ret );
     }
+  elsif( $hid and defined $ret ) # cc20261017-reo-optional
+    {
+    $value = $ret; # no link session, nothing is hidden
+    }
 
   my $clear_tag;
   if( $clear )
     {
-    my $reo = $self->reo();
-    my $clear_hint_handler = html_hover_layer( $reo, VALUE => '[~Clear field]' );
+    my %clear_hint; # cc20261017-reo-optional
+    my $clear_hint_js = $self->__hint( '[~Clear field]' );
+    $clear_hint{ 'onmouseover' } = $clear_hint_js if $clear_hint_js;
 
     # a datalist input clears its hidden key too
     my $id_js    = html_js_str( $id );
@@ -592,12 +655,12 @@ sub input
 
     if( $clear =~ /^[a-z_\-0-9\/]+\.(png|jpg|jpeg|gif|svg)$/ )
       {
-      $clear_tag = html_element( 'img', undef, class => 'icon-clear', onClick => $clear_js, src => $clear, onmouseover => $clear_hint_handler );
+      $clear_tag = html_element( 'img', undef, class => 'icon-clear', onClick => $clear_js, src => $clear, %clear_hint ); # cc20261017-reo-optional
       }
     else
       {
       my $s = $clear eq 1 ? '&times;' : $clear;
-      $clear_tag = html_element( 'span', $s, class => 'icon-clear', onClick => $clear_js, onmouseover => $clear_hint_handler );
+      $clear_tag = html_element( 'span', $s, class => 'icon-clear', onClick => $clear_js, %clear_hint ); # cc20261017-reo-optional
       }
     }
 
@@ -609,7 +672,8 @@ sub input
     {
     my $on_change = html_submit_on_change_js( $opt{ 'SUBMIT_ON_CHANGE' } );
 
-    my $name_hidden = $self->__ret_map_name( $name );
+    my $hide        = $self->reo_optional(); # names and values are mapped only with a link session # cc20261017-reo-optional # cc20261017-2
+    my $name_hidden = $hide ? $self->__ret_map_name( $name ) : $name; # cc20261017-reo-optional
 
     my $empty_key   = $opt{ 'EMPTY_KEY' }; # never undef in the html, javascript would send "undefined"
     my $input_id    = $self->create_uniq_id();
@@ -629,7 +693,8 @@ sub input
       $k = $self->create_uniq_id() if $k eq '*';
       $k = $v                      if $k eq ''; # the value is visible, still mapped so mixed entries work
 
-      $self->__ret_map_data( $name, $k => $v );
+      $self->__ret_map_data( $name, $k => $v ) if $hide; # cc20261017-reo-optional
+      $k = $v unless $hide; # the value itself is sent # cc20261017-reo-optional
 
       ( $datalist_key, $datalist_label ) = ( $k, $l ) if defined $datalist_sv and $v eq $datalist_sv; # no selection selects nothing
       $datalist_text .= html_element( 'option', undef, name => $l, value => $l, 'data-key' => $k );
@@ -707,7 +772,8 @@ sub button
 
   __check_removed_options( \%opt );
 
-  html_check_name_boom( $name );
+  $name =~ s/^button://i;
+  html_check_button_name_boom( $name ); # Reflex get_user_input_button() reads it back
   html_check_ident_boom( $id );
 
   my %options;
@@ -721,11 +787,11 @@ sub button
   $options{ 'id'      } = $id                       if $id ne '';
   $options{ 'onClick' } = html_confirm_js( $confirm ) if $confirm;
   # a disabled button has no hint, as html_alink()
-  $options{ 'onmouseover' } = html_hover_layer( $self->reo(), VALUE => $hint, DELAY => 1000 ) if $hint and ! $opt{ 'DISABLED' };
+  my $hint_js = $opt{ 'DISABLED' } ? undef : $self->__hint( $hint, DELAY => 1000 ); # cc20261017-reo-optional
+  $options{ 'onmouseover' } = $hint_js if $hint_js; # cc20261017-reo-optional
 
   my $text;
 
-  $name =~ s/^button://i;
 
   my $form_id = $self->{ 'FORM_ID' };
 #  $text .= "<input class='$class' id='$id' type='submit' name='button:$name' value='$value' onDblClick='return false;' form='$form_id' $options $args>";
@@ -752,7 +818,8 @@ sub image_button
 
   __check_removed_options( \%opt );
 
-  html_check_name_boom( $name );
+  $name =~ s/^button://i;
+  html_check_button_name_boom( $name ); # Reflex get_user_input_button() reads it back
   html_check_ident_boom( $id );
 
   my %options;
@@ -766,12 +833,12 @@ sub image_button
   $options{ 'id'      } = $id                       if $id ne '';
   $options{ 'onClick' } = html_confirm_js( $confirm ) if $confirm;
   # HINT replaces ONMOUSEOVER (same key), a disabled button has no hint, as html_alink()
-  $options{ 'ONMOUSEOVER' } = html_hover_layer( $self->reo(), VALUE => $hint, DELAY => 1000 ) if $hint and ! $opt{ 'DISABLED' };
+  my $hint_js = $opt{ 'DISABLED' } ? undef : $self->__hint( $hint, DELAY => 1000 ); # cc20261017-reo-optional
+  $options{ 'ONMOUSEOVER' } = $hint_js if $hint_js; # cc20261017-reo-optional
 
   my $text;
 
   my $form_id = $self->{ 'FORM_ID' };
-  $name =~ s/^button://i;
 
   ### $text .= "<input class='$class' id='$id' type='image' name='button:$name' src='$src' border=0 $options onDblClick='return false;'>";
   $text .= html_element( 'input', undef, %options, type => 'image', form => $form_id, class => $class, name => "button:$name", src => $src, onDblClick => 'return false;', html_attrs_filter( $opt{ 'ATTRS' }, @ATTRS_PROTECTED, qw( type ) ) );
@@ -786,15 +853,8 @@ sub image_button_default
 
   my %opt = @_;
 
-  my $user_agent = $self->reo()->get_user_session_agent();
-
-  # msie and the real safari only, chrome, edge and opera also claim "Safari"
-  my $default_class = 'hidden';
-  $default_class = 'hidden2' if $user_agent =~ /MSIE|Trident/ or ( $user_agent =~ /Safari/ and $user_agent !~ /Chrome|Chromium|CriOS|Edg|OPR/ );
-
-  $opt{ 'HEIGHT' } = 0;
-  $opt{ 'WIDTH'  } = 0;
-  $opt{ 'CLASS'  } = $opt{ 'CLASS' } || $default_class;
+  # out of sight as the begin() DEFAULT_BUTTON, no browser detection # cc20261017-reo-optional
+  $opt{ 'ATTRS' } = { %{ $opt{ 'ATTRS' } || {} }, %DEFAULT_BUTTON_ATTRS };
 
   return $self->image_button( %opt );
 }
@@ -848,7 +908,22 @@ kept in the link session (the return map, stored by end()) and come back in
 the safe input under the element NAME, so they cannot be forged. several
 selected values of a MULTIPLE select come as "@NAME" (array reference).
 
-a clicked button comes as get_input_button() (its NAME), see Web::Reactor.
+a clicked button comes as get_input_button(): its NAME, or for a NAME like
+"REDIRECT:OK" the part before the ":" ("REDIRECT"), and get_input_button_id()
+gives the part after it ("OK"), see Web::Reactor.
+
+=head1 WITHOUT A REACTOR
+
+the reactor object is optional (new() without it), for forms outside
+Web::Reactor pages or without sessions. then:
+
+  - ids come from Web::Reactor::HTML::Utils html_uniq_id()
+  - nothing is hidden: there is no link session, select(), the DATALIST
+    of input(), radio() with RET and a hidden input() with RET send the
+    real values under the real names
+  - end() writes the form state (state() data, FORM_NAME, FORM_ID) as
+    plain hidden inputs, there is no state keeper "_"
+  - HINT options are ignored, the hover layers need the reactor page holds
 
 =head1 OPTIONS OF ALL ELEMENTS
 
@@ -867,6 +942,15 @@ a clicked button comes as get_input_button() (its NAME), see Web::Reactor.
   EXTRA and ARGS (raw html attributes) are removed, they die, use ATTRS.
 
 =head1 METHODS
+
+=head2 new( $reo, $cfg, %opt ), new( $reo, %opt ), new( %opt )
+
+creates a form object. $reo is the Web::Reactor (or Reflex) object, it is
+optional (see WITHOUT A REACTOR), $cfg defaults to the reactor config.
+Web::Reactor new_form() gives the same as new( $reo ). options:
+
+  DEBUG       -- the form name and id get FORM_ and FORM_ID_ prefixes in the
+                 html (the reactor debug level is not used)
 
 =head2 begin( %opt )
 
@@ -965,17 +1049,22 @@ get_user_uploads().
 
 =head2 button( NAME, VALUE, %opt )
 
-submit button, VALUE is its html content.
+submit button, VALUE is its html content. NAME is "NAME" or "NAME:ID", see
+Web::Reactor::HTML::Utils html_check_button_name(), the same for image_button()
+and the DEFAULT_BUTTON of begin().
 
   CONFIRM           -- question before submit, 1 asks the default one
                        (html_confirm_js())
-  HINT              -- hover layer text (not on a disabled button)
+  HINT              -- hover layer text (not on a disabled button, needs the
+                       reactor object)
 
 =head2 image_button( NAME, SRC, %opt ), image_button_default( ... )
 
 image submit button, SRC (or IMG) is the image url. HEIGHT, WIDTH,
-ONMOUSEOVER, CONFIRM and HINT as for button(). image_button_default() is a
-zero-sized one for the default (Enter) button.
+ONMOUSEOVER, CONFIRM and HINT as for button(). image_button_default() is
+one for the default (Enter) button, rendered but out of sight as the
+DEFAULT_BUTTON of begin() (a display: none button is not pressed by Enter in
+some browsers).
 
 =head2 get_id()
 

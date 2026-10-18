@@ -18,6 +18,7 @@ use strict;
 
 use Exception::Sink;
 use Data::Tools;
+use Web::Reactor::HTML::Utils; # cc20261017-2 Utils loads Layout only when needed
 
 use Exporter;
 our @ISA    = qw( Exporter );
@@ -43,6 +44,8 @@ our @EXPORT = qw(
 ### LAYOUT ###################################################################
 
 =pod
+
+html_table( \@rows, %opt ) # cc20261017-2
 
 takes two-dimensional perl array and formats it in html table
 
@@ -76,7 +79,8 @@ DEMO:
               # row will also be skipped if missing DATA, regardless of SKIP
               };
   push @data, [ \'grid', '123', 'asd' ];          # scalar ref first: row class, then the cells
-  push @data, [ { CID => '1.2' }, '123', 'asd' ]; # hash ref first: row options, then the cells
+  push @data, [ { CID => '1.2' }, '123', 'asd' ]; # hash ref first without DATA: row options, then the cells
+  push @data, [ { DATA => 'first' }, '123' ];     # hash ref first with DATA: a cell # cc20261017-2
   push @data, {
               '-NODISPLAY' => 1,                                # rendered hidden
               DATA         => [ { WIDTH => '20%', DATA => 'w' } ], # cell width attribute
@@ -92,7 +96,7 @@ table options:
   TRH, TDH -- class of the first rendered row and of its cells
   CCL      -- columns class list for the first rendered row only
   PCCL     -- columns class list for all rows
-  COMMENT  -- html comment around the table
+  COMMENT  -- html comment around the table ("--" in it becomes "-") # cc20261017-2
 
 row keys (hash row):
 
@@ -100,7 +104,8 @@ row keys (hash row):
   CLASS       -- row class, else the stripe class
   ARGS        -- raw row attributes, a class in it wins over the stripe class
                  and a style in it gets display: none merged for -NODISPLAY
-  CID         -- collapse id, see below
+  CID         -- collapse id, see below, letters, digits, "_", ".", ":" and
+                 "-" only (html_check_ident()) # cc20261017-2
   CCL, PCCL   -- columns class list for this row / from this row on
   SKIP        -- skip the row, it only sets PCCL
   -NODISPLAY  -- the row is rendered hidden (display: none)
@@ -110,12 +115,16 @@ cell keys (hash cell):
   DATA   -- cell text
   CLASS  -- cell class, else the column class
   ARGS   -- raw cell attributes, a class in it wins over the column class
-  WIDTH  -- cell width attribute
+  WIDTH  -- cell width: a number (pixels) or a number with %, px, em or rem,
+            it goes into the cell style # cc20261017-2
 
 
 collapse identifier for rows
 
   CID=id.id.id+
+
+an array row whose first element is a hash without DATA takes it as the row
+options, a hash with DATA is a cell # cc20261017-2
 
 the first cell of a row with a CID toggles the rows whose CID starts with it
 (ctable_row_click() in js/reactor.js, the page must load it). nested rows
@@ -135,9 +144,9 @@ sub html_table
   # r_* row   attr
   # c_* cell  attr
 
-  my $t_args;
-  $t_args ||= $opt{ 'ARGS' };
-  $t_args ||= "class='" . $opt{ 'CLASS' } . "'" if $opt{ 'CLASS' };
+  my $t_args = $opt{ 'ARGS' }; # cc20261017-2
+  $t_args ||= html_attrs( class => $opt{ 'CLASS' } ) if $opt{ 'CLASS' }; # cc20261017-2 escaped
+  $t_args  =~ s/^\s+//; # cc20261017-2 html_attrs() text starts with a space
 
   my $tr1 = $opt{ 'TR1' } || $opt{ 'TR-1' } || 'tr-1';
   my $tr2 = $opt{ 'TR2' } || $opt{ 'TR-2' } || 'tr-2';
@@ -148,6 +157,7 @@ sub html_table
   my $pccl = $opt{ 'PCCL' } || undef;
 
   my $t_cmt = $opt{ 'COMMENT' };
+  $t_cmt =~ s/-{2,}/-/g; # cc20261017-2 "--" would end the html comment
 
   my $text;
   $text .= "\n\n\n";
@@ -164,7 +174,7 @@ sub html_table
     my $row_class = ( $trh and $row_num == 0 ) ? $trh : ( $r_class eq $tr1 ? $tr2 : $tr1 );
     my $r_args;
     my $cid;
-    my $display;
+    my $hidden; # cc20261017-2 -NODISPLAY
 
     if ( ! ref( $row ) ) # SCALAR
       {
@@ -176,24 +186,25 @@ sub html_table
     if( $rr0 )
       {
       $row = { CLASS => ${ $row->[ 0 ] }, DATA => [ @{ $row }[ 1 .. @$row - 1 ] ] } if $rr0 eq 'SCALAR';
-      $row = { %{ $row->[ 0 ] }, DATA => [ @{ $row }[ 1 .. @$row - 1 ] ] } if $rr0 eq 'HASH';
+      # a hash with DATA is the first cell, without DATA the row options # cc20261017-2
+      $row = { %{ $row->[ 0 ] }, DATA => [ @{ $row }[ 1 .. @$row - 1 ] ] } if $rr0 eq 'HASH' and ! grep { uc eq 'DATA' } keys %{ $row->[ 0 ] };
       }
 
     if ( ref( $row ) eq 'ARRAY' )
       {
       $cols  = $row;
-      $r_args = "class='$row_class'";
+      $r_args = html_attrs( class => $row_class ); # cc20261017-2 escaped
       }
     elsif ( ref( $row ) eq 'HASH' )
       {
       $row      = hash_uc( $row );
-      $display  = "style='display: none'" if $row->{ '-NODISPLAY' };
+      $hidden   = $row->{ '-NODISPLAY' }; # cc20261017-2
       $cols     = $row->{ 'DATA'   };
       $cid      = $row->{ 'CID'    };
       $r_args  = $row->{ 'ARGS'   };
       # the row CLASS or the stripe class, unless ARGS already sets one
       my $rc = $row->{ 'CLASS' } || $row_class;
-      $r_args .= " class='$rc'" if $rc ne '' and $r_args !~ /(?<![\w-])class\s*=/i; # TODO: FIXME: !!! move to html_element
+      $r_args .= html_attrs( class => $rc ) if $rc ne '' and $r_args !~ /(?<![\w-])class\s*=/i; # cc20261017-2 escaped
       $pccl     = $row->{ 'PCCL' } if $row->{ 'PCCL' };
 
       # a skipped row sets only PCCL, its own CCL is not used and the table
@@ -209,14 +220,10 @@ sub html_table
 
     $r_class = $row_class; # the row is rendered, the stripe moves on
 
-    $r_args .= qq{ data-cid='$cid'} if $cid;
-    if( $display )
-      {
-      # into a style already in ARGS (quoted or not), so the row has only one style attribute
-      $r_args =~ s/(?<![\w-])style\s*=\s*(['"])/style=$1display: none; /i
-        or $r_args =~ s/(?<![\w-])style\s*=\s*([^\s'">]+)/style='display: none; $1'/i
-        or $r_args .= " $display";
-      }
+    html_check_ident_boom( $cid, "invalid table row CID [$cid]" ) if $cid; # cc20261017-2
+    $r_args .= html_attrs( 'data-cid' => $cid ) if $cid; # cc20261017-2 escaped
+    $r_args  = html_args_hide( $r_args ) if $hidden; # into a style already in ARGS, one style attribute # cc20261017-2
+    $r_args  =~ s/^\s+//; # cc20261017-2 html_attrs() text starts with a space
     $text  .= "  <tr $r_args>\n";
 
     $ccl = $pccl if $pccl and ! $ccl; # use permanent cols class list if permanent specified and not local one
@@ -242,7 +249,7 @@ sub html_table
         $val     = $cell->{ 'DATA' };
         $c_args  = $cell->{ 'ARGS' };
         $c_class = $cell->{ 'CLASS' } if $cell->{ 'CLASS' };
-        $c_args .= " width='" . $cell->{ 'WIDTH' } . "'" if $cell->{ 'WIDTH' };
+        $c_args  = html_args_style( $c_args, 'width: ' . __css_size( $cell->{ 'WIDTH' } ) ) if $cell->{ 'WIDTH' }; # cc20261017-2 no obsolete width attribute
         }
       elsif( ref( $cell ) eq 'ARRAY' )
         {
@@ -253,12 +260,14 @@ sub html_table
       else
         {
         # FIXME: carp croak boom :)
+        $cn++; # cc20261017-2 the column still counts, the next cells keep their column classes
         next;
         }
 
       # the cell CLASS or the column class, unless ARGS already sets one
-      $c_args .= " class='$c_class'" if $c_class ne '' and $c_args !~ /(?<![\w-])class\s*=/i;
-      $c_args .= qq{ onclick='ctable_row_click( this )' data-cid='$cid'} if $cn == 0 and $cid;
+      $c_args .= html_attrs( class => $c_class ) if $c_class ne '' and $c_args !~ /(?<![\w-])class\s*=/i; # cc20261017-2 escaped
+      $c_args .= html_attrs( onclick => 'ctable_row_click( this )', 'data-cid' => $cid ) if $cn == 0 and $cid; # cc20261017-2
+      $c_args  =~ s/^\s+//; # cc20261017-2
       $text .= "    <td $c_args>$val</td>\n";
       $cn++;
       }
@@ -278,13 +287,44 @@ sub html_table
 
 ##############################################################################
 
+# a css size for WIDTH options: a number is pixels, else a number with %, px,
+# em or rem, anything else booms # cc20261017-2
+sub __css_size
+{
+  my $size = shift;
+
+  return "${size}px" if $size =~ /^\d+(\.\d+)?$/;
+  return $size       if $size =~ /^\d+(\.\d+)?(%|px|em|rem)$/;
+  boom "invalid width [$size], expected a number with an optional %, px, em or rem";
+}
+
+=pod
+
+html_layout_grid( \@rows ) # cc20261017-2
+
+a plain table without spacing, padding or borders, 100% wide. a row is an
+array ref of cells or { ARGS => raw row attributes, DATA => [ cells ] }, a
+cell is a value or { ARGS => raw cell attributes, DATA => value }.
+
+html_layout_hbox( \@cells ), html_layout_vbox( \@cells )
+
+html_layout_grid() with the cells in one row (top aligned), or one cell per
+row.
+
+html_layout_hbox_flex( \'w1,w2,...', @cells ), html_layout_hbox_flex( @cells )
+
+a flex row with one box per cell, the optional weights (flex values, default
+1) are given as a scalar ref first.
+
+=cut
+
 sub html_layout_grid
 {
   my $data = shift;
   
   my $text;
   
-  $text .= "<table border=0 cellspacing=0 cellpadding=0 width=100%>";
+  $text .= "<table style='width: 100%; border-spacing: 0;'>"; # cc20261017-2 no obsolete table attributes
 
   for my $row ( @$data )
     {
@@ -306,6 +346,8 @@ sub html_layout_grid
         $col_args = $col->{ 'ARGS' };
         $val      = $col->{ 'DATA' };
         }
+      $col_args = html_args_style( $col_args, 'padding: 0;' ); # cc20261017-2 was cellpadding=0
+      $col_args =~ s/^\s+//;
       $text .= "<td $col_args>$val</td>";
       }
     $text .= "</tr>";
@@ -320,7 +362,7 @@ sub html_layout_hbox
 {
   my $data = shift;
   
-  return html_layout_grid( [ { DATA => $data, ARGS => "valign=top" } ] );
+  return html_layout_grid( [ { DATA => $data, ARGS => "style='vertical-align: top;'" } ] ); # cc20261017-2 was valign=top
 }
 
 sub html_layout_hbox_flex
@@ -338,7 +380,9 @@ sub html_layout_hbox_flex
   while( @data )
     {
     my $data = shift @data;
-    my $flex = shift @opt || 1;
+    my $flex = shift @opt; # cc20261017-2 0 is a valid weight
+    $flex = 1 unless $flex =~ /^\s*\d+(\.\d+)?\s*$/; # cc20261017-2 a number only, it goes into the style
+    $flex =~ s/\s+//g;
     $text .= "<div style='flex:$flex; padding: 1em'>$data</div>";
     }
   
@@ -361,7 +405,12 @@ sub html_layout_vbox
 
 =pod
 
-formats pair for left/right boxes aligned within specific width
+html_layout_2lr( $left, $right, $format ), html_layout_2lr_flex( $left, $right, $format ) # cc20261017-2
+
+formats pair for left/right boxes aligned within specific width, as a table
+(html_layout_2lr()) or as a flex box (html_layout_2lr_flex(), without a
+format the left box takes the room and the right one is as narrow as its
+content)
 
 format is: 'left-spec=right-spec'
 
@@ -383,43 +432,42 @@ using '==' instead of '=' enables no-word-wrap style
 
 =cut
 
+# the format of html_layout_2lr() and html_layout_2lr_flex() # cc20261017-2
+# returns:
+#       ( left align css, left width %, no-wrap, right width %, right align css )
+sub __2lr_format
+{
+  my $fm = shift;
+
+  $fm =~ /^([<>]?)((\d+)%?)?=(=)?((\d+)%?)?([<>]?)$/ or boom "invalid format [$fm]";
+  my ( $la, $lw, $nw, $rw, $ra ) = ( $1, $3, $4, $6, $7 );
+  boom "invalid format [$fm], a width cannot be over 100%" if $lw > 100 or $rw > 100; # cc20261017-2 the other side would be negative
+
+  my %align = ( '<' => 'text-align: left', '>' => 'text-align: right' );
+  $la = $align{ $la };
+  $ra = $align{ $ra };
+
+  $lw = $rw = 50 if $lw == 0 and $rw == 0;
+  $lw = int( 100 - $rw ) if $lw == 0 and $rw > 0;
+  $rw = int( 100 - $lw ) if $rw == 0 and $lw > 0;
+
+  return ( $la, $lw, ( $nw ? 1 : 0 ), $rw, $ra );
+}
+
 sub html_layout_2lr
 {
   my $ld = shift; # left data
   my $rd = shift; # right data
   my $fm = shift || '<=>'; # format: '[<>]nn%=nn%[<>]'
   
-  my $la; # left  align
-  my $ra; # right align
-  my $lw; # left  width
-  my $rw; # right width
-  my $nw; # no-wrap
-  if( $fm =~ /^([<>]?)((\d+)%?)?=(=)?((\d+)%?)?([<>]?)$/ )
-    {
-    $la = $1;
-    $lw = $3;
-    $nw = $4;
-    $rw = $6;
-    $ra = $7;
-    }
-  else
-    {
-    boom "invalid format [$fm]";
-    }  
-  
-  $la = { '<' => 'align=left', '>' => 'align=right' }->{ $la };
-  $ra = { '<' => 'align=left', '>' => 'align=right' }->{ $ra };
+  my ( $la, $lw, $nw, $rw, $ra ) = __2lr_format( $fm ); # cc20261017-2 one parser
 
-  $lw = $rw = 50 if $lw == 0 and $rw == 0;
-  $lw = int( 100 - $rw ) if $lw == 0 and $rw > 0;
-  $rw = int( 100 - $lw ) if $rw == 0 and $lw > 0;
-  
-  $lw = "width=$lw%";
-  $rw = "width=$rw%";
+  # cc20261017-2 css instead of the obsolete table and cell attributes
+  my $ts = join '; ', 'width: 100%', 'border-spacing: 0', ( $nw ? 'white-space: nowrap' : () );
+  my $ls = join '; ', 'padding: 0', "width: $lw%", grep { $_ ne '' } ( $la );
+  my $rs = join '; ', 'padding: 0', "width: $rw%", grep { $_ ne '' } ( $ra );
 
-  $nw = "style='white-space: nowrap'" if $nw;
-
-  return "<table width=100% cellspacing=0 cellpadding=0 border=0 $nw><tr><td $la $lw>$ld</td><td $ra $rw>$rd</td></tr></table>";
+  return "<table style='$ts;'><tr><td style='$ls;'>$ld</td><td style='$rs;'>$rd</td></tr></table>";
 }
 
 sub html_layout_2lr_flex
@@ -431,44 +479,14 @@ sub html_layout_2lr_flex
   # without a format: left takes the room, right is as narrow as its content
   return "<div style='display: flex;'><div style='flex: 99; text-align: left; align-content: center;'>$ld</div><div style='flex: 1; text-align: right; white-space: nowrap; align-content: center;'>$rd</div></div>" unless $fm;
 
-  my $la;  # left  align
-  my $ra;  # right align
-  my $lw;  # left  width
-  my $rw;  # right width
-  my $nw;  # no-wrap
-  my $acl; # left  content-align
-  my $acr; # right content-align
-  
-  if( $fm =~ /^([<>]?)((\d+)%?)?=(=)?((\d+)%?)?([<>]?)$/ )
-    {
-    $la = $1;
-    $lw = $3;
-    $nw = $4;
-    $rw = $6;
-    $ra = $7;
-    }
-  else
-    {
-    boom "invalid format [$fm]";
-    }  
-  
-  $acl = "align-content: center";
-  $acr = "align-content: center";
-  
-  $la = { '<' => 'text-align: left', '>' => 'text-align: right' }->{ $la };
-  $ra = { '<' => 'text-align: left', '>' => 'text-align: right' }->{ $ra };
+  my ( $la, $lw, $nw, $rw, $ra ) = __2lr_format( $fm ); # cc20261017-2 one parser
 
-  $lw = $rw = 50 if $lw == 0 and $rw == 0;
-  $lw = int( 100 - $rw ) if $lw == 0 and $rw > 0;
-  $rw = int( 100 - $lw ) if $rw == 0 and $lw > 0;
-  
-  $lw = "flex: $lw";
-  $rw = "flex: $rw";
+  my $acl = "align-content: center"; # left  content-align
+  my $acr = "align-content: center"; # right content-align
+  $nw = $nw ? "white-space: nowrap" : '';
 
-  $nw = "white-space: nowrap" if $nw;
-
-  my $ls = join '; ', grep { $_ ne '' } ( $lw, $la, $acl, $nw );
-  my $rs = join '; ', grep { $_ ne '' } ( $rw, $ra, $acr, $nw );
+  my $ls = join '; ', grep { $_ ne '' } ( "flex: $lw", $la, $acl, $nw );
+  my $rs = join '; ', grep { $_ ne '' } ( "flex: $rw", $ra, $acr, $nw );
 
   return "<div style='display: flex;'><div style='$ls'>$ld</div><div style='$rs'>$rd</div></div>";
 }
@@ -519,7 +537,7 @@ sub __html_box_fmt_parse
 #print "    [$f]\n";
     my $arg;
     # the class prefix is taken off first, so its letters are not read as flags
-    $arg .= "class='$1' "            if $f =~ s/^([^:]+)://;
+    $arg .= html_attrs( class => $1 ) . ' ' if $f =~ s/^([^:]+)://; # cc20261017-2 escaped
 
     my $wid = 1;
     $wid  = 1000                    if $f =~ /=/;

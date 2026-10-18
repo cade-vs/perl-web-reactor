@@ -117,6 +117,7 @@ function El( tag, id )
 }
 
 El.prototype.appendChild = function( c ) { c.parentNode = this; this.children.push( c ); return c; };
+El.prototype.contains = function( c ) { for( ; c; c = c.parentNode ) if( c === this ) return true; return false; };
 // viewport coordinates: the offsets chain minus the document scroll, unless a
 // test sets the rect itself (fixed bars, scrolled containers)
 El.prototype.getBoundingClientRect = function()
@@ -144,6 +145,7 @@ El.prototype.getElementsByTagName = function( tag )
   return out;
 };
 El.prototype.addEventListener = function( type, fn ) { ( this.listeners[type] = this.listeners[type] || [] ).push( fn ); };
+El.prototype.removeEventListener = function( type, fn ) { var ls = this.listeners[type] || []; var i = ls.indexOf( fn ); if( i >= 0 ) ls.splice( i, 1 ); };
 El.prototype.dispatchEvent = function( ev )
 {
   ev.target = this;
@@ -187,6 +189,9 @@ function scroll_to( x, y )
   window.pageYOffset = document.documentElement.scrollTop  = y;
 }
 
+// a mouse event on el, without bubbling: props as clientX/Y, relatedTarget
+function fire( el, type, props ) { var ev = new Event( type ); for( var k in props || {} ) ev[k] = props[k]; el.dispatchEvent( ev ); }
+
 function mk( tag, id, dataset, classes )
 {
   var e = new El( tag, id );
@@ -223,6 +228,14 @@ my $TESTS = <<'JS';
   t_is( ve.style.visibility, "visible", 'html_element_toggle() shows an element hidden by css only' );
   html_element_toggle_id( 'sh_ve' );
   t_is( ve.style.visibility, "hidden", 'html_element_toggle_id() hides it again' );
+  t_is( ve.style.position, "absolute", 'a hidden element is out of the page flow' );
+  html_element_show( ve );
+  t_is( ve.style.position, "", 'shown again it gets its stylesheet position back' );
+  var fx = mk( 'DIV', 'sh_fx' ); fx.style.position = "fixed";
+  html_element_hide( fx );
+  html_element_hide( fx );
+  html_element_show( fx );
+  t_is( fx.style.position + " " + fx.style.visibility, "fixed visible", 'a fixed panel stays fixed after hide and show' );
 }
 
 /*** class swap ************************************************************/
@@ -240,7 +253,7 @@ my $TESTS = <<'JS';
 
 /*** tabs ******************************************************************/
 {
-  var ctrl = mk( 'DIV', 'C', { tabsList: 'T1,T2,T3,T4', classOn: 'on', classOff: 'off' } );
+  var ctrl = mk( 'DIV', 'C', { tabsList: 'T1,T2,T3,T4', classOn: 'on', classOff: 'off', persist: '1' } ); // cc20261017-1
   var t1 = mk( 'DIV', 'T1', { controllerId: 'C', handleId: 'H1' } );
   var t2 = mk( 'DIV', 'T2', { controllerId: 'C', handleId: 'H2' } );
   var t3 = mk( 'TR',  'T3', { controllerId: 'C', handleId: 'H3' } );
@@ -283,6 +296,14 @@ my $TESTS = <<'JS';
   t_ok( ! threw, 'blocked session storage does not break the tabs' );
   t_is( t1.style.display, "block", 'with blocked storage the default tab shows' );
 
+  // an unnamed tab set (new id each request) neither stores nor reads the active tab // cc20261017-1
+  var uc = mk( 'DIV', 'UC', { tabsList: 'U1', classOn: 'on', classOff: 'off' } );
+  var u1 = mk( 'DIV', 'U1', { controllerId: 'UC', handleId: 'UH1' } );
+  sessionStorage.setItem( 'TABSET_ACTIVE_UC', 'NOPE' );
+  reactor_tab_restore( 'UC', 'U1' );
+  t_is( u1.style.display, "block", 'an unnamed tab set shows its default tab' );
+  t_is( sessionStorage.getItem( 'TABSET_ACTIVE_UC' ), 'NOPE', 'an unnamed tab set stores no active tab' );
+
   var lone = mk( 'DIV', 'LONE', { controllerId: 'NOCTRL', handleId: 'H1' } );
   t_is( reactor_tab_activate( lone ), false, 'a tab without a controller in the page does nothing' );
 }
@@ -310,8 +331,12 @@ my $TESTS = <<'JS';
   t_is( changes, 1, 'the change event bubbles to the form' );
 
   c1.checked = false; // the browser flipped it on click
-  reactor_form_checkbox_toggle_by_id( 'c1' );
+  reactor_form_checkbox_toggle( c1 );
   t_is( h1.value, 0, 'reactor_form_checkbox_toggle() copies the checkbox state' );
+  reactor_form_checkbox_toggle_by_id( 'c1' );
+  t_ok( c1.checked && h1.value == 1, 'reactor_form_checkbox_toggle_by_id() flips the checkbox and its hidden input' );
+  reactor_form_checkbox_toggle_by_id( 'c1' );
+  t_ok( ! c1.checked && h1.value == 0, 'and back' );
 
   reactor_form_checkbox_set_all( 'F', 1 );
   t_ok( c1.checked && c2.checked && h1.value == 1 && h2.value == 1, 'reactor_form_checkbox_set_all( 1 ) checks all' );
@@ -362,21 +387,66 @@ my $TESTS = <<'JS';
   reactor_hover_show_delay( el, 'HL', 250, { clientX: 990, clientY: 100 } );
   t_is( hl.style.display, "none", 'the hover layer waits for the delay' );
   t_is( pending_timers(), 1, 'a show timer is pending' );
-  t_ok( typeof el.onmousemove == "function" && typeof el.onmouseout == "function", 'the element gets move and out handlers' );
+  t_ok( el.listeners.mousemove.length == 1 && el.listeners.mouseout.length == 1, 'the element gets move and out listeners' );
   run_timers();
   t_is( hl.style.display,  "block", 'the hover layer shows after the delay' );
   t_is( hl.style.position, "absolute", 'the hover layer is positioned absolutely' );
   t_is( hl.style.left, "874px", 'the layer is placed left of the mouse at the right edge (sized only once shown)' );
   t_is( hl.style.top,  "116px", 'the layer is placed below the mouse' );
-  el.onmousemove( { clientX: 10, clientY: 790 } );
+  fire( el, 'mousemove', { clientX: 10, clientY: 790 } );
   t_is( hl.style.left, "26px",  'a mouse move re-places the layer' );
   t_is( hl.style.top,  "724px", 'the layer goes above the mouse at the bottom edge' );
-  el.onmouseout();
+  var elc = el.appendChild( mk( 'B', 'HEC' ) );
+  fire( el, 'mouseout', { relatedTarget: elc } );
+  t_is( hl.style.display, "block", 'moving onto a child of the element keeps the layer' );
+  reactor_hover_show_delay( el, 'HL', 250, { clientX: 20, clientY: 790, relatedTarget: el } ); // the child's mouseover bubbles up
+  t_is( pending_timers(), 0, 'the bubbled mouseover does not start the delay over' );
+  fire( el, 'mouseout' );
   t_is( hl.style.display, "none", 'the layer hides on mouse out' );
   reactor_hover_show( el, 'HL', { clientX: 10, clientY: 10 } );
   run_timers();
   t_is( hl.style.display, "block", 'reactor_hover_show() shows with a zero delay' );
-  el.onmouseout();
+  t_ok( el.listeners.mousemove.length == 1 && el.listeners.mouseout.length == 1, 'the listeners are installed only once' );
+  fire( el, 'mouseout' );
+
+  // a page handler (ATTRS) and a popup on the same element keep working
+  var pp = mk( 'DIV', 'PP' ); pp.style.display = "none";
+  var eh = mk( 'SPAN', 'EH', { popupLayerId: 'PP' } );
+  var page_out = 0;
+  eh.onmouseout = function() { page_out++; };
+  reactor_hover_show( eh, 'HL', { clientX: 10, clientY: 10 } );
+  run_timers();
+  reactor_popup_mouse_over( eh, { click_open: 1, timeout: 100 } );
+  fire( eh, 'mouseout' );
+  t_is( page_out, 1, 'the page mouseout handler stays' );
+  t_is( hl.style.display, "none", 'the hint hides on mouse out next to a popup' );
+  t_is( pending_timers(), 1, 'the popup close timer starts next to a hint' );
+  run_timers();
+  t_is( pp.style.display, "none", 'the popup closes next to a hint' );
+
+  // the edges and the containing block, viewport 1000x800
+  hl.__w = 600;
+  reactor_hover_show( el, 'HL', { clientX: 500, clientY: 100 } );
+  run_timers();
+  t_is( hl.style.left, "0px", 'a hint which fits on neither side stays inside the viewport' );
+  hl.__w = 100;
+  document.documentElement.clientWidth = 985; // a 15px scrollbar
+  reactor_hover_show( el, 'HL', { clientX: 880, clientY: 100 } );
+  run_timers();
+  t_is( hl.style.left, "764px", 'the scrollbar does not count as room for the hint' );
+  document.documentElement.clientWidth = 1000;
+  scroll_to( 0, 300 );
+  reactor_hover_show( el, 'HL', { clientX: 300, clientY: 300 } );
+  run_timers();
+  t_is( hl.style.top, "616px", 'scrolled document: the hint is placed in page coordinates' );
+  scroll_to( 0, 0 );
+  var hcb = mk( 'DIV', 'HCB' ); hcb.style.position = "relative"; hcb.__rect = { left: 100, top: 200 }; hcb.clientLeft = 2; hcb.clientTop = 2;
+  hl.offsetParent = hcb;
+  reactor_hover_show( el, 'HL', { clientX: 300, clientY: 300 } );
+  run_timers();
+  t_is( hl.style.left + " " + hl.style.top, "214px 114px", 'positioned ancestor: the hint counts from its padding box' );
+  hl.offsetParent = null;
+  fire( el, 'mouseout' );
 }
 
 /*** popup layers **********************************************************/
@@ -402,7 +472,7 @@ my $TESTS = <<'JS';
   t_is( pb.style.top, "40px", 'the popup is placed below its element' );
 
   // the mouse leaves B, A opens within the timeout, B's close timer must not forget A
-  eb.onmouseout();
+  fire( eb, 'mouseout' );
   reactor_popup_mouse_over( ea, { click_open: 1, single: 1 } );
   t_is( pb.style.display, "none", 'opening A closes B' );
   run_timers();
@@ -427,7 +497,10 @@ my $TESTS = <<'JS';
 
   // the mouse moves from the element into the popup and out of it
   reactor_popup_mouse_over( eb, { click_open: 1, timeout: 100 } );
-  eb.onmouseout();
+  var ebc = eb.appendChild( mk( 'B', 'EBC' ) );
+  fire( eb, 'mouseout', { relatedTarget: ebc } );
+  t_is( pending_timers(), 0, 'moving onto a child of the element does not start the close timer' );
+  fire( eb, 'mouseout', { relatedTarget: null } );
   t_is( pending_timers(), 1, 'leaving the element starts the close timer' );
   pb.onmouseover();
   t_is( pending_timers(), 0, 'entering the popup cancels the close timer' );
@@ -582,6 +655,25 @@ my $TESTS = <<'JS';
   t_is( c10.style.display,  "none",     'a row whose cid only starts with the same digits is not a child' );
   ctable_row_click( c1 );
   t_is( c12.style.display, "none", 'a second click hides the children' );
+}
+
+/*** date picker ***********************************************************/
+{
+  var dp = mk( 'DIV', 'DP' );
+  var nav = mk( 'SPAN', 'DPN' ); nav.dataset.divId = 'DP';
+  nz_setup_picker( 'DP', 'DPT', new Date( 2026, 9, 15 ), 'YMD' );
+  t_ok( dp.innerHTML.indexOf( "*15<" ) >= 0, 'the picker marks the given day' );
+  __nz_nm( nav );
+  t_ok( dp.innerHTML.indexOf( "*" ) < 0, 'another month has no mark' );
+  __nz_pm( nav );
+  t_ok( dp.innerHTML.indexOf( "*15<" ) >= 0, 'paging back to the month shows the mark again' );
+  __nz_py( nav ); __nz_ny( nav );
+  t_ok( dp.innerHTML.indexOf( "*15<" ) >= 0, 'also after paging by years' );
+  t_ok( dp.innerHTML.indexOf( "data-date='2026.10.15'" ) >= 0, 'the YMD picker gives Y.M.D dates' ); // cc20261017-1
+  nz_setup_picker( 'DP', 'DPT', new Date( 2026, 9, 15 ), 'DMY24' ); // cc20261017-1
+  t_ok( dp.innerHTML.indexOf( "data-date='15.10.2026'" ) >= 0, 'a UTIME format like DMY24 gives D.M.Y dates' );
+  nz_setup_picker( 'DP', 'DPT', new Date( 2026, 9, 15 ) );
+  t_ok( dp.innerHTML.indexOf( "data-date='15.10.2026'" ) >= 0, 'without a format the picker gives D.M.Y, as current_date()' );
 }
 
 /*** image click loop ******************************************************/

@@ -10,8 +10,7 @@
 ##
 ##############################################################################
 ##
-##  reserved for helpers shared by the reactor modules, empty for now, kept
-##  so existing "use Web::Reactor::Utils" lines still work
+##  reserved for helpers shared by the reactor modules, empty for now
 ##
 ##############################################################################
 package Web::Reactor::Utils;

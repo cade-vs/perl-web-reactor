@@ -15,9 +15,9 @@ use strict;
 use parent 'Web::Reactor::Reflex';
 use Data::Tools 1.53; # str_hex_utf8()
 use Exception::Sink;
+use Storable qw( dclone );
 use Data::Dumper;
 
-#use Web::Reactor::Utils;
 use Web::Reactor::HTML::Form;
 
 our $VERSION = '3.33';
@@ -540,7 +540,10 @@ sub __import_hidden_safe_input
   my $cookie_shr      = $self->get_cookie_session() or return {};
   my $link_session_hr = $self->__sc_load( 'LINK', $link_sid, $cookie_shr->{ ':SID' } ) or return {};
   my $ldhr = $link_session_hr->{ 'ARGS' }{ $link_key } or return {}; # link data hashref
-  %safe_input_hr = %$ldhr;
+  # a deep copy: the safe input must not share nested values with the link
+  # data, or a change of the request would be saved back into the link and
+  # every later click on it would see the changed data
+  %safe_input_hr = %{ dclone( $ldhr ) };
 
   # remap incoming parameter names and values, hidden by the FORMs engine
   my $form_id = $safe_input_hr{ 'FORM_ID' }; # FIXME: replace with _FRI
@@ -626,12 +629,10 @@ sub run_print_final_debug
   my $sess = $self->{ 'SESSIONS' } || {};
   my $page_shr = $sess->{ 'PAGE' };
   my $user_shr = $sess->{ 'USER' };
-  my $link_shr = $sess->{ 'LINK' };
 
   my $psid = $page_shr ? $page_shr->{ ':SID' } : 'empty';
   my $rsid = $page_shr ? $page_shr->{ ':REF_PAGE_SID' } || 'empty' : 'empty';
   my $usid = $user_shr ? $user_shr->{ ':SID' } : 'empty';
-  my $lsid = $link_shr ? $link_shr->{ ':SID' } : 'empty';
 
   $self->log_dumper( "USER INPUT-------------------------------------", __mask_passwords( $self->get_user_input() ) );
   $self->log_dumper( "SAFE INPUT-------------------------------------", __mask_passwords( $self->get_safe_input() ) );
@@ -641,7 +642,13 @@ sub run_print_final_debug
   if( $self->is_debug() > 2 )
     {
     $self->log_dumper( "USER SESSION [$usid]---------------------------", $user_shr );
-    # $self->log_dumper( "FINAL LINK SESSION  [$lsid]-----------------------------------", $link_shr );
+    }
+
+  if( $self->is_debug() > 3 )
+    {
+    my $link_shr = $sess->{ 'LINK' };
+    my $lsid = $link_shr ? $link_shr->{ ':SID' } : 'empty';
+    $self->log_dumper( "FINAL LINK SESSION  [$lsid]-----------------------------------", $link_shr );
     }
 }
 
@@ -957,14 +964,12 @@ sub get_input_form_name
 sub args
 {
   my $self = shift;
-  my %args = @_;
-
-  hash_uc_ipl( \%args );
+  my $args = dclone( { @_ } );
 
   my ( $link_sid, $link_shr ) = $self->get_link_session();
   my $link_key = $self->new_link_session_key();
 
-  $link_shr->{ 'ARGS' }{ $link_key } = \%args;
+  $link_shr->{ 'ARGS' }{ $link_key } = hash_uc_ipl( $args );
 
   return $link_sid . '.' . $link_key;
 }
@@ -1045,6 +1050,7 @@ sub args_type
   return $self->args_new_fr( @_ )  if $type eq 'new_fr';
   return $self->args_here( @_ )    if $type eq 'here';
   return $self->args_back( @_ )    if $type eq 'back';
+  return $self->args_back_back( @_ ) if $type eq 'back_back';
   return $self->args( @_ )         if $type eq 'none';
   boom( "unknown or not supported TYPE [$type]" );
 }
@@ -1338,7 +1344,7 @@ sub set_user_session_expire_time
   my $user_shr = $self->get_user_session();
   $user_shr->{ ':XTIME'     } = $xtime; # FIXME: sanity?
   $user_shr->{ ':XTIME_STR' } = scalar localtime $user_shr->{ ':XTIME' };
-  return exists $user_shr->{ ':XTIME' } ? $user_shr->{ ':XTIME' } : undef;
+  return $user_shr->{ ':XTIME' };
 }
 
 sub set_user_session_expire_time_in
@@ -1619,7 +1625,7 @@ See CRYPTOGRAPHY section below.
 Data such as passwords can be encrypted with an RSA public key through rsa().
 Configure RSA_PUB_KEY with the name of the public key PEM file.
 
-=for comment
+=begin comment
 
 Web::Reactor, and not Web::Reactor::Reflex or Web::Reactor::Core, also
 encrypts password input by itself: the value of every user input parameter
@@ -1635,6 +1641,8 @@ supported: it is dropped and logged. A request with a non-empty password
 parameter booms when RSA_PUB_KEY is not configured or its file cannot be read,
 unless DISABLE_PASSWORD_ENCRYPT is set, which leaves all user input as it
 arrives.
+
+=end comment
 
 =head2 Content Security Policy (Optional)
 
@@ -1685,7 +1693,7 @@ Action module example, file APP_ROOT/actions/test.pm (see ACTIONS below):
     my $grid_href = $reo->args_new( _PN => 'grid', TABLE => 'testtable', );
     $text .= "<a href=?_=$grid_href>go to grid</a><p>";
 
-    # access page session. it will be auto-loaded on demand
+    # access page session. it is loaded (or created) for every request
     my $page_session_hr = $reo->get_page_session();
     my $fortune = $page_session_hr->{ 'FORTUNE' } ||= `/usr/games/fortune`;
 
@@ -1736,9 +1744,18 @@ HTML content may include other files (limited the same way, no path):
 
           include text: <#other_file>
          file included: other_file.html
+                  note: "0" is not a valid include file name, as for page
+                        names (<#0> is taken as no name, the page's index)
   directories searched: the page directory and its parents, up to the
                         HTML_DIRS root, in HTML_DIRS/<lang>/ then
                         HTML_DIRS/default/
+
+The page itself (index.html) is searched the same way, so a page directory
+may hold only the include files it overrides and inherit the page and the
+other includes from its parents. For example, with only
+HTML_DIRS/default/index.html and HTML_DIRS/default/main/body_main.html, the
+page "main" is the root index.html with its own body_main.html. A mistyped
+sub-page name therefore shows its nearest parent page instead of failing.
 
 Page names may be requested from the end user side, but include html files may
 be used only from the pages already requested.
@@ -1799,13 +1816,15 @@ is called from a html text. If you look the example above:
 
   <&test_action arg1=val1 arg2=val2 flag1 flag2...>
 
-The $html_args will look like this:
+The $html_args will look like this: the names will become upper-cased inside
+code, literals can be mixed case, a bare name is a flag with value 1, a value
+with spaces can be quoted with ' or ":
 
   $html_args = {
-               'arg1'  => 'val1',
-               'arg2'  => 'val2',
-               'flag1' => 1,
-               'flag2' => 1,
+               'ARG1'  => 'val1',
+               'ARG2'  => 'val2',
+               'FLAG1' => 1,
+               'FLAG2' => 1,
                };
 
 =head1 HTTP PARAMETERS NAMES
@@ -1814,8 +1833,10 @@ Web::Reactor uses underscore and one or two letters for its system http/html
 parameters. Some of the system params are:
 
   _    -- safe input token: "sid.key" from args() or "~..." from argsx()
-  _PN  -- html page name (points to the page template, a-z 0-9 _ - and /)
-  _AN  -- action name (points to the action file or package, a-z 0-9 _)
+  _PN  -- html page name (points to the page template, a-z 0-9 _ - and /),
+          "0" is not a valid page name nor path part
+  _AN  -- action name (points to the action file or package, a-z 0-9 _),
+          "0" is not a valid action name
   _P   -- page session
   _R   -- referer (caller) page session
   _T   -- top-level page session (browser window)
@@ -1913,6 +1934,10 @@ Upon creation, Web::Reactor instance gets hash with config entries/keys.
   HTML_DIRS                 -- HTML template dirs, each with <lang>/ and default/
                                subdirs (default: ["$APP_ROOT/html"])
   SESS_VAR_DIR              -- Session storage dir (default: "$APP_ROOT/var")
+  SESS_LENGTH               -- USER and COOK session id length, min 8 (default: 73),
+                               PAGE and LINK session ids are always 8
+  SESS_LETTERS              -- session id and link key characters, only A-Z a-z 0-9 and _
+                               (default: A-Z a-z 0-9)
   SESS_CREATE_TIMEOUT       -- seconds create() keeps trying new session ids on a collision (default: 5)
   SESS_CREATE_TIMEOUT_COUNT -- tries before create() gives up (default: 1023)
   DEBUG                     -- Debug level 0-4 (default: 0)
@@ -1945,7 +1970,7 @@ default, so a client cannot fake its address with those headers.
 
 =head2 Translation Config Entries
 
-  TRANS_DIRS                -- Directories with .tr translation files (array ref)
+  TRANS_DIRS                -- Directories with .tr translation files (array ref or a single string)
   TRANS_FILE                -- Specific translation file to load (string)
 
 Page text marks translatable literals as [~text] or <~text>, the preprocessor
@@ -2087,13 +2112,15 @@ a LINK session instead. Both arrive the same way in get_safe_input().
   my $ctext = $rsa->encrypt_base64url( $secret ); # only the private key decrypts
   my $ok    = $rsa->verify_base64url( $message, $signature );
 
-=for comment
+=begin comment
 
 rsa() booms if RSA_PUB_KEY is not configured or its file cannot be read. The
 file is read once per reactor object, on the first rsa() call. The reactor
 holds only the public key, decrypting with the private key belongs to the
 backend. User input parameters named PASS* or containing PASSWORD arrive
 encrypted this way, see Password Encryption above.
+
+=end comment
 
 =head2 Security Considerations
 
@@ -2122,7 +2149,7 @@ Install via CPAN:
 
 Or from GitHub:
 
-  git clone git://github.com/cade-vs/perl-web-reactor.git
+  git clone https://github.com/cade-vs/perl-web-reactor.git
   cd perl-web-reactor
   perl Makefile.PL
   make test
@@ -2345,7 +2372,6 @@ The following items are planned for future releases:
   * Add more config validation at startup
   * Implement built-in rate limiting
   * Add more comprehensive error pages
-  * Support HTTP/2 Server Push
   * Enhanced debugging with request/response profiling
   * More comprehensive test suite
   * Performance optimizations
@@ -2416,7 +2442,7 @@ Web::Reactor for its main web interface:
 
   https://github.com/cade-vs/perl-web-reactor
 
-  git clone git://github.com/cade-vs/perl-web-reactor.git
+  git clone https://github.com/cade-vs/perl-web-reactor.git
 
 =head1 AUTHOR
 

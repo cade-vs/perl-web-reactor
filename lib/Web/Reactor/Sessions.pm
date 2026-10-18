@@ -43,12 +43,14 @@ our %SESSION_TYPES = (
 ##
 
 # creates a new session of given type, allocates its storage and writes the
-# initial session data, the only place where :TYPE, :SID and :PSID are set
+# initial session data, the only place where :TYPE, :SID and :PSID are set,
+# except a new HOLD session, which Reactor::get_user_hold() stamps itself with
+# the fixed user ident (see the FIXME there)
 # args:
 #       type -- session type, one of %SESSION_TYPES
 #       psid -- parent session id, required for types with a parent (PAGE,
 #               LINK), undef for the rest
-#       len  -- session id length (optional, default 73)
+#       len  -- session id length (optional, default SESS_LENGTH config or 73)
 # returns:
 #       new session hashref with :TYPE, :SID and :PSID set, booms on failure
 sub create
@@ -56,12 +58,13 @@ sub create
   my $self = shift;
   my $type = uc shift;
   my $psid = shift; # parent sid
-  my $len  = shift || 73; # 21st prime :)
+
+  my $cfg  = $self->cfg();
+
+  my $len  = shift || $cfg->{ 'SESS_LENGTH' } || 73; # 21st prime :)
 
   boom "Web::Reactor::Sessions::create: invalid session type [$type], expected one of " . join( ' ', sort keys %SESSION_TYPES ) unless exists $SESSION_TYPES{ $type };
   boom "Web::Reactor::Sessions::create: invalid length, expected len >= $MIN_SES_ID_LEN, got [$len]" unless $len >= $MIN_SES_ID_LEN;
-
-  my $cfg  = $self->cfg();
 
   my $shr = { ':TYPE' => $type, ':SID' => '?', ':PSID' => $psid };
 
@@ -116,6 +119,29 @@ sub save
 {
   my $self = shift;
   my $shr  = shift; # session hashref
+
+  # NOTE: there is no locking and a save replaces the whole session, so the last
+  #       of two overlapping requests on the same session wins. every request
+  #       saves the USER session (:XTIME), so a parallel AJAX call which loaded
+  #       it before a logout and saves after it puts back :LOGGED_IN = 1 and
+  #       drops :CLOSED, undoing the logout (same for expiry and failed checks).
+  # TODO: possible fix, a closed USER session stays closed (one extra read per
+  #       request, a small window between the read and the rename remains,
+  #       other parallel changes still go to the last save):
+  #
+  #       my $key = $self->__shr_to_key( $shr );
+  #       if( $shr->{ ':TYPE' } eq 'USER' and ! $shr->{ ':CLOSED' } )
+  #         {
+  #         my $stored = $self->_storage_load( $key );
+  #         if( $stored and $stored->{ ':CLOSED' } )
+  #           {
+  #           $self->reo()->log( "warning: user session [$shr->{ ':SID' }] was closed by a parallel request, not saved" );
+  #           return 1; # skipped, not failed
+  #           }
+  #         }
+  #
+  #       a full fix needs a request-long lock per user session, which makes
+  #       the user's requests (parallel AJAX calls) run one at a time.
 
   return $self->_storage_save( $self->__shr_to_key( $shr ), $shr );
 }
@@ -222,8 +248,9 @@ sub _storage_debug_info { boom "Web::Reactor::Sessions::*::_storage_debug_info()
 # return string with new session id with given LEN argument or default length
 # args:
 #       len  --  session id length (optional, 0 or undef for default length)
-#       letters -- letters to be used for session id creation (optional)
-#                  must be non-whitespace characters string with no duplicates
+#       letters -- letters to be used for session id creation (optional,
+#                  default SESS_LETTERS config or A-Z a-z 0-9), only A-Z a-z
+#                  0-9 and _ are allowed, no duplicates
 # returns:
 #       id -- session id string
 sub create_id
@@ -233,6 +260,8 @@ sub create_id
 
   my $len = shift() || $cfg->{ 'SESS_LENGTH'  } || 73; # 21st prime :)
   my $let = shift() || $cfg->{ 'SESS_LETTERS' } || 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+  boom "Web::Reactor::Sessions::create_id: invalid letters, expected only [A-Za-z0-9_], got [$let]" unless $let =~ /^[A-Za-z0-9_]+\z/;
 
   return Crypt::PRNG::random_string_from( $let, $len );
 }
@@ -445,7 +474,7 @@ sub state_save
 
 sub __check_session_id
 {
-  return $_[0] =~ /^[A-Za-z0-9_]{$MIN_SES_ID_LEN,}$/o;
+  return $_[0] =~ /^[A-Za-z0-9_]{$MIN_SES_ID_LEN,}\z/o; # \z: "$" would let a trailing newline through
 }
 
 

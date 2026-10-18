@@ -340,12 +340,26 @@ my $ses = $reo->__ses;
   isnt( $id1, $id2, 'create_id() returns different ids' );
   like( $id1, qr/^[A-Za-z0-9]+$/, 'create_id() is alphanumeric' );
   is( length( $ses->create_id() ), 73, 'create_id() default length is 73' );
+
+  local $ses->cfg()->{ 'SESS_LENGTH' } = 32;
+  my $shr = $ses->create( 'USER' );
+  like( $shr->{ ':SID' }, qr/^(\w+_)?[A-Za-z0-9]{32}\z/, 'create() honours SESS_LENGTH' );
+  $ses->delete( $shr );
+
+  local $ses->cfg()->{ 'SESS_LETTERS' } = 'ab';
+  like( $ses->create_id( 16 ), qr/^[ab]{16}\z/, 'create_id() honours SESS_LETTERS' );
+  eval { $ses->create_id( 16, 'ab-' ) };
+  like( $@, qr/invalid letters/, 'create_id() rejects letters outside the session id rule' );
 }
 
 {
   is_deeply( $ses->compose_key_from_sid( 'USER', 'abcdefgh' ), [ 'USER', 'abcdefgh' ], 'compose_key_from_sid() USER has no parent' );
   is_deeply( $ses->compose_key_from_sid( 'COOK', 'abcdefgh' ), [ 'COOK', 'abcdefgh' ], 'compose_key_from_sid() COOK has no parent' );
   is_deeply( $ses->compose_key_from_sid( 'HOLD', 'abcdefgh' ), [ 'HOLD', 'abcdefgh' ], 'compose_key_from_sid() HOLD has no parent' );
+  eval { $ses->compose_key_from_sid( 'USER', "abcdefgh\n" ) };
+  like( $@, qr/invalid SID/, 'compose_key_from_sid() rejects a sid with a trailing newline' );
+  eval { $ses->_key_to_fn( { READONLY => 1 }, 'USER', "abcdefgh\n" ) };
+  like( $@, qr/invalid key component/, 'the storage rejects a key component with a trailing newline' );
   is_deeply( $ses->compose_key_from_sid( 'PAGE', 'abcdefgh', 'useruser' ), [ 'PAGE', 'useruser', 'abcdefgh' ], 'compose_key_from_sid() PAGE goes under USER' );
   is_deeply( $ses->compose_key_from_sid( 'LINK', 'abcdefgh', 'cookcook' ), [ 'LINK', 'cookcook', 'abcdefgh' ], 'compose_key_from_sid() LINK goes under COOK' );
 
@@ -362,6 +376,8 @@ my $ses = $reo->__ses;
 is( $ses->_split_dir_components( '1234567890', 3, 3 ), '123/456/789/1234567890', '_split_dir_components()' );
 eval { $ses->_split_dir_components( '123', 3, 3 ) };
 ok( $@, '_split_dir_components() booms on a too short id' );
+eval { $ses->_split_dir_components( 'abcde', 3, 3 ) };
+like( $@, qr/shorter than \[9\]/, '_split_dir_components() booms on an id shorter than the requested parts' );
 
 like( $ses->_key_to_fn( { READONLY => 1 }, 'USER', '1234567890' ),
       qr{^\Q$APP_ROOT\E/var/USER/12/34/1234567890\.wrs2$},
@@ -1215,6 +1231,7 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   ok( $@, 'html_element() booms on an invalid tag name' );
   eval { html_element( 'div', 'x', 'bad attr' => 1 ) };
   ok( $@, 'html_element() booms on an invalid attribute name' );
+  like( $@, qr/invalid attribute name \[bad attr\] for tag \[div\]/, 'html_element() names the tag in the error' ); # cc20261017-2
 
   ok(   html_check_tag_name( 'div'  ), 'html_check_tag_name() accepts a plain name' );
   ok(   html_check_tag_name( 'h1'   ), 'html_check_tag_name() accepts digits' );
@@ -1445,13 +1462,13 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( $t, qr/class='k'/,  'html_table() honours the column class list' );
 
   my $g = html_layout_grid( [ [ '1', '2' ], [ '3', '4' ] ] );
-  like( $g, qr/<table border=0/, 'html_layout_grid()' );
+  like( $g, qr/<table style='width: 100%; border-spacing: 0;'>/, 'html_layout_grid() css instead of obsolete table attributes' ); # cc20261017-2
   like( $g, qr/<td[^>]*>1<\/td>/, 'html_layout_grid() renders cells' );
-  like( html_layout_grid( [ [ { ARGS => 'class=x', DATA => 'cell' } ] ] ), qr/<td class=x>cell<\/td>/, 'html_layout_grid() takes { ARGS, DATA } cells' );
+  like( html_layout_grid( [ [ { ARGS => 'class=x', DATA => 'cell' } ] ] ), qr/<td class=x style='padding: 0;'>cell<\/td>/, 'html_layout_grid() takes { ARGS, DATA } cells' ); # cc20261017-2
   {
     my $gd = [ { ARGS => 'class=r', DATA => [ { ARGS => 'class=x', DATA => 'cell' } ] } ];
     html_layout_grid( $gd );
-    like( html_layout_grid( $gd ), qr/<tr class=r><td class=x>cell<\/td>/, 'html_layout_grid() leaves the caller data unchanged' );
+    like( html_layout_grid( $gd ), qr/<tr class=r><td class=x style='padding: 0;'>cell<\/td>/, 'html_layout_grid() leaves the caller data unchanged' ); # cc20261017-2
 
     my $td = [ 's', [ \'cl', 'a' ], { data => [ 'x' ] } ];
     html_table( $td );
@@ -1492,7 +1509,32 @@ my ( $APP ) = request( COOKIE => $COOKIE );
     like( html_layout_2lr_flex( 'L', 'R', '' ), qr/flex: 99;/, 'html_layout_2lr_flex() with an empty format uses the fixed layout' );
   }
 
-  like( html_layout_hbox( [ 'a', 'b' ] ), qr/valign=top/, 'html_layout_hbox()' );
+  like( html_layout_hbox( [ 'a', 'b' ] ), qr/<tr style='vertical-align: top;'>/, 'html_layout_hbox() top aligned with css' ); # cc20261017-2
+
+  # cc20261017-2 Layout fixes
+  like( html_table( [ [ 'a' ] ], CLASS => q{t'b} ), qr/<table class='t&#39;b'>/, 'html_table() escapes the table CLASS' );
+  like( html_table( [ { CLASS => q{r"c}, DATA => [ 'a' ] } ] ), qr/<tr class='r&#34;c'>/, 'html_table() escapes the row CLASS' );
+  like( html_table( [ { CCL => [ q{c<l} ], DATA => [ 'a' ] } ] ), qr/<td class='c&#60;l'>/, 'html_table() escapes the column class' );
+  like( html_table( [ { CID => '1.2', DATA => [ 'a' ] } ] ), qr/<tr [^>]*data-cid='1\.2'.*<td [^>]*data-cid='1\.2' onclick='ctable_row_click\( this \)'/s, 'html_table() CID on the row and the first cell' );
+  eval { html_table( [ { CID => q{1'2}, DATA => [ 'a' ] } ] ) };
+  like( $@, qr/invalid table row CID/, 'html_table() booms on an invalid CID' );
+  like( html_table( [ [ { DATA => 'w', WIDTH => '20%' } ] ] ), qr/<td style='width: 20%;'>w/, 'html_table() WIDTH goes into the cell style' );
+  like( html_table( [ [ { DATA => 'w', WIDTH => 30, ARGS => "style='color: red'" } ] ] ), qr/<td style='width: 30px; color: red'>w/, 'html_table() WIDTH merges into a style in ARGS, a number is pixels' );
+  eval { html_table( [ [ { DATA => 'w', WIDTH => "1'" } ] ] ) };
+  like( $@, qr/invalid width/, 'html_table() booms on an invalid WIDTH' );
+  like( html_table( [ [ 'a' ] ], COMMENT => 'x --> y' ), qr/<!--- BEGIN TABLE: x -> y --->/, 'html_table() COMMENT cannot end the html comment' );
+  like( html_table( [ [ { DATA => 'first' }, 'second' ] ] ), qr/<td\s*>first<\/td>\s*<td\s*>second<\/td>/, 'html_table() a hash with DATA first in an array row is a cell' );
+  like( html_table( [ [ 'a', \*STDOUT, 'c' ] ], CCL => [ 'k1', 'k2', 'k3' ] ), qr/class='k3'>c</, 'html_table() a skipped cell still counts its column' );
+  like( html_layout_hbox_flex( \'0,2', 'a', 'b' ), qr/flex:0;.*flex:2;/s, 'html_layout_hbox_flex() takes a 0 weight' );
+  like( html_layout_hbox_flex( \q{1;x}, 'a' ), qr/flex:1;/, 'html_layout_hbox_flex() a weight is a number only' );
+  like( html_layout_2lr( 'L', 'R', '>20=>' ), qr/<td style='padding: 0; width: 20%; text-align: right;'>L<\/td><td style='padding: 0; width: 80%; text-align: right;'>R/, 'html_layout_2lr() css instead of obsolete attributes' );
+  like( html_hbox( q{a'b:<}, 'x' ), qr/class='a&#39;b'/, 'html_hbox() escapes the class of the format' );
+  eval { html_layout_2lr( 'L', 'R', '>120=' ) };
+  like( $@, qr/a width cannot be over 100%/, 'html_layout_2lr() booms on a width over 100%' ); # cc20261017-2
+  like( html_layout_2lr_flex( 'L', 'R', '100=' ), qr/flex: 100;.*flex: 0;/s, 'html_layout_2lr_flex() 100% leaves 0 for the other side' ); # cc20261017-2
+  is( html_args_style( "style='color: red'", 'width: 1px' ), "style='width: 1px; color: red'", 'html_args_style() merges into a style' );
+  eval { html_args_style( '', q{x: 'y'} ) };
+  ok( $@, 'html_args_style() booms on quotes in the css' );
   like( html_layout_vbox( [ 'a', 'b' ] ), qr/(<tr.*){2}/s, 'html_layout_vbox() stacks rows' );
 
   my $hf = html_layout_hbox_flex( \'1,2', 'left', 'right' );
@@ -1539,6 +1581,64 @@ my ( $APP ) = request( COOKIE => $COOKIE );
 
   my $form = Web::Reactor::HTML::Form->new( $APP, $APP->cfg() );
   isa_ok( $form, 'Web::Reactor::HTML::Form', 'HTML::Form->new( $reo, $cfg )' );
+}
+
+# run() never dies, also when the final debug print fails again on the input
+# which already failed the request (DEBUG 2, a "~" token without CRY_KEY)
+{
+  my ( $r, $res ) = eval { request( QS => '_=~abcdef', CFG => { DEBUG => 2 } ) };
+  ok( ! $@, 'run() does not die when the final debug print fails' );
+  like( body( $res ), qr/system is currently unavailable/, 'run() returns the failure page with DEBUG 2' );
+}
+
+# the safe input is a copy of the link data: changing a nested value in one
+# request does not change the link for the next click
+{
+  my $lk;
+  request( COOKIE => $COOKIE, HOOK => sub { $lk = $_[0]->args_here( LIST => [ 1 ] ) } );
+  request( COOKIE => $COOKIE, QS => "_=$lk", HOOK => sub { push @{ $_[0]->get_safe_input()->{ 'LIST' } }, 2 } );
+  my $seen;
+  request( COOKIE => $COOKIE, QS => "_=$lk", HOOK => sub { $seen = join ' ', @{ $_[0]->get_safe_input()->{ 'LIST' } } } );
+  is( $seen, '1', 'a change of nested safe input is not saved back into the link' );
+
+  # args() keeps the data as it is when the link is made
+  my @lks;
+  request( COOKIE => $COOKIE, HOOK => sub { my @l; for( 1 .. 2 ) { push @l, $_; push @lks, $_[0]->args_here( L => \@l ) } } );
+  my $first;
+  request( COOKIE => $COOKIE, QS => "_=$lks[0]", HOOK => sub { $first = join ' ', @{ $_[0]->get_safe_input()->{ 'L' } } } );
+  is( $first, '1', 'args() keeps the link data as it was when the link was made' );
+}
+
+# args_type() knows all the args_*() link types
+{
+  my ( $bb, $pp );
+  request( COOKIE => $COOKIE, HOOK => sub
+    {
+    my $reo = shift;
+    my $lk  = $reo->args_type( 'back_back', X => 1 );
+    my ( $sid, $key ) = split /\./, $lk;
+    $bb = $reo->get_link_session()->{ 'ARGS' }{ $key };
+    $pp = $reo->get_ref_page_session_id( 1 );
+    } );
+  is( $bb->{ 'X' }, 1, 'args_type( back_back ) makes a link' );
+  is( $bb->{ '_P' }, $pp, 'args_type( back_back ) returns to the caller of the caller, as args_back_back()' );
+}
+
+# template src links are new links (args_new()), in any case of the attribute name
+{
+  my %links;
+  request( COOKIE => $COOKIE, HOOK => sub
+    {
+    my $reo = shift;
+    for my $attr ( 'reactor_src', 'REACTOR_SRC', 'reactor_href' )
+      {
+      my ( $key ) = $reo->pre->process( 'main', qq{<img $attr="?x=1">} ) =~ /\?_=\w+\.(\w+)/;
+      $links{ $attr } = $reo->get_link_session()->{ 'ARGS' }{ $key };
+      }
+    } );
+  ok( exists $links{ 'reactor_src' }{ '_R' }, 'reactor_src makes a new link' );
+  ok( exists $links{ 'REACTOR_SRC' }{ '_R' }, 'REACTOR_SRC makes a new link too' );
+  ok( exists $links{ 'reactor_href' }{ '_P' }, 'reactor_href makes a here link' );
 }
 
 # a form round trip: the return map really unmaps the posted values
@@ -1607,13 +1707,69 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like(   $f->checkbox_multi( NAME => 'cm', CLASS => 'cmc' ), qr/<span [^>]*class='cmc'/, 'checkbox_multi() CLASS on the span' ); # cc20261017
 }
 
+# # cc20261017-reo-optional
+# HTML::Form without a reactor object: own ids, nothing hidden, no hints
+{
+  my $u1 = html_uniq_id();
+  my $u2 = html_uniq_id();
+  like( $u1, qr/^\Q$$\E_\d+_[A-Za-z0-9]{8}\.\d+$/, 'html_uniq_id() is pid, time, random part and a counter' );
+  isnt( $u1, $u2, 'html_uniq_id() gives a new id each time' );
+  ok( html_check_name( $u1 ), 'html_uniq_id() is a valid name' );
+
+  my $f = Web::Reactor::HTML::Form->new();
+  my $b = $f->begin( NAME => 'nr', DEFAULT_BUTTON => 'OK' );
+  like(   $b, qr/<form [^>]*name='nr'/, 'Form without a reactor: begin()' );
+  unlike( $b, qr/display: none/, 'Form default button is not display: none' );
+  like(   $b, qr/name='button:OK'[^>]*style='position: absolute;|style='position: absolute;[^>]*' tabindex='-1'/, 'Form default button is out of sight' );
+  like( $f->select( NAME => 's', DATA => [ { KEY => '*', VALUE => 7, LABEL => 'Seven' } ] ), qr/<select [^>]*name='S'.*<option value='7'>Seven/s, 'Form without a reactor: select sends the real name and value' );
+  like( $f->radio( NAME => 'r', RET => 'rv' ), qr/value='rv'/, 'Form without a reactor: radio RET is sent' );
+  like( $f->input( NAME => 'h', HIDDEN => 1, RET => 'hv' ), qr/name='H'[^>]*value='hv'|value='hv'[^>]*name='H'/, 'Form without a reactor: hidden RET is sent' );
+  like( $f->input( NAME => 'd', DATALIST => [ { KEY => '*', VALUE => 9, LABEL => 'Nine' } ] ), qr/data-key='9'/, 'Form without a reactor: datalist keys are the values' );
+  unlike( $f->button( NAME => 'b', VALUE => 'x', HINT => 'h' ), qr/onmouseover/, 'Form without a reactor: no hint' );
+  like( $f->image_button_default( NAME => 'def', SRC => 'e.png' ), qr/tabindex='-1'/, 'image_button_default() is out of sight, no browser detection' );
+  $f->state( A => 1 );
+  my $e = $f->end();
+  unlike( $e, qr/name='_'/, 'Form without a reactor: no state keeper' );
+  like( $e, qr/name='A'[^>]*value='1'|value='1'[^>]*name='A'/, 'Form without a reactor: state as a plain hidden input' );
+  like( $e, qr/name='FORM_NAME'[^>]*value='nr'|value='nr'[^>]*name='FORM_NAME'/, 'Form without a reactor: FORM_NAME as a plain hidden input' );
+
+  my $fd = Web::Reactor::HTML::Form->new( DEBUG => 1 );
+  like( $fd->begin( NAME => 'dbg' ), qr/name='FORM_dbg'/, 'Form DEBUG option prefixes the form name' );
+  my $fr = Web::Reactor::HTML::Form->new( $APP, DEBUG => 1 );
+  is( $fr->reo(), $APP, 'Form->new( $reo, %opt ) keeps the reactor' );
+  like( $fr->begin( NAME => 'dbg2' ), qr/name='FORM_dbg2'/, 'Form->new( $reo, DEBUG => 1 )' );
+  eval { Web::Reactor::HTML::Form->new( bless {}, 'Not::Reactor' ) };
+  ok( $@, 'Form->new() booms on an object which is not a reactor' );
+  {
+    my $fg = Web::Reactor::HTML::Form->new( $APP );
+    $fg->{ 'REO_REACTOR' } = undef; # as if the weak link to a freed reactor
+    eval { $fg->begin( NAME => 'gone' ) };
+    like( $@, qr/reactor object of this Web::Reactor::HTML::Form is gone/, 'Form booms when its reactor is gone' ); # cc20261017-1
+  }
+
+  # button names Reflex get_user_input_button() can read back
+  ok(   html_check_button_name( 'OK' ),            'html_check_button_name() NAME' );
+  ok(   html_check_button_name( 'REDIRECT:A_1.2' ), 'html_check_button_name() NAME:ID with a uniq id' );
+  ok( ! html_check_button_name( 'save.all' ),      'html_check_button_name() no dot in the NAME part' );
+  ok( ! html_check_button_name( 'OK:A.X' ),        'html_check_button_name() no image click suffix at the end' );
+  ok( ! html_check_button_name( 'a-b' ),           'html_check_button_name() no dash' );
+  my $fb = Web::Reactor::HTML::Form->new();
+  $fb->begin( NAME => 'bn' );
+  eval { $fb->button( NAME => 'save.all', VALUE => 'x' ) };
+  like( $@, qr/invalid button NAME \[SAVE\.ALL\]/, 'button() booms on a NAME Reflex cannot read back' );
+  eval { $fb->image_button( NAME => 'ok.x', SRC => 'x.png' ) };
+  ok( $@, 'image_button() booms on a NAME ending with the click suffix' );
+  eval { Web::Reactor::HTML::Form->new()->begin( NAME => 'bd', DEFAULT_BUTTON => 'a.b' ) };
+  ok( $@, 'begin() booms on a DEFAULT_BUTTON Reflex cannot read back' );
+}
+
 ##############################################################################
 ##
 ##  section 15 -- HTML::Tab
 ##
 
 {
-  my $tab = Web::Reactor::HTML::Tab->new( REO_REACTOR => $APP, NAME => 'tabset',
+  my $tab = Web::Reactor::HTML::Tab->new( $APP, NAME => 'tabset', # cc20261017-1
                                           CLASS_ON => 'on', CLASS_OFF => 'off' );
   isa_ok( $tab, 'Web::Reactor::HTML::Tab', 'HTML::Tab->new()' );
   {
@@ -1638,18 +1794,19 @@ my ( $APP ) = request( COOKIE => $COOKIE );
 
   eval { $tab->add( 'X', TYPE => 'DIV', TAB_ID => q{bad'id} ) };
   like( $@, qr/invalid tab TAB_ID/, 'tab->add() booms on an unsafe TAB_ID' );
-  eval { $tab->add( 'X', TYPE => 'DIV', CLASS => q{a"b} ) };
-  like( $@, qr/invalid tab CLASS/, 'tab->add() booms on an unsafe CLASS' );
-  eval { Web::Reactor::HTML::Tab->new( REO_REACTOR => $APP, NAME => q{x'); alert(1); ('} ) };
+  eval { Web::Reactor::HTML::Tab->new( $APP, NAME => q{x'); alert(1); ('} ) }; # cc20261017-1
   like( $@, qr/invalid tab NAME/, 'HTML::Tab->new() booms on an unsafe NAME' );
   eval { $tab->add( 'X', TYPE => 'DIV', HANDLE_ID => q{a b} ) };
   like( $@, qr/invalid tab HANDLE_ID/, 'tab->add() booms on an unsafe HANDLE_ID' );
-  eval { Web::Reactor::HTML::Tab->new( REO_REACTOR => $APP, CLASS_ON => q{a'b} ) };
-  like( $@, qr/invalid tab CLASS_ON/, 'HTML::Tab->new() booms on an unsafe CLASS_ON' );
-  eval { Web::Reactor::HTML::Tab->new( REO_REACTOR => $APP, CLASS_OFF => q{a<b} ) };
-  like( $@, qr/invalid tab CLASS_OFF/, 'HTML::Tab->new() booms on an unsafe CLASS_OFF' );
-  eval { $tab->add( 'X', TYPE => 'DIV', HANDLE_CLASS => 'a\\b' ) };
-  like( $@, qr/invalid tab HANDLE_CLASS/, 'tab->add() booms on a backslash in HANDLE_CLASS' );
+  {
+    # classes are escaped, not checked # cc20261017-1
+    my $tc = Web::Reactor::HTML::Tab->new( $APP, CLASS_ON => q{a'b}, CLASS_OFF => q{a<b} );
+    my ( $hc1, $tc1 ) = $tc->add( 'X', TYPE => 'DIV', ON => 1, CLASS => q{a"b}, HANDLE_CLASS => 'k' );
+    my ( $hc2 )       = $tc->add( 'Y', TYPE => 'DIV' );
+    like( $tc1, qr/class='a&#34;b'/,  'tab->add() escapes CLASS' );
+    like( $hc1, qr/class='k a&#39;b'/, 'tab->add() escapes CLASS_ON' );
+    like( $hc2, qr/class='a&#60;b'/,  'tab->add() escapes CLASS_OFF' );
+  }
 
   is( scalar @{ $tab->{ 'TABS_LIST' } }, 2, 'tab keeps a list of its tabs' );
 
@@ -1662,10 +1819,10 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   $tab->finish();
   is( $APP->html_hold_get( 'kit_html' ), $kit, 'a second tab->finish() does nothing' );
   is( $tab->cfg(), $APP->cfg(), 'tab->cfg() is the reactor config' );
-  ok( ! exists $tab->{ 'OPT' }{ 'REO_REACTOR' }, 'tab options keep no strong link to the reactor' );
+  ok( ! exists Web::Reactor::HTML::Tab->new( REO_REACTOR => $APP )->{ 'OPT' }{ 'REO_REACTOR' }, 'tab options keep no strong link to the reactor (old REO_REACTOR form)' ); # cc20261017-1
   like( $tab->{ 'TAB_CONTROLLER_ID' }, qr/^RE_TAB_\Q@{[ $APP->get_uniq_id_scope() ]}\E_tabset$/, 'a named tab set id is scope and name' );
 
-  my $un = Web::Reactor::HTML::Tab->new( REO_REACTOR => $APP );
+  my $un = Web::Reactor::HTML::Tab->new( REO_REACTOR => $APP ); # cc20261017-1 the old form still works
   like( $un->{ 'TAB_CONTROLLER_ID' }, qr/^RE_TAB_\Q@{[ $APP->get_uniq_id_scope() ]}\E\.\d+$/, 'an unnamed tab set id is RE_TAB_ and a uniq id, the scope once' );
 
   eval { $un->add( 'X', TYPE => 'SPAN' ) };
@@ -1677,22 +1834,24 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( $uh, qr/data-class-keep='keep'/, 'tab->add() marks HANDLE_CLASS to be kept by the switch' );
   like( $uh, qr/ id='/, 'tab->add() writes the handle id lowercase' );
   {
-    my $tab3 = Web::Reactor::HTML::Tab->new( REO_REACTOR => $APP, CLASS_ON => 'md:on', CLASS_OFF => 'x/off' );
+    my $tab3 = Web::Reactor::HTML::Tab->new( $APP, CLASS_ON => 'md:on', CLASS_OFF => 'x/off' ); # cc20261017-1
     my ( $h3 ) = $tab3->add( 'A', TYPE => 'DIV', ON => 1 );
     like( $h3, qr{class='md:on'}, 'tab classes may have : and /' );
     eval { $tab3->add( 'B', TYPE => 'DIV', ON => 1 ) };
     like( $@, qr/already has a tab ON/, 'the second ON add() booms' );
     my ( $h4 ) = $tab3->add( 'C', TYPE => 'DIV' );
     like( $h4, qr/_HANDLE_2'/, 'a failed second ON add() leaves no gap in the tab ids' );
-    my ( undef, $t5 ) = $tab3->add( 'D', TYPE => 'DIV', ARGS => "style='color: red'" );
-    like( $t5, qr/style='display: none; color: red'/, 'tab->add() merges display none into a style in ARGS' );
-    is( scalar( () = $t5 =~ /style=/g ), 1, 'tab->add() hidden tab with a style in ARGS has one style attribute' );
-    my ( undef, $t8 ) = $tab3->add( 'F', TYPE => 'DIV', ARGS => 'style=color:red' );
-    like( $t8, qr/style='display: none; color:red'/, 'tab->add() merges display none into an unquoted style in ARGS' );
-    is( scalar( () = $t8 =~ /style=/g ), 1, 'tab->add() hidden tab with an unquoted style in ARGS has one style attribute' );
-    my ( undef, $t6 ) = $tab3->add( 'E', TYPE => 'DIV', ARGS => "data-style='x'" );
-    like( $t6, qr/style='display: none;'/, 'tab->add() hidden tab without a style in ARGS gets its own' );
-    my $tab4 = Web::Reactor::HTML::Tab->new( REO_REACTOR => $APP );
+    my ( undef, $t5 ) = $tab3->add( 'D', TYPE => 'DIV', ATTRS => { style => 'color: red' } ); # cc20261017-1
+    like( $t5, qr/style='display: none; color: red'/, 'tab->add() merges display none into a style in ATTRS' );
+    is( scalar( () = $t5 =~ /style=/g ), 1, 'tab->add() hidden tab with a style in ATTRS has one style attribute' );
+    my ( undef, $t6 ) = $tab3->add( 'E', TYPE => 'DIV', ATTRS => { 'data-style' => 'x', id => 'no', class => 'no' } );
+    like( $t6, qr/style='display: none;'/, 'tab->add() hidden tab without a style in ATTRS gets its own' );
+    unlike( $t6, qr/id='no'|class='no'/, 'tab->add() ATTRS cannot replace id or class' );
+    eval { $tab3->add( 'G', TYPE => 'DIV', ARGS => "x='1'" ) };
+    like( $@, qr/ARGS .* is removed, use ATTRS/, 'tab->add() booms on the removed ARGS' );
+    my ( undef, undef, $ha ) = $tab3->add( 'H', TYPE => 'DIV' );
+    like( html_element( 'span', 'h', %$ha ), qr/onclick='return reactor_tab_activate_id/, 'tab->add() handle attributes hashref works with html_element()' );
+    my $tab4 = Web::Reactor::HTML::Tab->new( $APP ); # cc20261017-1
     my ( $h7 ) = $tab4->add( 'A', TYPE => 'DIV' );
     unlike( $h7, qr/class=/, 'tab->add() without any class emits no empty class attribute' );
   }
@@ -1700,18 +1859,34 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( $APP->html_hold_get( 'kit_html' ), qr/reactor_tab_restore\( "\Q$un->{ 'TAB_CONTROLLER_ID' }\E", "\Q$un->{ 'TABS_LIST' }[ 0 ]\E" \)/, 'without an ON tab the first tab is the default' );
   {
     my $kit0 = $APP->html_hold_get( 'kit_html' );
-    Web::Reactor::HTML::Tab->new( REO_REACTOR => $APP )->finish();
+    Web::Reactor::HTML::Tab->new( $APP )->finish(); # cc20261017-1
     is( $APP->html_hold_get( 'kit_html' ), $kit0, 'tab->finish() with no tabs adds no controller' );
   }
   like( $APP->html_hold_get( 'kit_html' ), qr/reactor_tab_restore\( "\Q$tab->{ 'TAB_CONTROLLER_ID' }\E", "" \)/, 'with an ON tab there is no default tab' );
+  like( $APP->html_hold_get( 'kit_html' ), qr/data-persist='1'[^>]*id='\Q$tab->{ 'TAB_CONTROLLER_ID' }\E'/, 'a named tab set under Web::Reactor remembers its active tab' ); # cc20261017-1
+  unlike( $APP->html_hold_get( 'kit_html' ), qr/data-persist[^>]*id='\Q$un->{ 'TAB_CONTROLLER_ID' }\E'/, 'an unnamed tab set does not' ); # cc20261017-1
 
   {
     package Web::Reactor::TestCoreOnly;
     our @ISA = ( 'Web::Reactor::Core' );
     package main;
     my $core = Web::Reactor::TestCoreOnly->new( make_env(), make_cfg() );
-    eval { Web::Reactor::HTML::Tab->new( REO_REACTOR => $core ) };
+    eval { Web::Reactor::HTML::Tab->new( $core ) }; # cc20261017-1
     like( $@, qr/needs a Web::Reactor::Reflex or Web::Reactor object/, 'HTML::Tab->new() booms on a Core reactor' );
+  }
+  {
+    # without a reactor object # cc20261017-1
+    my $tn = Web::Reactor::HTML::Tab->new( NAME => 'plain' );
+    is( $tn->{ 'TAB_CONTROLLER_ID' }, 'RE_TAB_plain', 'HTML::Tab without a reactor: a named tab set id is its NAME' );
+    eval { Web::Reactor::HTML::Tab->new( 'NAME' ) };
+    like( $@, qr/expected even number of options/, 'HTML::Tab->new() names an option without a value' ); # cc20261017-1
+    is( Web::Reactor::HTML::Tab->new( undef, NAME => 'u' )->{ 'TAB_CONTROLLER_ID' }, 'RE_TAB_u', 'HTML::Tab->new( undef, %opt ) works without a reactor' ); # cc20261017-1
+    like( Web::Reactor::HTML::Tab->new()->{ 'TAB_CONTROLLER_ID' }, qr/^RE_TAB_\Q$$\E_\d+_[A-Za-z0-9]{8}\.\d+$/, 'HTML::Tab without a reactor: an unnamed id from html_uniq_id()' );
+    $tn->add( 'A', TYPE => 'DIV', ON => 1 );
+    $tn->add( 'B', TYPE => 'DIV' );
+    my $ctrl = $tn->finish();
+    like( $ctrl, qr/reactor_tab_controller.*reactor_tab_restore\( "RE_TAB_plain", "" \)/s, 'HTML::Tab without a reactor: finish() returns the controller' );
+    like( $ctrl, qr/data-persist='1'/, 'HTML::Tab without a reactor: a named tab set remembers its active tab' ); # cc20261017-1
   }
 }
 

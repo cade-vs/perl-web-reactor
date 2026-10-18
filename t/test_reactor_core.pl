@@ -316,6 +316,15 @@ like( join( '', @LOG ), qr/input param \[PASSWORD\] value \[\*\*\*\] array \[\*\
 like( join( '', @LOG ), qr/input param \[USER\] value \[u\]/, 'debug logging shows other values' );
 
 is( app( env( 'QUERY_STRING' => '0=zero' ) )->get_user_input()->{ '0' }, 'zero', 'a parameter named 0 is kept' );
+ok( ! grep( { /^_AN/ } keys %{ app( env( 'QUERY_STRING' => '_AN%0A=x' ) )->get_user_input() } ), 'a parameter name with a trailing newline is dropped' );
+{
+  # names which differ only in case are one parameter, merged in a fixed order # cc20261018-1
+  my $ci = app( env( 'QUERY_STRING' => 'name=x&NAME=y&Name=z' ) )->get_user_input();
+  is( join( ' ', @{ $ci->{ '@NAME' } || [] } ), 'y z x', 'case variants of a name are merged, in the sorted order of the names' );
+  ok( ! exists $ci->{ 'NAME' }, 'merged case variants are an array only' );
+  my $cs = app( env( 'QUERY_STRING' => 'x=1&X=3' ) )->get_user_input();
+  is( join( ' ', @{ $cs->{ '@X' } || [] } ), '3 1', 'two single case variants become one array' );
+}
 
 is( $in->{ 'NUL' }, 'ab', 'NUL bytes are stripped from values' );
 is( $in->{ 'UNI' }, "\x{2603}", 'values are decoded from UTF-8' );
@@ -521,6 +530,9 @@ like( $@, qr/portray needs mime type/, 'portray() rejects a non mime type' );
 ##
 
 {
+# portray() keeps its checked type, a TYPE among the extra keys cannot replace it
+is( app( env() )->portray( 'x', 'html', TYPE => "bad\ntype" )->{ 'TYPE' }, 'text/html', 'portray() extra TYPE does not replace the checked type' );
+
 # text is encoded to UTF-8 bytes and gets a charset
 my $o = app( env() );
 eval { $o->render( $o->portray( "snow \x{2603}", 'html' ) ) };
@@ -529,6 +541,12 @@ ok( ! utf8::is_utf8( $body ), 'rendered text body is bytes, not characters' );
 is( $body, encode( 'UTF-8', "snow \x{2603}" ), 'body is encoded as UTF-8' );
 is( hdrs( $o->res_get_headers_ar() )->{ 'content-type' }, 'text/html; charset=UTF-8',
     'text response carries the UTF-8 charset' );
+
+# a charset given in TYPE is replaced, the DATA is sent as UTF-8 # cc20261018-1-tobeverified
+my $oc = app( env() );
+eval { $oc->render( DATA => "\x{444}", TYPE => 'text/html; charset=iso-8859-1' ) };
+is( hdrs( $oc->res_get_headers_ar() )->{ 'content-type' }, 'text/html; charset=UTF-8',
+    'a charset in TYPE is replaced by UTF-8, the charset of the body' );
 
 # binary is passed through untouched and gets no charset
 my $o2 = app( env() );

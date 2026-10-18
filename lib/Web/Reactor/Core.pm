@@ -71,7 +71,7 @@ sub DESTROY
 {
   my $self = shift;
 
-  $self->log_debug( "info: *** END *** obj [$self] ***" ) if $self->is_debug();
+  $self->log_debug( "debug: *** END *** obj [$self] ***" ) if $self->is_debug();
   $self->log_debug( "\n\n\n\n\n" . ( '*' x 64 ) ) if $self->is_debug();
 }
 
@@ -115,7 +115,12 @@ sub run
     $res = [ 200, [ 'content-type' => 'text/plain' ], [ 'system is currently unavailable (!)' ] ];
     }
 
-  $self->run_print_final_debug() if $self->is_debug() > 1;
+  if( $self->is_debug() > 1 )
+    {
+    # outside the request eval: an input which already failed the request (a
+    # bad "_" token, ...) fails again here, run() still returns the response
+    eval { $self->run_print_final_debug(); 1 } or $self->log( "error: final debug print failed: $@" );
+    }
 
   return $res;
 }
@@ -495,9 +500,14 @@ sub __import_user_input
 
   my $params = $self->plack()->parameters(); # input parameters, GET + POST
 
+  # names are upper-cased, so names which differ only in case (name, NAME,
+  # Name) are one parameter: their values are merged, in the sorted order of
+  # the names as sent, so the result does not depend on hash order # cc20261018-1
+  my %values; # upper-cased name => [ values ] # cc20261018-1
+
   # check valid params names and preprocess multiple values
   # import plain parameters from GET/POST request
-  PARAM_LOOP: for my $n ( keys %$params )
+  PARAM_LOOP: for my $n ( sort keys %$params ) # cc20261018-1
     {
     unless( $self->__input_param_name_check( $n ) )
       {
@@ -506,14 +516,21 @@ sub __import_user_input
       }
 
     my @v = $params->get_all( $n );
-    $n = uc $n; # FIXME: option? uc/lc/asis
+    my $un = uc $n; # FIXME: option? uc/lc/asis # cc20261018-1
 
     for( my $vi = 0; $vi < @v; $vi++ )
       {
       # ignore the whole array if any value is invalid
-      next PARAM_LOOP if $self->__input_param_invalid_value( $n, $v[$vi] );
-      $v[$vi] = $self->__input_param_make_safe_value( $n, decode( 'UTF-8', $v[$vi] ) );
+      next PARAM_LOOP if $self->__input_param_invalid_value( $un, $v[$vi] ); # cc20261018-1
+      $v[$vi] = $self->__input_param_make_safe_value( $un, decode( 'UTF-8', $v[$vi] ) ); # cc20261018-1
       }
+
+    push @{ $values{ $un } }, @v; # cc20261018-1
+    }
+
+  for my $n ( sort keys %values ) # cc20261018-1
+    {
+    my @v = @{ $values{ $n } }; # cc20261018-1
 
     if( @v > 1 )
       {
@@ -545,7 +562,7 @@ sub __import_user_uploads
   my %uploads;
   # import uploads
   my $uploads = $self->plack()->uploads();
-  for my $n ( keys %$uploads )
+  for my $n ( sort keys %$uploads ) # sorted, case variants of a name merge in a fixed order # cc20261018-1
     {
     unless( $self->__input_param_name_check( $n ) )
       {
@@ -553,8 +570,7 @@ sub __import_user_uploads
       next;
       }
 
-    my @u = $uploads->get_all( $n );
-    $uploads{ uc $n } = \@u; # FIXME: again, uc/lc/asis
+    push @{ $uploads{ uc $n } }, $uploads->get_all( $n ); # FIXME: again, uc/lc/asis # cc20261018-1
     }
 
   return \%uploads;
@@ -597,7 +613,7 @@ sub __input_param_name_check
 {
   my $self = shift;
 
-  return $_[0] =~ /^[A-Za-z0-9\-\_\.\:]+$/o ? 1 : 0; # true also for a name like "0"
+  return $_[0] =~ /^[A-Za-z0-9\-\_\.\:]+\z/o ? 1 : 0; # true also for a name like "0", \z: "$" would let a trailing newline through
 }
 
 ### LOGGING ##################################################################
@@ -681,8 +697,13 @@ sub render
   my $file_name = $pd->{ 'FILE_NAME' };
   my $disp_type = $pd->{ 'DISPOSITION_TYPE' } || 'inline'; # default, rest must be handled as 'attachment', ref: rfc6266#section-4.2
 
-  # preparing headers --------------------------------------------------------
-  # FIXME: charset
+  my $page_type_is_text = $page_type =~ /^text\//i; # cc20261018-1-tobeverified
+  # DATA of a text type is sent as UTF-8 (see below), so a charset given in
+  # TYPE would not match the body: it is replaced by the UTF-8 one. a FH is
+  # sent as it is, its TYPE keeps the charset given
+  $page_type =~ s/\s*;\s*charset\s*=[^;]*//gi if $page_type_is_text and ! $page_fh; # cc20261018-1-tobeverified
+
+  # preparing headers -------------------------------------------------------- # cc20261018-1-tobeverified FIXME: charset removed, done above
   # TODO: move to func
   $self->res_set_headers( 'content-type'        => $page_type );
   if( $file_name )
@@ -705,7 +726,6 @@ sub render
   my $http_csp = $self->cfg->{ 'HTTP_CSP' }; # || " default-src 'self' ";
   $self->res_set_headers( 'Content-Security-Policy' => $http_csp ) if $http_csp;
 
-  my $page_type_is_text = $page_type =~ /^text\//i;
   if( $page_type_is_text )
     {
     # set charset for TEXT only
@@ -741,13 +761,13 @@ sub portray
   my $self = shift;
   my $data = shift;
   my $type = lc shift; # mime type text/html
-  my %opt  = @_; # file name, charset, etc.
+  my %opt  = @_; # other render() keys: FILE_NAME, DISPOSITION_TYPE, FH
 
   $type = $SIMPLE_PORTRAY_TYPE_MAP{ $type } || $type;
 
   boom "portray needs mime type xxx/xxx as arg 2, got [$type]" unless $type =~ /^[a-z\-_0-9]+\/[a-z\-_0-9\.\+]+$/;
 
-  return { DATA => $data, TYPE => $type, %opt };
+  return { %opt, DATA => $data, TYPE => $type }; # the checked TYPE wins over one in %opt
 }
 
 ##############################################################################
@@ -979,7 +999,11 @@ Hash reference of GET and POST parameters, built once per request:
 
 =over 4
 
-=item * names are uppercased, so C<?page=1> arrives as C<PAGE>
+=item * names are uppercased, so C<?page=1> arrives as C<PAGE>; names which
+differ only in case are one parameter, their values are merged (in the sorted
+order of the names as sent)
+
+=for comment cc20261018-1
 
 =item * names outside C<[A-Za-z0-9_.:-]> are logged and dropped
 
@@ -1010,7 +1034,10 @@ C<[A-Za-z0-9_.:-]> are logged and dropped, as for C<get_user_input()>.
 =item C<get_user_postdata_fh()>, C<get_user_postdata_body()>
 
 The raw request body as a file handle or as one string. Usable after
-C<get_user_input()> as well, Plack buffers the input.
+C<get_user_input()> as well, Plack buffers the input, but not before it: reading
+the body first leaves no POST parameters for a later C<get_user_input()>
+(Plack booms "Bad Content-Length"). Call C<get_user_input()> first when both
+are needed.
 
 =back
 
@@ -1067,7 +1094,7 @@ returns. Keys:
   FH                body file handle, takes priority over DATA
   TYPE              MIME type, default application/octet-stream
   FILE_NAME         adds a Content-Disposition header, see below
-  DISPOSITION_TYPE  inline (default) or attachment
+  DISPOSITION_TYPE  inline (default) or attachment, used only with FILE_NAME
 
 For C<text/*> types the charset header is set to UTF-8 and DATA is encoded
 from characters to bytes; a FH is sent as is. FILE_NAME is sanitized for

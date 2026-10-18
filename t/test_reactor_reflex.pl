@@ -142,6 +142,7 @@ sub put
 
 put( 'html/default/main/index.html',          'MAIN foo=[<$foo>] inc=[<#inc>] title=[<$browser_window_title>]' );
 put( 'html/default/inc.html',                 'INC' );
+put( 'html/default/loopa.html',               '<#loopa>' ); # includes itself
 put( 'html/default/admin/users/index.html',   'USERS x=[<$x>]' );
 put( 'html/default/withact/index.html',       'act=[<&hello a=1>]' );
 put( 'html/default/epostrequired/index.html', 'POST REQUIRED' );
@@ -400,6 +401,12 @@ is( body( req( get( '_pn=main' ) ) ),        body( $res ),         '_pn=main is 
 is( body( req( get( '_PN=MAIN' ) ) ),        body( $res ),         'parameter name and page name are case insensitive' );
 is( body( req( get( '_pn=admin/users' ) ) ), 'USERS x=[]',         'nested page name selects a page directory' );
 is( body( req( get( '_pn=withact' ) ) ),     'act=[hello A=1 foo=FOO]', 'action tag inside a page is called and its output processed' );
+{
+  # an include loop is found at the first repeat, whatever the case of the tag
+  my $ol = app();
+  eval { $ol->pre->process( 'main', '<#Loopa>' ) };
+  like( $@, qr/preprocess loop detected, tag \[#loopa\] path \[, #loopa, #loopa\]/, 'include loop is detected at the first repeat, tags are case insensitive' );
+}
 
 my $r = req( get( '_pn=nosuch' ) );
 is_unavailable( $r, 'missing page' );
@@ -438,6 +445,20 @@ is( body( $r ), 'raw <$foo>', 'a non-html portray result is not preprocessed' );
 is( hdrs( $r->[1] )->{ 'content-type' }, 'text/plain; charset=UTF-8', 'portray type is honoured' );
 
 is( body( req( get( '_an=title' ) ) ), 't=[My Title]', 'set_browser_window_title() strips html and is visible to templates' );
+{
+  # template link args are html: &amp; and a bare & split the same way, %xx
+  # escapes stay url escapes of the values
+  my $ol = app();
+  for my $sep ( '&amp;', '&' )
+    {
+    my ( $tok ) = $ol->pre->process( 'main', qq{<a reactor_href="?a=1${sep}b=2">x</a>} ) =~ /\?_=~([^"'>\s]+)/;
+    my $hr = $ol->cry->thaw_base64url( $tok ) || {};
+    is( join( ',', map { "$_=$hr->{ $_ }" } sort keys %$hr ), 'A=1,B=2', "template link args separated with [$sep]" );
+    }
+  my ( $tok ) = $ol->pre->process( 'main', q{<a reactor_href="?a=1%26x&amp;b=c%20d">x</a>} ) =~ /\?_=~([^"'>\s]+)/;
+  my $hr = $ol->cry->thaw_base64url( $tok ) || {};
+  is( join( ',', map { "$_=$hr->{ $_ }" } sort keys %$hr ), 'A=1&x,B=c d', 'template link %xx escapes are values, &amp; separates' );
+}
 
 $r = req( get( '_an=nosuch' ) );
 is_unavailable( $r, 'missing action' );
@@ -450,17 +471,20 @@ for my $bad ( 'x-y', 'Bad%20Name', 'a/b', 'a.b' )
   like( logs(), qr/invalid action name/, "action name [$bad] is rejected before any lookup" );
   }
 
+# an empty action result may be valid: an empty page, with a warning
 $r = req( get( '_an=empty' ) );
-is_unavailable( $r, 'action returning empty string' );
-like( logs(), qr/rendering action \[empty\] returns empty data/, 'empty action result is logged' );
+is( $r->[0], 200, 'action returning empty string: status' );
+is( body( $r ), '', 'action returning empty string: empty page' );
+like( logs(), qr/warning: rendering action \[empty\] returns empty data/, 'empty action result is logged as a warning' );
 
 $r = req( get( '_an=undef' ) );
-is_unavailable( $r, 'action returning undef' );
-like( logs(), qr/rendering action \[undef\] returns empty data/, 'undef action result is logged' );
+is( body( $r ), '', 'action returning undef: empty page' );
+like( logs(), qr/warning: rendering action \[undef\] returns empty data/, 'undef action result is logged as a warning' );
 
 $r = req( get( '_an=dies' ) );
-is_unavailable( $r, 'dying action' );
+is( body( $r ), '', 'dying action: empty page' );
 like( logs(), qr/action code call failed: dies.*action died on purpose/s, 'the action error is logged with its reason' );
+like( logs(), qr/warning: rendering action \[dies\] returns empty data \(or the action failed, see the error logged before\)/, 'the warning points to the logged action error' );
 unlike( body( $r ), qr/died on purpose/, 'the action error is not leaked to the client' );
 }
 
@@ -494,7 +518,8 @@ is( decode( 'UTF-8', $o->res_get_body() ), 'hello  foo=direct', 'render_action()
 
 $o = app();
 eval { $o->render_action( 'empty' ) };
-like( $@, qr/returns empty data/, 'render_action() booms on an empty result' );
+like( $@, qr/RENDER/, 'render_action() renders an empty result' );
+is( $o->res_get_body(), '', 'render_action() empty result gives an empty body' );
 }
 
 ##############################################################################
@@ -539,6 +564,14 @@ my $head = $o->html_hold_get( 'kit_head' );
 is( scalar( () = $head =~ /a\.js/g ), 1, 'html_hold_kit_js() adds a script once' );
 like( $head, qr/<script[^>]*src='a\.js'/, 'script tag' );
 like( $head, qr/<link[^>]*href="s\.css"/, 'stylesheet tag' );
+
+# clearing the hold drops the kit snippets too
+$o->html_hold_reset();
+$o->html_hold_kit_js( 'b.js' );
+unlike( $o->html_hold_get( 'kit_head' ), qr/a\.js/, 'html_hold_reset() drops the kit snippets' );
+$o->html_hold_del( 'kit_head' );
+$o->html_hold_kit_js( 'c.js' );
+unlike( $o->html_hold_get( 'kit_head' ), qr/b\.js/, 'html_hold_del() drops the kit snippets' );
 
 $o->set_browser_window_title( '<i>Hi</i> <b>there</b>' );
 is( $o->html_hold_get( 'browser_window_title' ), 'Hi there', 'set_browser_window_title() strips tags' );
@@ -672,6 +705,11 @@ is( $o->{ 'TRANS' }{ 'LANG' }, 'bg', 'load_trans() records the language' );
 is( $o->{ 'TRANS' }{ 'bg' }{ 'hello' }, 'Hi there', 'translation values are trimmed' );
 is( $o->{ 'TRANS' }{ 'bg' }{ 'bye'   }, 'Bye',      'second translation' );
 is( $o->load_trans(), 1, 'load_trans() is cached on the second call' );
+{
+  my $os = app( env(), { LANG => 'bg', TRANS_DIRS => "$ROOT/trans" } );
+  is( $os->load_trans(), 1, 'load_trans() takes a single TRANS_DIRS string' );
+  is_deeply( $os->{ 'TRANS' }{ 'bg' }, $o->{ 'TRANS' }{ 'bg' }, 'load_trans() loads the same from a TRANS_DIRS string' );
+}
 
 my $o2 = app( env(), { LANG => 'bg', TRANS_FILE => "$ROOT/trans/single.tr" } );
 is( $o2->load_trans(), 1, 'load_trans() with a single TRANS_FILE' );

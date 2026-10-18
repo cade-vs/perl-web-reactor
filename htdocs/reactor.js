@@ -8,9 +8,7 @@
 ##
 ****************************************************************************/
 
-var user_agent = navigator.userAgent.toLowerCase();
-var is_msie    = ( ( user_agent.indexOf( "msie"  ) != -1 ) && ( user_agent.indexOf("opera") == -1 ) );
-var is_opera   =   ( user_agent.indexOf( "opera" ) != -1 );
+// no browser sniffing: old msie (dataset, classList, closest() missing) is not supported // cc20261017-1
 
 function get_utime()
 {
@@ -24,14 +22,22 @@ function q( id )
 
 /*** SHOW/HIDE elements ****************************************************/
 
+// a hidden element is taken out of the page flow (absolute), its own inline
+// position (or none, the stylesheet one) is kept and given back when shown
 function html_element_show( elem )
 {
-  elem.style.position   = "relative";
+  if( 'reactorPosition' in elem.dataset )
+    {
+    elem.style.position = elem.dataset.reactorPosition;
+    delete elem.dataset.reactorPosition;
+    }
   elem.style.visibility = "visible";
 }
 
 function html_element_hide( elem )
 {
+  if( ! ( 'reactorPosition' in elem.dataset ) )
+    elem.dataset.reactorPosition = elem.style.position || "";
   elem.style.position   = "absolute";
   elem.style.visibility = "hidden";
 }
@@ -74,9 +80,9 @@ function html_block_show( block )
 {
   var ds = "block"; // display style
 
-  if( block.tagName == "TR" && ! is_msie )
+  if( block.tagName == "TR" ) // cc20261017-1
     ds = "table-row";
-  else if( block.tagName == "TD" && ! is_msie )
+  else if( block.tagName == "TD" ) // cc20261017-1
     ds = "table-cell";
 
   block.style.display = ds;
@@ -259,22 +265,7 @@ function set_value( id_name, val )
 
 /***************************************************************************/
 
-function element_absolute_position( el )
-{
-  var pa = el;
-
-  var x = pa.offsetLeft;
-  var y = pa.offsetTop;
-
-  while( pa = pa.offsetParent )
-    {
-    x += pa.offsetLeft;
-    y += pa.offsetTop;
-    }
-
-  var abs_pos = { x: x, y: y, w: el.offsetWidth, h: el.offsetHeight };
-  return abs_pos;
-}
+// element_absolute_position() removed, no callers, see reactor_reposition_div_next_to() // cc20261017-1
 
 /***************************************************************************/
 
@@ -314,7 +305,7 @@ function reactor_tab_activate( tab )
   var tabs = tab_ctrl.dataset.tabsList.split( "," );
   var con  = tab_ctrl.dataset.classOn;
   var coff = tab_ctrl.dataset.classOff;
-  var pkey = tab_ctrl.id; // persistent-key
+  var pkey = tab_ctrl.dataset.persist ? tab_ctrl.id : null; // persistent-key, only a named tab set keeps its id across requests // cc20261017-1
   var z;
 
   for( z = 0; z < tabs.length; z++ )
@@ -346,7 +337,9 @@ function reactor_tab_activate( tab )
 function reactor_tab_restore( ctrl_id, default_tab_id )
   {
   var tab_id;
-  try { tab_id = sessionStorage.getItem( 'TABSET_ACTIVE_' + ctrl_id ); } catch( e ) {} // storage may be blocked
+  var ctrl = q( ctrl_id ); // cc20261017-1
+  if( ctrl && ctrl.dataset.persist ) // a new id each request would leave keys never read again // cc20261017-1
+    try { tab_id = sessionStorage.getItem( 'TABSET_ACTIVE_' + ctrl_id ); } catch( e ) {} // storage may be blocked
   if( ! tab_id || ! q( tab_id ) ) tab_id = default_tab_id;
   return reactor_tab_activate_id( tab_id );
   }
@@ -367,20 +360,21 @@ function reactor_form_checkbox_set( el, value )
 // with this = el and the event, as on a real change
 function reactor_fire_change( el )
 {
-  if( typeof Event == "function" )
-    el.dispatchEvent( new Event( "change", { bubbles: true } ) ); // bubbles as a real change does
-  else if( el.onchange ) // old msie, no Event constructor
-    el.onchange();
+  el.dispatchEvent( new Event( "change", { bubbles: true } ) ); // bubbles as a real change does // cc20261017-1
 }
 
+// the checkbox onclick handler (HTML::Form): the browser has already flipped
+// the checkbox, this copies its new state to the hidden input // cc20261017-1
 function reactor_form_checkbox_toggle( el )
 {
    reactor_form_checkbox_set( el, el.checked );
 }
 
+// flips the checkbox from code (no click happened) and its hidden input // cc20261017-1
 function reactor_form_checkbox_toggle_by_id( el_id )
 {
-   reactor_form_checkbox_toggle( q( el_id ) );
+   var el = q( el_id );
+   reactor_form_checkbox_set( el, ! el.checked ); // cc20261017-1
 }
 
 function reactor_form_checkbox_set_all( form_id, value )
@@ -436,13 +430,7 @@ function reactor_form_multi_checkbox_set( el, cb, new_value )
     {
     kids[z].style.display = cb.value == z ? "inline" : "none";
     }
-/*
-   var new_label = el.dataset[ "valueLabel-" + cb.value ];
-   var new_class = el.dataset[ "valueClass-" + cb.value ];
-
-   el.className = new_class;
-   el.innerHTML = new_label;
-*/
+  // cc20261017-1 the commented-out data-value-label-N/data-value-class-N code is removed
 
   if( cb.value != value )
     {
@@ -463,6 +451,16 @@ function reactor_form_sort_toggle( el, sort_ic_name )
   ic.value = ic.value + cb.name + " " + cb.value + ";";
 }
 
+/*** mouse helpers ******************************************************/
+
+// mouseout fires also when the pointer moves onto a child element, this tells
+// if the pointer really left el (no event or no target counts as left)
+function reactor_mouse_left( el, ev )
+{
+  var to = ev && ev.relatedTarget;
+  return ! ( to && el.contains( to ) );
+}
+
 /*** hover layers *******************************************************/
 
 var reactor_hover_layer;
@@ -477,14 +475,24 @@ function reactor_hover_show( el, hl_name, event )
 
 function reactor_hover_show_delay( el, hl_name, delay, event )
   {
+  // mouseover bubbles up from the child elements, the pointer is still inside
+  // el: keep the shown layer or the running delay
+  if( event && event.relatedTarget && el.contains( event.relatedTarget ) ) return;
+
   if( reactor_hover_layer_timeout_id ) 
     clearTimeout( reactor_hover_layer_timeout_id );
 
   reactor_hover_layer = q( hl_name );
   reactor_hover_layer_timeout_id = setTimeout( reactor_hover_activate, delay );
   reactor_hover_reposition( event );
-  el.onmousemove = is_msie ? reactor_hover_reposition_ie : reactor_hover_reposition;
-  el.onmouseout  = reactor_hover_hide;
+  // listeners, not onmouse* properties: handlers set by the page (ATTRS) or by
+  // a popup on the same element stay, installed once per element
+  if( ! el.reactor_hover_on )
+    {
+    el.reactor_hover_on = true;
+    el.addEventListener( 'mousemove', reactor_hover_reposition ); // cc20261017-1
+    el.addEventListener( 'mouseout',  function( ev ) { if( reactor_mouse_left( el, ev ) ) reactor_hover_hide(); } );
+    }
   }
 
 function reactor_hover_activate()
@@ -508,10 +516,7 @@ function reactor_hover_reposition( event )
   reactor_reposition_div_to_xy( reactor_hover_layer, event.clientX, event.clientY );
   }
 
-function reactor_hover_reposition_ie()
-  {
-  return reactor_hover_reposition( event );
-  }
+// cc20261017-1 reactor_hover_reposition_ie() removed with the msie support
 
 /*** popup layers **********************************************************/
 
@@ -520,7 +525,7 @@ function reactor_get_popup_layer( el )
   return q( el.dataset.popupLayerId );
 }
 
-function reactor_popup_mouse_toggle( el, opt )
+function reactor_popup_mouse_toggle( el ) // cc20261017-1
 {
   var popup_layer = reactor_get_popup_layer( el );
   if( popup_layer.style.display == 'block' )
@@ -533,7 +538,7 @@ function reactor_popup_mouse_toggle( el, opt )
 
 /*-------------------------------------------------------------------*/
 
-var single_popup_layer;
+var single_popup_handle; // the handle element of the open SINGLE popup // cc20261017-1
 
 function reactor_popup_mouse_over( el, opt )
 {
@@ -554,27 +559,32 @@ function reactor_popup_mouse_over( el, opt )
     //console.log( "there is no open popup, set timeout for open" );
     if( opt.click_open )
       {
-      if( opt.single && single_popup_layer ) reactor_popup_hide( single_popup_layer );
+      if( opt.single && single_popup_handle ) reactor_popup_hide( single_popup_handle ); // cc20261017-1
       reactor_popup_show( el );
-      if( opt.single ) single_popup_layer = el;
+      if( opt.single ) single_popup_handle = el; // cc20261017-1
       }
     else
       el.open_to = setTimeout( function()
                                {
-                               if( opt.single && single_popup_layer ) reactor_popup_hide( single_popup_layer );
+                               if( opt.single && single_popup_handle ) reactor_popup_hide( single_popup_handle ); // cc20261017-1
                                reactor_popup_show( el );
-                               if( opt.single ) single_popup_layer = el;
+                               if( opt.single ) single_popup_handle = el; // cc20261017-1
                                }, timeout );
-    el.onmouseout = function()
+    // a one-shot listener, not onmouseout: handlers set by the page (ATTRS)
+    // or by a hover hint on the same element stay
+    if( el.reactor_popup_out ) el.removeEventListener( 'mouseout', el.reactor_popup_out );
+    el.reactor_popup_out = function( ev )
                     {
+                    if( ! reactor_mouse_left( el, ev ) ) return; // moved onto a child of the handle
                     //console.log( "mouse out from main element, cancel open timeout, set close timeout" );
                     if( el.open_to ) clearTimeout( el.open_to );
-                    el.onmouseout = null;
+                    el.removeEventListener( 'mouseout', el.reactor_popup_out );
+                    el.reactor_popup_out = null;
                     el.close_to   = setTimeout( function() 
                                                 { 
                                                 //console.log( "close timeout up, hide popup" );
                                                 reactor_popup_hide( el );
-                                                if( opt.single && single_popup_layer === el ) single_popup_layer = null; // not another one opened meanwhile
+                                                if( opt.single && single_popup_handle === el ) single_popup_handle = null; // not another one opened meanwhile // cc20261017-1
                                                 }, timeout );
                     
                     popup_layer.onmouseover = function() 
@@ -590,10 +600,11 @@ function reactor_popup_mouse_over( el, opt )
                                               el.close_to = setTimeout( function() 
                                                                         { 
                                                                         reactor_popup_hide( el );
-                                                                        if( opt.single && single_popup_layer === el ) single_popup_layer = null;
+                                                                        if( opt.single && single_popup_handle === el ) single_popup_handle = null; // cc20261017-1
                                                                         }, timeout );
                                               };
                     };
+    el.addEventListener( 'mouseout', el.reactor_popup_out );
     }  
 
   return false;
@@ -715,34 +726,30 @@ function reactor_containing_block_origin( div )
   return { x: r.left + cb.clientLeft - cb.scrollLeft, y: r.top + cb.clientTop - cb.scrollTop };
 }
 
+// places the (shown, absolute) div next to the mouse, x and y are viewport
+// coordinates (clientX/Y): right of and below the mouse, left of or above it
+// at the viewport edges. the place is found in the viewport and then moved into
+// the coordinates of the div's own containing block, as for the popups
 function reactor_reposition_div_to_xy( div, x, y )
 {
-  var doc  = document.documentElement;
-  var body = document.body;
+  var doc = document.documentElement;
 
-  var vw = Math.max( doc && doc.clientWidth  || 0, window.innerWidth  || 0 );
-  var vh = Math.max( doc && doc.clientHeight || 0, window.innerHeight || 0 );
+  // the viewport without scrollbars
+  var vw = doc && doc.clientWidth  || window.innerWidth;
+  var vh = doc && doc.clientHeight || window.innerHeight;
 
   var dw = div.offsetWidth;
   var dh = div.offsetHeight;
 
-  var scrollLeft = (doc && doc.scrollLeft || body && body.scrollLeft || 0);
-  var scrollTop  = (doc && doc.scrollTop  || body && body.scrollTop  || 0);
+  var left = x + ( ( x + 16 + dw ) > vw ? -( 16 + dw ) : 16 );
+  var top  = y + ( ( y + 16 + dh ) > vh ? -( 16 + dh ) : 16 );
+  if( left < 0 ) left = 0; // fits on neither side, keeps its top left corner visible
+  if( top  < 0 ) top  = 0;
 
-  var pw = vw + scrollLeft;
-  var ph = vh + scrollTop;
+  var cb = reactor_containing_block_origin( div );
 
-  var nx = x + scrollLeft;
-  var ny = y + scrollTop;
-  
-  var left = nx + ( ( nx + 16 + dw ) > pw ? -( 16 + dw ) : 16 );
-  var top  = ny + ( ( ny + 16 + dh ) > ph ? -( 16 + dh ) : 16 );
-
-  //console.log( "mouse x: " + nx + ", y: " + ny );
-  //console.log( "div pos left: " + left + ", top: " + top );
-
-  div.style.left = left + 'px';
-  div.style.top  = top  + 'px';
+  div.style.left = ( left - cb.x ) + 'px';
+  div.style.top  = ( top  - cb.y ) + 'px';
 }
 
 /*-------------------------------------------------------------------*/
@@ -829,12 +836,16 @@ function display_cal( dd )
 
   var y  = dd.dataset.y;
   var m  = dd.dataset.m;
-  var d  = dd.dataset.d;
-  dd.dataset.d = 0;
+  // the marked day (the date given to the picker, or today after a click on
+  // the month name) shows only in its own month, also after paging back to it
+  var d  = dd.dataset.markY == y && dd.dataset.markM == m ? dd.dataset.markD : 0;
   var wd = new Date( y, m, 1 ).getDay();
   if( wd == 0 ) wd = 7; // make it sensible, weeks start Monday :)
   wd--;
 
+
+  // the first 3 letters as in current_date(), UTIME formats are like DMY24 // cc20261017-1
+  var fmt = ( dd.dataset.fmt || 'DMY' ).substr( 0, 3 ); // cc20261017-1
 
   var mm = (+m) + 1; // aaah stupid crappy js
   if( mm < 10 ) mm = "0" + mm;
@@ -856,10 +867,10 @@ function display_cal( dd )
   for( var i = 1; i <= date_days_in_month( y, m ); i++ )
     {
     var di2 = i < 10 ? "0" + i : i; // day, two digits like the month
-    var ds = y + "." + mm + "." + di2;
-    if( dd.dataset.fmt == 'DMY' ) ds = di2 + "." + mm + "." + y;
-    if( dd.dataset.fmt == 'MDY' ) ds = mm + "." + di2 + "." + y;
-    var tm = d > 0 && d == i ? "*" : " "; // today mark
+    var ds = di2 + "." + mm + "." + y; // DMY, the default, as in current_date() // cc20261017-1
+    if( fmt == 'YMD' ) ds = y + "." + mm + "." + di2; // cc20261017-1
+    if( fmt == 'MDY' ) ds = mm + "." + di2 + "." + y; // cc20261017-1
+    var tm = d > 0 && d == i ? "*" : " "; // the marked day
     text += "<span class=nz-date onclick='__nz_set( this )' data-date='"+ds+"' data-div-id='"+di+"'> " + ( i < 10 ? " " : "" ) + tm + i + "</span>";
     if( ( wd + i ) % 7 == 0 ) text += "\n";
     }
@@ -886,11 +897,13 @@ function nz_setup_picker( div_id, target_id, dt, fmt, scb )
   var d  = dt.getDate();
 
   var dd = q( div_id );
-  dd.dataset.y   = y;
-  dd.dataset.m   = m;
-  dd.dataset.d   = d;
-  dd.dataset.t   = target_id;
-  dd.dataset.fmt = fmt;
+  dd.dataset.y     = y;
+  dd.dataset.m     = m;
+  dd.dataset.markY = y;
+  dd.dataset.markM = m;
+  dd.dataset.markD = d;
+  dd.dataset.t     = target_id;
+  dd.dataset.fmt   = fmt;
   dd.set_callback = scb;
   
   display_cal( dd );
@@ -900,9 +913,9 @@ function __nz_td( el )
 {
   var dd = q( el.dataset.divId );
   var dt = new Date( Date.now() );
-  dd.dataset.y = dt.getFullYear();
-  dd.dataset.m = dt.getMonth();
-  dd.dataset.d = dt.getDate();
+  dd.dataset.y     = dd.dataset.markY = dt.getFullYear();
+  dd.dataset.m     = dd.dataset.markM = dt.getMonth();
+  dd.dataset.markD = dt.getDate();
   display_cal( dd );
 }
 

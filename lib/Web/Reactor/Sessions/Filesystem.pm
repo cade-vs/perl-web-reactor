@@ -14,7 +14,7 @@ use strict;
 use Exception::Sink;
 use Web::Reactor::Sessions;
 use Fcntl qw( O_CREAT O_EXCL O_WRONLY );
-use Data::Tools 1.53; # hash_load_json(), hash_save_json()
+use Data::Tools 1.53; # hash_load_json(), hash_save_json(), hash2json(), dir_path_ensure()
 use Data::Dumper;
 
 use parent 'Web::Reactor::Sessions';
@@ -197,7 +197,8 @@ sub _split_dir_components
   my $c = shift || $SPLIT_PARTS_CNT; # parts count
   my $l = shift || $SPLIT_PARTS_LEN; # how long is each part
 
-  boom "Web::Reactor::Sessions::Filesystem::_split_dir_components: id [$s] is shorter than [$MIN_SES_ID_LEN] chars" unless length( $s ) >= $MIN_SES_ID_LEN;
+  my $m = $c * $l; # all parts must be full
+  boom "Web::Reactor::Sessions::Filesystem::_split_dir_components: id [$s] is shorter than [$m] chars" unless length( $s ) >= $m;
 
   my $r; # result
 
@@ -225,7 +226,7 @@ sub _key_to_fn
   if( ! $cfg->{ 'SESS_VAR_DIR' } )
     {
     my $app_root = $cfg->{ 'APP_ROOT' };
-    boom "missing APP_ROOT" unless -d $app_root; # FIXME: function? get_app_root()
+    boom "missing APP_ROOT or not a directory [$app_root]" unless -d $app_root; # FIXME: function? get_app_root()
     }
   my $vd = $self->__sess_var_dir();
   dir_path_ensure( $vd ) unless -d $vd;
@@ -234,16 +235,16 @@ sub _key_to_fn
   while( @key > 0 )
     {
     my $c = shift @key;
-    boom "invalid key component needs ALPHANUMERIC with min length of [$MIN_SES_ID_LEN], got [$c]" unless length( $c ) >= $MIN_SES_ID_LEN and $c =~ /^[A-Za-z0-9_]+$/;
+    boom "invalid key component needs [A-Za-z0-9_] with min length of [$MIN_SES_ID_LEN], got [$c]" unless length( $c ) >= $MIN_SES_ID_LEN and $c =~ /^[A-Za-z0-9_]+\z/; # \z: no trailing newline
     $r .= '/' . $self->_split_dir_components( $c );
     }
 
-  my $dir = $vd . '/' . $r;
-  my $chk = $dir;
-  $chk =~ s/\/[^\/]*$//;
-  dir_path_ensure( $chk ) unless $opt->{ 'READONLY' };
+  my $fn  = $vd . '/' . $r; # session file name without extension
+  my $dir = $fn;
+  $dir =~ s/\/[^\/]*$//;
+  dir_path_ensure( $dir ) unless $opt->{ 'READONLY' };
 
-  return $dir . '.wrs2';
+  return $fn . '.wrs2';
 }
 
 ##############################################################################

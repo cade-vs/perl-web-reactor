@@ -59,6 +59,7 @@ sub __set_reo
   if( ref( $reo ) =~ /^Web::Reactor(::|$)/ )
     {
     $self->{ 'REO_REACTOR' } = $reo;
+    $self->{ 'HAS_REO'     } = 1; # the link is weak, reo_optional() booms if it is gone # cc20261017-1
 
     # weaken backlinks to reactor, needed for proper destruction
     Scalar::Util::weaken( $self->{ 'REO_REACTOR' } );
@@ -76,6 +77,20 @@ sub reo
   my $self = shift;
 
   return ( $self->{ 'REO_REACTOR' } or boom "missing Web::Reactor object" );
+}
+
+# # cc20261017-1
+# for objects which work also without a reactor (HTML::Form, HTML::Tab):
+# returns the reactor object or undef if none was set. an object made with a
+# reactor never falls back to working without one: the link is weak, if the
+# reactor is gone it booms
+sub reo_optional
+{
+  my $self = shift;
+
+  my $reo = $self->{ 'REO_REACTOR' };
+  boom "the reactor object of this " . ref( $self ) . " is gone, it must not outlive it" if ! $reo and $self->{ 'HAS_REO' };
+  return $reo;
 }
 
 sub cfg

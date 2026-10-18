@@ -21,8 +21,10 @@ package Web::Reactor::HTML::Utils;
 use strict;
 use Exporter;
 our @ISA = qw( Exporter );
+# cc20261017-reo-optional html_uniq_id added to the exports
 our @EXPORT = qw(
                 html_element
+                html_attrs
                 html_element_e
 
                 html_ftree
@@ -49,19 +51,25 @@ our @EXPORT = qw(
                 html_check_ident
                 html_check_ident_boom
 
+                html_check_button_name
+                html_check_button_name_boom
+
                 html_js_str
                 html_confirm_js
                 html_submit_on_change_js
 
                 html_attrs_filter
+                html_args_hide
+                html_args_style
+
+                html_uniq_id
 
                 );
 use Exception::Sink;
 use Data::Dumper;
 use Data::Tools;
 use Crypt::PRNG;
-use Web::Reactor::HTML::Tab;
-use Web::Reactor::HTML::Layout;
+# Web::Reactor::HTML::Tab and ::Layout are loaded when needed, both use Utils # cc20261017-2
 
 ##############################################################################
 
@@ -104,30 +112,16 @@ sub html_element
   html_check_tag_name_boom( $tag );
   $tag = lc $tag;
 
-  # names are lower-cased in argument order, so a later attribute replaces an
-  # earlier one also when they differ only in case (onClick, onclick)
-  my %attr;
-  while( @_ )
-    {
-    my $k = lc shift;
-    $attr{ $k } = shift;
-    }
-
   my $html;
 
-  $html .= "<$tag";
-
-  for my $k ( sort keys %attr ) # sorted, the same call gives the same html
+  # the names are checked here too, so the message tells the tag # cc20261017-2
+  for( my $i = 0; $i < @_; $i += 2 )
     {
+    my $k = lc $_[ $i ];
     html_check_attr_name_boom( $k, "invalid attribute name [$k] for tag [$tag]" );
-    my $v = $attr{ $k };
-    $html .= " $k";
-    if( defined $v )
-      {
-      my $vv = str_html_escape_attr( $v );
-      $html .= "='$vv'";
-      }
     }
+
+  $html .= "<$tag" . html_attrs( @_ ); # cc20261017-1 one attribute writer
 
   if( $HTML_VOID_ELEMENTS{ $tag } )
     {
@@ -142,9 +136,49 @@ sub html_element
     }
 
 #use Data::Dumper;
-#print STDERR Dumper( "\n"x10, \@_, $tag, $txt, \%attr, $html, "\n"x100 );
+#print STDERR Dumper( "\n"x10, \@_, $tag, $txt, $html, "\n"x100 );
 
   return $html;
+}
+
+=pod
+
+html_attrs( attr1 => value1, attr2 => value2, ... )
+
+returns the attributes as html text, " attr1='value1' attr2='value2'" (with a
+leading space, empty for no attributes), for hand-written tags. the same
+rules as html_element(): names lower-cased and checked, values escaped, an
+undef value gives a bare attribute, sorted, a later attribute replaces an
+earlier one with the same name.
+
+  my $h = html_attrs( class => 'tab', onclick => $js );
+  print "<span$h>tab</span>";
+
+=cut
+
+sub html_attrs # cc20261017-1
+{
+  boom "expected even number of attribute arguments" if @_ % 2;
+
+  # names are lower-cased in argument order, so a later attribute replaces an
+  # earlier one also when they differ only in case (onClick, onclick)
+  my %attr;
+  while( @_ )
+    {
+    my $k = lc shift;
+    $attr{ $k } = shift;
+    }
+
+  my $text = '';
+  for my $k ( sort keys %attr ) # sorted, the same call gives the same html
+    {
+    html_check_attr_name_boom( $k );
+    my $v = $attr{ $k };
+    $text .= " $k";
+    $text .= "='" . str_html_escape_attr( $v ) . "'" if defined $v;
+    }
+
+  return $text;
 }
 
 =pod
@@ -226,13 +260,10 @@ a row is a label (scalar) or a hash ref:
 
 =cut
 
-# ftree ids: a per-process scope (pid, the time of the first ftree in the
-# process and a random part, also against a pid reused within a second), so
-# ftrees served by different processes into one page do not repeat ids, and
-# a counter. independent of reactor objects on purpose
+# ftree ids: the per-process scope of html_uniq_id() (no "." in it, the rows
+# use "." for the tree levels) and a counter. independent of reactor objects
+# on purpose # cc20261017-reo-optional
 my $ftree_item_id;
-my $ftree_scope;
-my $ftree_pid;
 sub html_ftree
 {
   my $data = shift;
@@ -241,12 +272,7 @@ sub html_ftree
   my $t_args = $opt{ 'ARGS' };
   $t_args ||= "class='" . str_html_escape_attr( $opt{ 'CLASS' } ) . "'" if $opt{ 'CLASS' };
 
-  if( ! $ftree_pid or $ftree_pid != $$ )
-    {
-    $ftree_pid     = $$;
-    $ftree_scope   = join '_', $$, time(), Crypt::PRNG::random_string_from( 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', 8 );
-    $ftree_item_id = 0;
-    }
+  my $ftree_scope = __uniq_scope(); # cc20261017-reo-optional
   $ftree_item_id++;
 
   my $ftree_table_id = "FTREE_TABLE_${ftree_scope}_$ftree_item_id";
@@ -271,6 +297,8 @@ sub __html_ftree_branch
   my $branch_id      = shift;
   my $level          = shift;
   my $opt            = shift;
+
+  require Web::Reactor::HTML::Layout; # cc20261017-2 Layout uses Utils, loaded once per branch, not per row
 
   my $html;
 
@@ -307,31 +335,62 @@ sub __html_ftree_branch
 
     # nested rows start hidden: into a style already in the row args (quoted
     # or not), so the row has only one style attribute
-    my $hidden = '';
-    if( $level > 0 )
-      {
-      $r_args =~ s/(?<![\w-])style\s*=\s*(['"])/style=$1display: none; /i
-        or $r_args =~ s/(?<![\w-])style\s*=\s*([^\s'">]+)/style='display: none; $1'/i
-        or $hidden = "style='display: none'";
-      }
+    $r_args = html_args_hide( $r_args ) if $level > 0;
     my $pad = $level * 6 + 1;
-    my $cell = html_layout_2lr( '&nbsp;', $label, "$pad=<" );
+    my $cell = Web::Reactor::HTML::Layout::html_layout_2lr( '&nbsp;', $label, "$pad=<" );
 
     if( ref( $sub_data ) eq 'ARRAY' )
       {
       my $open_code = qq{ onclick='ftree_click( "$ftree_table_id", "$row_id" )' };
-      $html .= "<tr id='$row_id' $open_code $r_args $hidden><td $c_args>$cell</td></tr>";
+      $html .= "<tr id='$row_id' $open_code $r_args><td $c_args>$cell</td></tr>";
       $html .= __html_ftree_branch( $sub_data, $ftree_table_id, $row_id, $level + 1, $opt );
       }
     else
       {
-      $html .= "<tr id='$row_id' $r_args $hidden><td $c_args>$cell</td></tr>";
+      $html .= "<tr id='$row_id' $r_args><td $c_args>$cell</td></tr>";
       }
 
     $html .= "\n";
     }
 
   return $html;
+}
+
+##############################################################################
+
+=pod
+
+html_uniq_id()
+
+returns a new id, unique in all processes, without a reactor object:
+"scope.N", the scope is the pid, the time of the first call in the process
+and a random part (also against a pid reused within a second), N counts the
+ids of the process. letters, digits, "_" and ".", so it is a valid
+html_check_name() too. with a reactor object use its create_uniq_id().
+
+=cut
+
+my $UNIQ_PID; # cc20261017-reo-optional
+my $UNIQ_SCOPE;
+my $UNIQ_COUNTER;
+
+# the per-process scope of html_uniq_id() and html_ftree(), a new one in a
+# forked child
+sub __uniq_scope
+{
+  if( ! $UNIQ_PID or $UNIQ_PID != $$ )
+    {
+    $UNIQ_PID     = $$;
+    $UNIQ_SCOPE   = join '_', $$, time(), Crypt::PRNG::random_string_from( 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', 8 );
+    $UNIQ_COUNTER = 0;
+    }
+  return $UNIQ_SCOPE;
+}
+
+sub html_uniq_id
+{
+  my $scope = __uniq_scope();
+  return $scope . '.' . ++$UNIQ_COUNTER;
 }
 
 ##############################################################################
@@ -514,7 +573,7 @@ sub __popup_layer
 html_alink( $reo, $type, $html, \%opt, @args )
 
 <a> link to a reactor page or action. the href is made by args_type() of
-the reactor: $type is one of new, new_fr, here, back or none, @args are the
+the reactor: $type is one of new, new_fr, here, back, back_back or none, @args are the
 link parameters (see Web::Reactor args*()). $html is the link content.
 
   print html_alink( $reo, 'new', 'users', { CLASS => 'btn' }, _PN => 'users' );
@@ -655,8 +714,8 @@ sub html_tabs_table
   my $class_on  = $opt{ 'LABEL_CLASS_ON' };
   my $class_off = $opt{ 'LABEL_CLASS_OFF' };
 
-  my $tab = Web::Reactor::HTML::Tab->new(
-                                   REO_REACTOR => $reo,
+  require Web::Reactor::HTML::Tab; # not at load time, Tab uses Utils
+  my $tab = Web::Reactor::HTML::Tab->new( $reo, # cc20261017-1
                                    CLASS_ON    => $class_on,
                                    CLASS_OFF   => $class_off,
                                    ACTIVE_TAB_FORM_FEEDBACK_ID => $opt{ 'ACTIVE_TAB_FORM_FEEDBACK_ID' },
@@ -789,9 +848,9 @@ sub html_check_attr_name_boom
 
 html_check_name( $name ), html_check_ident( $ident )
 
-return true if $name is a valid element (form input) name, or $ident a valid
-identifier (html id, etc.): letters, digits, "_", ":" and ".". a name must
-not be empty, an identifier is optional, empty or undef is valid.
+return true if $name is a valid element (form input) name: letters, digits,
+"_", ":" and ".", not empty; or $ident a valid identifier (html id, etc.):
+the same and "-", optional, empty or undef is valid.
 
 html_check_name_boom( $name, $msg ), html_check_ident_boom( $ident, $msg )
 
@@ -811,12 +870,37 @@ sub html_check_name_boom
 
 sub html_check_ident
 {
-  return $_[0] eq '' || html_check_name( $_[0] );
+  return $_[0] =~ /^[a-zA-Z0-9_:.\-]*$/;
 }
 
 sub html_check_ident_boom
 {
   boom( $_[1] || "invalid IDENTIFIER [$_[0]]" ) unless html_check_ident( $_[0] );
+}
+
+##############################################################################
+
+=pod
+
+html_check_button_name( $name ), html_check_button_name_boom( $name, $msg )
+
+returns true if $name is a button name Web::Reactor can read back (see
+Web::Reactor::Reflex get_user_input_button()): "NAME" or "NAME:ID", NAME is
+letters, digits and "_", ID is letters, digits, "_", ":" and "." (a
+create_uniq_id() id fits). it must not end with ".X" or ".Y", that is the
+click position suffix of image buttons. the _boom variant booms with $msg
+(or a default message) if $name is not valid.
+
+=cut
+
+sub html_check_button_name
+{
+  return $_[0] =~ /^[a-zA-Z0-9_]+(:[a-zA-Z0-9_:.]+)?$/ && $_[0] !~ /\.[XY]$/i;
+}
+
+sub html_check_button_name_boom
+{
+  boom( $_[1] || "invalid button NAME [$_[0]], expected NAME or NAME:ID" ) unless html_check_button_name( $_[0] );
 }
 
 ##############################################################################
@@ -903,6 +987,47 @@ sub html_attrs_filter
   delete @ah{ map { lc } @drop };
 
   return %ah;
+}
+
+##############################################################################
+
+=pod
+
+html_args_style( $args, $css )
+
+returns the raw html attributes string $args with the css declarations $css
+(i.e. "width: 20%;") added: merged into a style already in $args (quoted or
+not), so the element has only one style attribute (a browser keeps the first
+and drops the rest), or appended as a new style attribute. $css must not
+contain quotes, it booms.
+
+html_args_hide( $args )
+
+the same with "display: none;", for a hidden element.
+
+  $args = html_args_hide( $args ) unless $visible;
+  $html = "<tr $args>...</tr>";
+
+=cut
+
+sub html_args_style # cc20261017-2
+{
+  my $args = shift;
+  my $css  = shift;
+
+  boom "css for a raw style attribute cannot have quotes [$css]" if $css =~ /['"]/;
+  $css =~ s/\s*;?\s*$/;/; # one ";" at the end
+
+  $args =~ s/(?<![\w-])style\s*=\s*(['"])/style=$1$css /i
+    or $args =~ s/(?<![\w-])style\s*=\s*([^\s'">]+)/style='$css $1'/i
+    or $args .= " style='$css'";
+
+  return $args;
+}
+
+sub html_args_hide
+{
+  return html_args_style( shift(), 'display: none;' ); # cc20261017-2
 }
 
 ##############################################################################

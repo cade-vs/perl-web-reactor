@@ -221,10 +221,10 @@ sub process_single_pass
 
 #print STDERR "DEBUG: PROCESS PAGE----------------------- [$pn]\n";
 
-  boom "too many nesting levels at page [$pn], probable bug in actions or page files" if defined( (caller(128))[0] ); # FIXME: config option for max level
+  # boom "too many nesting levels at page [$pn], probable bug in actions or page files" if defined( (caller(32))[0] ); # FIXME: config option for max level
 
   $ctx = { %$ctx };
-  $ctx->{ 'LEVEL' }++;
+  boom "too many nesting levels at page [$pn], probable bug in actions or page files" if $ctx->{ 'LEVEL' }++ > 32;
 
 #print STDERR Dumper( 'PROCESS PRE --- ' x 7, $pn, $text );
 
@@ -243,7 +243,7 @@ sub __process_tag
   my $self = shift;
 
   my $pn    = lc shift; # page name
-  my $type  =    shift; # types are: $ variable, & callback, # template file include
+  my $type  =    shift; # types are: $ variable, $$ deferred variable, & action, && action in a vframe, # template file include
   my $tag   =    shift;
   my $tagid =    shift;
   my $args  =    shift; # the rest of the tag
@@ -253,12 +253,13 @@ sub __process_tag
 #print STDERR "DEBUG: PROCESS PAGE TAG ----------------------- [$pn] [$type] [$tag]:[$tagid]\n";
 
 #print STDERR Dumper( 'PROCESS ARGS --- ' x 7, ( $pn, $type, $tag, $args, $opt, $ctx ) );
+  $tag = lc $tag; # tags are case insensitive, also for the loop detection below
+
   $ctx = { %$ctx }; # FIXME: CHECK, was opt
   $ctx->{ 'PATH' } .= ", $type$tag";
   my $path = $ctx->{ 'PATH' };
 
   boom "preprocess loop detected, tag [$type$tag] path [$path]" if $ctx->{ 'SEEN:' . $type . $tag }++;
-  boom "empty or invalid tag" unless $tag =~ /^[a-zA-Z_\-0-9]+$/;
 
   # the tag id is popped when this sub is left in any way, also by a boom
   # from a nested tag, so no stale tag id stays on the stack
@@ -266,8 +267,6 @@ sub __process_tag
   my $tagid_guard = bless [ $self ], 'Web::Reactor::Preprocessor::Tree::__TagIdGuard';
 
   my $reo = $self->reo();
-
-  $tag = lc $tag;
 
   my $text;
 
@@ -326,11 +325,16 @@ sub __process_href
   my $data   = shift;
   my $anchor = shift;
 
+  # the template is html source: decode its character references (&amp; etc.)
+  # as a browser would, %xx url escapes are decoded later by url2hash().
+  # numeric references (&#38;) do not reach here, "#" starts the anchor
+  $data = str_html_unescape( $data );
+
   my $data_hr = url2hash( $data );
 
   my $reo = $self->reo();
 
-  $type = 'new' if $attr eq 'src'; # images
+  $type = 'new' if lc $attr eq 'src'; # images, the attribute name matches in any case
 
   my $href = $reo->args_type( $type, %$data_hr );
 

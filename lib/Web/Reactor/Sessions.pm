@@ -43,16 +43,18 @@ our %SESSION_TYPES = (
 ##
 
 # creates a new session of given type, allocates its storage and writes the
-# initial session data, the only place where :TYPE, :SID and :PSID are set,
-# except a new HOLD session, which Reactor::get_user_hold() stamps itself with
-# the fixed user ident (see the FIXME there)
+# initial session data, the only place where :TYPE, :SID and :PSID are set
+# and the only one which creates a session in the storage (save() never does)
 # args:
 #       type -- session type, one of %SESSION_TYPES
 #       psid -- parent session id, required for types with a parent (PAGE,
 #               LINK), undef for the rest
 #       len  -- session id length (optional, default SESS_LENGTH config or 73)
+#       sid  -- fixed session id (optional, i.e. a HOLD session of a user),
+#               instead of a new random one, len is not used then
 # returns:
-#       new session hashref with :TYPE, :SID and :PSID set, booms on failure
+#       new session hashref with :TYPE, :SID and :PSID set, undef if a fixed
+#       sid exists already, booms on failure
 sub create
 {
   my $self = shift;
@@ -62,11 +64,23 @@ sub create
   my $cfg  = $self->cfg();
 
   my $len  = shift || $cfg->{ 'SESS_LENGTH' } || 73; # 21st prime :)
+  my $fsid = shift; # fixed sid
 
   boom "Web::Reactor::Sessions::create: invalid session type [$type], expected one of " . join( ' ', sort keys %SESSION_TYPES ) unless exists $SESSION_TYPES{ $type };
   boom "Web::Reactor::Sessions::create: invalid length, expected len >= $MIN_SES_ID_LEN, got [$len]" unless $len >= $MIN_SES_ID_LEN;
 
   my $shr = { ':TYPE' => $type, ':SID' => '?', ':PSID' => $psid };
+
+  if( defined $fsid )
+    {
+    $shr->{ ':SID' } = $fsid;
+    my $key = $self->compose_key_from_sid( $type, $fsid, $psid );
+    my $rc = $self->_storage_create( $key, $shr );
+    return $shr  if $rc;
+    return undef if defined $rc; # exists, i.e. another request created it meanwhile
+    $self->_storage_delete( $key );
+    boom "Web::Reactor::Sessions::create: storage error creating session type [$type] fixed sid [$fsid], key [@$key], " . $self->_storage_debug_info();
+    }
 
   my $sid;
   my $ts = time();
@@ -106,51 +120,67 @@ sub load
 
   my $key = $self->compose_key_from_sid( $type, $sid, $psid );
 
-  return $self->_storage_load( $key );
+  my $shr = $self->_storage_load( $key ) or return undef;
+
+  $shr->{ ':CLOSED' } = 1 if $self->_storage_is_closed( $key ); # the close mark wins over the data, see close()
+
+  return $shr;
 }
 
 # saves session data to the storage, under the key built from the session's
-# own :TYPE, :SID and :PSID
+# own :TYPE, :SID and :PSID. a closed session (see close()) is never saved
+# again and a session missing in the storage is never created by a save (only
+# create() creates, so a stale copy cannot bring back a deleted session): both
+# are not saved and return 0, nothing is thrown
+# TODO: detection of overlapping saves, as a side API of the storage, outside
+#       the session data: Filesystem by the file mtime/inode/size, SQL by a
+#       separate serial column, key/value storages to be decided. it only
+#       detects (the later save is refused), it does not preserve data
 # args:
 #       shr  -- session hashref, as returned by create() or load()
 # returns:
-#       1 if successful, undef or 0 if failed
+#       1 if saved, 0 if not saved because the session is closed or missing in
+#       the storage, undef on storage error
 sub save
 {
   my $self = shift;
   my $shr  = shift; # session hashref
 
-  # NOTE: there is no locking and a save replaces the whole session, so the last
-  #       of two overlapping requests on the same session wins. every request
-  #       saves the USER session (:XTIME), so a parallel AJAX call which loaded
-  #       it before a logout and saves after it puts back :LOGGED_IN = 1 and
-  #       drops :CLOSED, undoing the logout (same for expiry and failed checks).
-  # TODO: possible fix, a closed USER session stays closed (one extra read per
-  #       request, a small window between the read and the rename remains,
-  #       other parallel changes still go to the last save):
-  #
-  #       my $key = $self->__shr_to_key( $shr );
-  #       if( $shr->{ ':TYPE' } eq 'USER' and ! $shr->{ ':CLOSED' } )
-  #         {
-  #         my $stored = $self->_storage_load( $key );
-  #         if( $stored and $stored->{ ':CLOSED' } )
-  #           {
-  #           $self->reo()->log( "warning: user session [$shr->{ ':SID' }] was closed by a parallel request, not saved" );
-  #           return 1; # skipped, not failed
-  #           }
-  #         }
-  #
-  #       a full fix needs a request-long lock per user session, which makes
-  #       the user's requests (parallel AJAX calls) run one at a time.
-
   return $self->_storage_save( $self->__shr_to_key( $shr ), $shr );
+}
+
+# closes a session for good: the close fields (and :CLOSED = 1) are set in shr
+# and saved with the session data as its last save, then the storage sets the
+# close mark, apart from the session data. every later load() has :CLOSED,
+# every later save() is refused, so no save of any request can undo it. the
+# first close stays: a second one cannot save its fields and does nothing
+# args:
+#       shr    -- session hashref, as returned by create() or load()
+#       fields -- close fields, i.e. ':ETIME' => time(), ':CLOSE_REASON' => 'logout'
+# returns:
+#       1 if closed (or closed before), 0 if the session is missing in the
+#       storage (deleted meanwhile), undef on storage error
+sub close
+{
+  my $self   = shift;
+  my $shr    = shift; # session hashref
+  my %fields = ( @_, ':CLOSED' => 1 );
+
+  my $key = $self->__shr_to_key( $shr );
+  return 0 unless $self->_storage_exists( $key ); # no close mark without a session
+
+  @$shr{ keys %fields } = values %fields;
+  $self->_storage_save( $key, $shr ); # the last save, 0 if closed before
+
+  return $self->_storage_close( $key );
 }
 
 # deletes a session from the storage
 # args:
 #       shr  -- session hashref, as returned by create() or load()
 # returns:
-#       1 if deleted or already missing, undef if failed
+#       1 if deleted or already missing, undef if failed, the close mark (see
+#       close()) goes with the session
 sub delete
 {
   my $self = shift;
@@ -218,13 +248,33 @@ sub _storage_delete   { boom "Web::Reactor::Sessions::*::_storage_delete() is no
 #       hashref of session data or undef if error
 sub _storage_load   { boom "Web::Reactor::Sessions::*::_storage_load() is not implemented!"; }
 
-# saves session data to the storage
+# saves session data to the storage, see save(): a closed session or one
+# missing in the storage is not written, 0
+# TODO: detection of overlapping saves, as a side API of the storage, outside
+#       the session data: Filesystem by the file mtime/inode/size, SQL by a
+#       separate serial column, key/value storages to be decided. it only
+#       detects (the later save is refused), it does not preserve data
 # args:
 #       key  -- key components array reference, see _storage_create()
 #       shr  -- session hashref to save
 # returns:
-#       1 if successful, undef or 0 if failed
+#       1 if saved, 0 if closed or missing (not saved), undef on storage error
 sub _storage_save   { boom "Web::Reactor::Sessions::*::_storage_save() is not implemented!"; }
+
+# marks the session closed for good, apart from the session data, see close()
+# args:
+#       key  -- key components array reference, see _storage_create()
+# returns:
+#       1 if closed (also if closed before, the first close stays), undef on
+#       storage error
+sub _storage_close  { boom "Web::Reactor::Sessions::*::_storage_close() is not implemented!"; }
+
+# checks the close mark, see close()
+# args:
+#       key  -- key components array reference, see _storage_create()
+# returns:
+#       1 if session is closed, undef if not
+sub _storage_is_closed { boom "Web::Reactor::Sessions::*::_storage_is_closed() is not implemented!"; }
 
 # checks if session exists in the storage
 # args:

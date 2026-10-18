@@ -407,6 +407,52 @@ ok( $@, '_key_to_fn() booms on invalid id component' );
   is_deeply( $ses->load( 'USER', $shr->{ ':SID' } ), $shr, 'load() returns the saved structure' );
   is( ( stat ses_file( $reo, 'USER', $shr->{ ':SID' } ) )[ 2 ] & 0777, 0600, 'saved session file mode is 0600' );
 
+  my $gone = $ses->create( 'USER' );
+  ok( $ses->delete( $gone ), 'a session deleted by another request' );
+  is( $ses->save( $gone ), 0, 'save() does not bring back a deleted session' );
+  ok( ! $ses->exists( $gone ), 'the deleted session stays deleted' );
+  is( $ses->save( { ':TYPE' => 'HOLD', ':SID' => 'HoldSerialTest', ':PSID' => undef } ), 0, 'save() never creates a session' );
+  ok( ! $ses->exists( { ':TYPE' => 'HOLD', ':SID' => 'HoldSerialTest' } ), 'only create() creates' );
+  my $hold = $ses->create( 'HOLD', undef, undef, 'HoldSerialTest' );
+  is( $hold->{ ':SID' }, 'HoldSerialTest', 'create() with a fixed sid' );
+  is( $ses->create( 'HOLD', undef, undef, 'HoldSerialTest' ), undef, 'create() of an existing fixed sid returns undef' );
+  ok( $ses->save( $hold ), 'a created session saves' );
+  $ses->delete( $hold );
+
+  # close() saves the close fields and sets the close mark, no save can undo it
+  my $cl  = $ses->create( 'USER' );
+  my $old = $ses->load( 'USER', $cl->{ ':SID' } ); # a copy loaded before the close
+  is( $ses->close( $cl, ':CLOSE_REASON' => 'logout', ':LOGGED_IN' => 0 ), 1, 'close()' );
+  is( $cl->{ ':CLOSED' }, 1, 'close() sets :CLOSED in the session' );
+  my $cfn = ses_file( $reo, 'USER', $cl->{ ':SID' } ) . '.closed';
+  ok( -e $cfn, 'close() writes the close mark next to the session file' );
+  ok( -z $cfn, 'the close mark is empty, a flag only' );
+  $old->{ 'X' } = 1;
+  is( eval { $ses->save( $old ) }, 0, 'save() of a copy loaded before the close is refused, no throw' );
+  my $now = $ses->load( 'USER', $cl->{ ':SID' } );
+  is( $now->{ ':CLOSED' }, 1, 'load() of a closed session has :CLOSED' );
+  is( $now->{ ':LOGGED_IN' }, 0, 'close() saves the close fields with the data' );
+  is( $now->{ 'X' }, undef, 'the refused save left the data as it was' );
+  is( $ses->save( $now ), 0, 'even a current copy of a closed session is not saved' );
+  is( $ses->close( $cl, ':CLOSE_REASON' => 'expired' ), 1, 'a second close() does nothing and succeeds' );
+  is( $ses->load( 'USER', $cl->{ ':SID' } )->{ ':CLOSE_REASON' }, 'logout', 'the first close stays' );
+  my $raw = $ses->create( 'USER' );
+  $ses->close( $raw );
+  my $rfn = ses_file( $reo, 'USER', $raw->{ ':SID' } ) . '.closed';
+  file_save( ses_file( $reo, 'USER', $raw->{ ':SID' } ), hash2json( { %$raw, ':CLOSED' => 0 } ) ); # data changed behind the storage
+  is( $ses->load( 'USER', $raw->{ ':SID' } )->{ ':CLOSED' }, 1, 'load() takes :CLOSED from the close mark, not from the data' );
+  ok( $ses->delete( $raw ), 'delete() of a closed session' );
+  ok( ! -e $rfn, 'delete() removes the close mark too' );
+  is( $ses->close( $raw ), 0, 'close() of a deleted session returns 0' );
+  ok( ! -e $rfn, 'and leaves no close mark' );
+  my $h2 = $ses->create( 'HOLD', undef, undef, 'HoldCloseTest' );
+  $ses->close( $h2 );
+  $ses->delete( $h2 );
+  $h2 = $ses->create( 'HOLD', undef, undef, 'HoldCloseTest' );
+  ok( ! $ses->load( 'HOLD', 'HoldCloseTest' )->{ ':CLOSED' }, 'a fixed sid created again after close and delete is open' );
+  ok( $ses->save( $h2 ), 'and saves' );
+  $ses->delete( $h2 );
+
   is( $ses->load( 'USER', 'NoSuchSessionIdAtAll' ), undef, 'load() of an unknown id returns undef' );
   ok( ! $ses->exists( { ':TYPE' => 'USER', ':SID' => 'NoSuchSessionIdAtAll' } ), 'exists() false for an unknown id' );
 
@@ -573,7 +619,7 @@ my ( $COOKIE, $USID, $PSID );
 
   isnt( cookie_of( $res ), undef, 'unknown cookie gets a new cookie' );
   isnt( cookie_of( $res ), 'NoSuchCookieSessionIdAtAll', 'the new cookie is a different one' );
-  ok( log_since( $mark, qr/invalid cookie session/ ), 'unknown cookie session is logged' );
+  ok( log_since( $mark, qr/invalid or closed cookie session/ ), 'unknown cookie session is logged' );
 }
 
 # a user session id used as a cookie does not work
@@ -597,7 +643,7 @@ my ( $COOKIE, $USID, $PSID );
 
   isnt( $r2->get_user_session_id(), $u1, 'stale cookie session gets a new user session' );
   ok( log_since( $mark, qr/discarding stale or orphan cookie session/ ), 'stale cookie session is logged' );
-  ok( ! -e ses_file( $r2, 'COOK', $c1 ), 'stale cookie session is deleted' );
+  is( $r2->__ses->load( 'COOK', $c1 )->{ ':CLOSE_REASON' }, 'stale', 'stale cookie session is closed' );
   is( $r2->__ses->load( 'USER', $u1 )->{ ':COOKIE_SID' }, 'SomeOtherCookieSession', 'the user session of a stale cookie is left untouched' );
 }
 
@@ -613,7 +659,7 @@ my ( $COOKIE, $USID, $PSID );
   ok( log_since( $mark, qr/session parameter \[HTTP_USER_AGENT\] check failed/ ), 'session hijack check logged' );
   is( body( $res2 ), 'INVALID', 'einvalid page rendered' );
   is( $r2->__ses->load( 'USER', $u1 )->{ ':CLOSED' }, 1, 'changed user agent closes the old user session' );
-  ok( ! -e ses_file( $r2, 'COOK', $c1 ), 'the old cookie session is deleted' );
+  is( $r2->__ses->load( 'COOK', $c1 )->{ ':CLOSE_REASON' }, 'invalid', 'the old cookie session is closed' );
   isnt( cookie_of( $res2 ), undef, 'a new cookie is issued' );
   isnt( $r2->get_user_session_id(), $u1, 'a new user session is active' );
 
@@ -684,7 +730,8 @@ my ( $COOKIE, $USID, $PSID );
   ok( $after_c, 'login() issues a new cookie' );
   isnt( $after_c, $before_c, 'login() rotates the cookie session id' );
   ok( log_since( $mark, qr/rotated cookie session id on login/ ), 'rotation logged' );
-  ok( ! -e ses_file( $r, 'COOK', $before_c ), 'login() deletes the old cookie session' );
+  is( $r->__ses->load( 'COOK', $before_c )->{ ':CLOSE_REASON' }, 'login', 'login() closes the old cookie session' );
+  ok( -e ses_file( $r, 'COOK', $before_c ) . '.closed', 'the old cookie session has the close mark' );
 
   my $user = $r->get_user_session();
   is( $user->{ ':COOKIE_SID' }, $after_c, 'user session points to the new cookie session' );
@@ -762,7 +809,7 @@ my ( $COOKIE, $USID, $PSID );
   my $logout_c = cookie_of( $res8 );
   ok( $logout_c, 'logout() issues a new cookie' );
   isnt( $logout_c, $after_c, 'the logout cookie is a new one' );
-  ok( ! -e ses_file( $r8, 'COOK', $after_c ), 'logout() deletes the logged-in cookie session' );
+  is( $r8->__ses->load( 'COOK', $after_c )->{ ':CLOSE_REASON' }, 'logout', 'logout() closes the logged-in cookie session' );
 
   my $closed = $r8->__ses->load( 'USER', $before_u );
   is( $closed->{ ':CLOSED' },    1, 'logout() closes the logged-in user session' );
@@ -772,6 +819,22 @@ my ( $COOKIE, $USID, $PSID );
   my ( $r9 ) = request( COOKIE => $after_c );
   isnt( $r9->get_user_session_id(), $before_u, 'the logged-in cookie is dead after logout' );
   is( $r9->is_logged_in(), 0, 'the logged-in cookie is not logged in after logout' );
+
+  # an ajax call which loaded the session before the logout and saves after it
+  {
+    my ( $ra, $resa ) = request( HOOK => sub { $_[0]->login( 'bob' ) } );
+    my $ca = cookie_of( $resa );
+    my $ua = $ra->get_user_session_id();
+    my ( $rb ) = request( COOKIE => $ca ); # the ajax call, still running
+    request( COOKIE => $ca, HOOK => sub { $_[0]->logout() } );
+    $rb->get_user_session()->{ 'AJAX' } = 1;
+    my $m0 = scalar @LOG;
+    $rb->save();
+    ok( log_since( $m0, qr/was closed or deleted by another request/ ), 'a stale save after logout is refused and logged' );
+    my $us = $ra->__ses->load( 'USER', $ua );
+    is( $us->{ ':CLOSED' } . ':' . $us->{ ':LOGGED_IN' } . ':' . $us->{ ':CLOSE_REASON' }, '1:0:logout', 'the logout stays after a stale save' );
+    is( $us->{ 'AJAX' }, undef, 'the stale save changed nothing' );
+  }
 
   # expire time api
   request( HOOK => sub

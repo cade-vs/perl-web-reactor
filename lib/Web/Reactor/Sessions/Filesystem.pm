@@ -101,7 +101,8 @@ sub _storage_load
 #       key  -- key components array reference, see _storage_create()
 #       shr  -- session hashref to save
 # returns:
-#       1 if successful, undef or 0 if failed
+#       1 if saved, 0 if closed or missing (not saved), undef on storage
+#       error, see Sessions::save()
 sub _storage_save
 {
   my $self = shift;
@@ -112,18 +113,59 @@ sub _storage_save
 
 #print STDERR Dumper( "******* _storage_save [$fn] *******", $out_data );
 
+  return 0 if $self->_storage_is_closed( $key ); # closed for good, see Sessions::close()
+
+  return 0 unless -e $fn; # deleted meanwhile (or never created), only create() creates
+
   # the data goes into a temp file first and is renamed over the session file,
   # so a reader never sees a partial file; a failed temp file is removed
   my $tmp = "$fn.tmp.$$.part";
-  if( ! hash_save_json( $tmp, $shr ) )
-    {
-    unlink( $tmp ); # a partial file may be left
-    return undef;
-    }
-  chmod( 0600, $tmp ); # FIXME: must be moved to file_save()
-  my $rc = rename( $tmp, $fn );
-  unlink( $tmp ) unless $rc; # do not litter the session dir
-  return $rc;
+  my $rc = hash_save_json( $tmp, $shr ) && chmod( 0600, $tmp ) && rename( $tmp, $fn ); # FIXME: chmod must be moved to file_save()
+  return 1 if $rc;
+
+  unlink( $tmp ); # a partial or not renamed temp file, do not litter the session dir
+  return undef;
+}
+
+# marks the session closed for good: a separate empty close mark file next to
+# the session file, a save never touches it
+# args:
+#       key  -- key components array reference, see _storage_create()
+# returns:
+#       1 if closed (also if it was closed before, the first close mark stays),
+#       undef on storage error
+sub _storage_close
+{
+  my $self = shift;
+  my $key  = shift;
+
+  my $fn = $self->__closed_fn( {}, @$key );
+  my $F;
+  return close( $F ) ? 1 : undef if sysopen $F, $fn, O_CREAT | O_EXCL | O_WRONLY, 0600;
+  return $!{EEXIST} ? 1 : undef; # closed before, the first close stays
+}
+
+# checks the close mark, see Sessions::close()
+# args:
+#       key  -- key components array reference, see _storage_create()
+# returns:
+#       1 if session is closed, undef if not
+sub _storage_is_closed
+{
+  my $self = shift;
+  my $key  = shift;
+
+  my $fn = $self->__closed_fn( { READONLY => 1 }, @$key );
+  return -e $fn;
+}
+
+# the close mark file name, the session file name with .closed
+sub __closed_fn
+{
+  my $self = shift;
+
+  my $fn = $self->_key_to_fn( @_ );
+  return $fn . '.closed';
 }
 
 # deletes session data from the storage
@@ -138,6 +180,7 @@ sub _storage_delete
 
   my $fn = $self->_key_to_fn( { READONLY => 1 }, @$key );
 
+  unlink( $self->__closed_fn( { READONLY => 1 }, @$key ) ); # the close mark goes with the session
   return 1 if unlink( $fn ) or ! -e $fn;
 
   $self->reo()->log( "error: cannot delete session file: $fn ($!)" );

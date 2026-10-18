@@ -120,7 +120,8 @@ sub process_request
   $cookie_sid = __input_sid_check( $self->get_cookie( $cookie_name ) );
   $self->log_debug( "debug: incoming COOKIE SESSION cookie name [$cookie_name] cookie sid [$cookie_sid]" );
 
-  if( $cookie_sid and $cookie_shr = $self->__sc_load( 'COOK', $cookie_sid ) )
+  # a closed cookie session (logout, login rotation, stale) reaches nothing
+  if( $cookie_sid and $cookie_shr = $self->__sc_load( 'COOK', $cookie_sid ) and ! $cookie_shr->{ ':CLOSED' } )
     {
     $self->__set_cookie_session( $cookie_shr );
 
@@ -132,18 +133,18 @@ sub process_request
     else
       {
       # cookie session points to a missing user session, or the user session
-      # has moved on to another cookie session (stale): discard the cookie
+      # has moved on to another cookie session (stale): close the cookie
       # session only, the user session is left untouched, and the new user
       # session activates its own cookie session
       $self->log( "warning: discarding stale or orphan cookie session [$cookie_sid] of user session [$user_sid]" );
       $self->__set_cookie_session( undef );
-      $self->__sc_delete( $cookie_shr );
+      $self->__sc_close( $cookie_shr, ':CLOSE_REASON' => 'stale' );
       ( $user_sid, $user_shr ) = $self->__create_new_user_session();
       }
     }
   else
     {
-    $self->log( "warning: invalid cookie session [$cookie_sid]" ) if $cookie_sid;
+    $self->log( "warning: invalid or closed cookie session [$cookie_sid]" ) if $cookie_sid;
     ( $user_sid, $user_shr ) = $self->__create_new_user_session();
     }
 
@@ -154,12 +155,10 @@ sub process_request
       ( $user_shr->{ ':CLOSED' } ) )
     {
     $self->log( "status: user session expired or closed, sid [$user_sid]" );
-    # not logged-in sessions dont expire
-    $user_shr->{ ':CLOSED'       } = 1;
-    $user_shr->{ ':ETIME'        } = time();
-    $user_shr->{ ':ETIME_STR'    } = scalar localtime();
+    # not logged-in sessions dont expire. a closed one stays as it was closed
+    $self->__sc_close( $user_shr, ':CLOSE_REASON' => 'expired' );
 
-    $self->__discard_active_sessions();
+    $self->__discard_active_sessions( 'expired' );
     ( $user_sid, $user_shr ) = $self->__create_new_user_session();
 
     $self->render_page( 'eexpired' );
@@ -173,12 +172,9 @@ sub process_request
     next if $chk_exp eq $chk_got;
 
     $self->log( "error: user session parameter [$k] check failed, expected [$chk_exp] got [$chk_got] for sid [$user_sid]" );
-    # FIXME: move to function: close_session();
-    $user_shr->{ ':CLOSED'       } = 1;
-    $user_shr->{ ':ETIME'        } = time();
-    $user_shr->{ ':ETIME_STR'    } = scalar localtime();
+    $self->__sc_close( $user_shr, ':CLOSE_REASON' => 'invalid' );
 
-    $self->__discard_active_sessions();
+    $self->__discard_active_sessions( 'invalid' );
     ( $user_sid, $user_shr ) = $self->__create_new_user_session();
 
     $self->render_page( 'einvalid' );
@@ -300,11 +296,13 @@ sub process_request
 ##
 ##   connect: cookie -> COOK session -> :USER_SID -> user session, check
 ##            :COOKIE_SID, then the usual :XTIME, :CLOSED and :HTTP_CHECK_HR
-##            checks. a missing COOK session gives a new user session, a stale
-##            one is deleted first, its user session is left untouched.
+##            checks. a missing or closed COOK session gives a new user
+##            session, a stale one is closed first, its user session is left
+##            untouched. COOK sessions are closed (close mark), never deleted,
+##            so no stale save of a parallel request can bring one back.
 ##
 ##   login (rotation, __rotate_cookie_session_id()):
-##     - delete the old COOK session and clear the LINK slot, the LINK session
+##     - close the old COOK session and clear the LINK slot, the LINK session
 ##       of this request is still saved under the old cookie
 ##     - create the new COOK session, link it both ways with the same user
 ##       session, set the new cookie
@@ -316,14 +314,14 @@ sub process_request
 ##
 ##   logout:
 ##     - close the user session (:LOGGED_IN 0, :CLOSED, :LOTIME, :ETIME)
-##     - delete the COOK session, clear the LINK and the user slots.
-##       the closed user session, its PAGE and LINK sessions stay tracked and
-##       are saved under their own keys
+##     - close the COOK session, clear the LINK and the user slots.
+##       the PAGE and LINK sessions of the closed user session stay tracked
+##       and are saved under their own keys
 ##     - create a new user session, a new COOK session and a fresh PAGE
 ##       session, so both the PAGE and the LINK namespaces are new
 ##     - HOLD stays, it is keyed by the login ident
 ##
-##   expired or einvalid user session: close it, delete the COOK session,
+##   expired or einvalid user session: close it and the COOK session,
 ##            create a new user session and a new COOK session.
 ##
 ##   parallel requests: an in-flight request with the old cookie after login
@@ -361,18 +359,19 @@ sub __create_new_cookie_session
 }
 
 # before new user and cookie sessions are created for a closed user session:
-# the cookie session is deleted, so the old cookie cannot reach anything, the
-# closed user session only leaves the active slot and is still saved
-# the link session belongs to the deleted cookie session: it leaves its slot,
-# it is still saved there (its key comes from its own :PSID), new links go to
-# a new link session under the new cookie session
+# the cookie session is closed (with the same reason), so the old cookie cannot
+# reach anything, the closed user session (see __sc_close()) only leaves the
+# active slot. the link session belongs to the closed cookie session: it leaves
+# its slot, it is still saved there (its key comes from its own :PSID), new
+# links go to a new link session under the new cookie session
 sub __discard_active_sessions
 {
-  my $self = shift;
+  my $self   = shift;
+  my $reason = shift; # close reason
 
   my $cookie_shr = $self->get_cookie_session();
   $self->__set_cookie_session( undef );
-  $self->__sc_delete( $cookie_shr ) if $cookie_shr;
+  $self->__sc_close( $cookie_shr, ':CLOSE_REASON' => $reason ) if $cookie_shr;
 
   $self->__set_link_session( undef );
   $self->__set_user_session( undef );
@@ -466,7 +465,7 @@ sub __rotate_cookie_session_id
   my $old_cookie_shr = $self->get_cookie_session();
   my $old_cookie_sid = $old_cookie_shr ? $old_cookie_shr->{ ':SID' } : undef;
   $self->__set_cookie_session( undef );
-  $self->__sc_delete( $old_cookie_shr ) if $old_cookie_shr;
+  $self->__sc_close( $old_cookie_shr, ':CLOSE_REASON' => 'login' ) if $old_cookie_shr;
 
   # the link session of this request belongs to the old cookie session: it is
   # still saved there (its key comes from its own :PSID), but links made from
@@ -477,7 +476,7 @@ sub __rotate_cookie_session_id
   my $user_shr = $self->get_user_session();
   my $user_sid = $user_shr->{ ':SID' };
 
-  $self->__link_cookie_session( $user_shr, $cookie_shr, 'login' ); # the old cookie is dead even if its delete failed
+  $self->__link_cookie_session( $user_shr, $cookie_shr, 'login' ); # the old cookie is dead even if its close failed
 
   $self->log( "status: rotated cookie session id on login [$old_cookie_sid] -> [$cookie_sid] for user session [$user_sid]" );
 
@@ -723,14 +722,21 @@ sub __sc_load
   return $self->sc_get( $type, $sid, $psid ) || $self->sc_add( $self->__ses->load( $type, $sid, $psid ) );
 }
 
-# stops tracking a session and deletes it from the storage
-sub __sc_delete
+# closes a session for good, see Sessions::close(): its own last changes and
+# the close fields are its last save (not if closed or deleted already), then
+# the close mark is set, which no later save of any request can undo. sessions
+# are closed, never deleted, so no stale save can bring one back. the closed
+# session is not tracked any more
+sub __sc_close
 {
-  my $self = shift;
-  my $shr  = shift or return;
+  my $self   = shift;
+  my $shr    = shift;
+  my %fields = ( ':ETIME' => time(), ':ETIME_STR' => scalar localtime(), @_ ); # the close time, the caller may give its own
 
+  @$shr{ keys %fields } = values %fields;
+
+  defined eval { $self->__ses->close( $shr, %fields ) } or $self->log( "error: cannot close session [$shr->{ ':TYPE' }:$shr->{ ':SID' }]" . ( $@ ? " ($@)" : '' ) );
   $self->sc_remove( $shr );
-  $self->__ses->delete( $shr ) or $self->log( "error: cannot delete session [$shr->{ ':TYPE' }:$shr->{ ':SID' }]" );
 }
 
 # writes every tracked session which changed, must never raise
@@ -749,9 +755,17 @@ sub save
 
     $self->log_debug( "saving session data [$k]" );
 
-    if( eval { $self->__ses->save( $e->{ 'SHR' } ) } )
+    my $rc = eval { $self->__ses->save( $e->{ 'SHR' } ) };
+    if( $rc )
       {
       $e->{ 'FP' } = $fp;
+      }
+    elsif( defined $rc )
+      {
+      # another request closed or deleted this session meanwhile, see
+      # Sessions::save(), this request's changes are dropped
+      $self->log( "warning: session [$k] was closed or deleted by another request, this request's changes are not saved" );
+      $e->{ 'FP' } = $fp; # tried once, again only if changed again
       }
     else
       {
@@ -895,10 +909,9 @@ sub get_user_hold
   my $hold = $self->__sc_load( 'HOLD', $uid );
   return $hold if $hold;
 
-  # FIXME: Sessions::create() only makes random ids, but a HOLD session needs
-  #        the fixed id $uid, so a new hold is stamped here. a fixed-id option
-  #        in create() would keep :TYPE/:SID/:PSID stamping in one place.
-  return $self->sc_add( { ':TYPE' => 'HOLD', ':SID' => $uid, ':PSID' => undef } );
+  # the hold has the fixed id $uid, if another request created it meanwhile it is loaded
+  $hold = $self->__ses->create( 'HOLD', undef, undef, $uid ) || $self->__ses->load( 'HOLD', $uid );
+  return $self->sc_add( $hold );
 }
 
 ##############################################################################
@@ -1306,17 +1319,15 @@ sub logout
   my $self = shift;
 
   my $user_shr = $self->get_user_session();
-  $user_shr->{ ':LOGGED_IN'    } = 0;
-  $user_shr->{ ':CLOSED'       } = 1;
-  $user_shr->{ ':LOTIME'       } = time();
-  $user_shr->{ ':LOTIME_STR'   } = scalar localtime();
-  $user_shr->{ ':ETIME'        } = time();
-  $user_shr->{ ':ETIME_STR'    } = scalar localtime();
+  $self->__sc_close( $user_shr, ':CLOSE_REASON' => 'logout',
+                                ':LOGGED_IN'    => 0,
+                                ':LOTIME'       => time(),
+                                ':LOTIME_STR'   => scalar localtime() );
   # FIXME: add more logout info
   # page and link sessions of the logged-in user stay where they belong (their
   # keys come from their own :PSID) and are saved there, the new anonymous
   # user session gets a new cookie session and a fresh page session
-  $self->__discard_active_sessions();
+  $self->__discard_active_sessions( 'logout' );
   $self->__create_new_user_session();
 
   my $page_shr = $self->sc_add( $self->__ses->create( 'PAGE', $self->get_user_session_id(), 8 ) );

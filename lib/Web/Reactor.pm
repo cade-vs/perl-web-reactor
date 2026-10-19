@@ -518,15 +518,20 @@ sub __import_single_safe_entry
 #   - if the link data has FORM_ID (forms made by Web::Reactor::HTML::Form)
 #     the FORM_RET_MAP of that form is applied to the user input:
 #       NAME{ visible_name } = real_name -- the html element had a random
-#                                          name, it is renamed back in the
-#                                          user input
+#                                          name (select, datalist)
 #       DATA{ real_name }{ visible_value } = real_value -- the html element
-#                                          had stand-in values (combo,
-#                                          checkbox, etc.), the real value
-#                                          goes to the safe input and the
-#                                          name is removed from user input
-#     so the real names and values never reach the browser and cannot be
-#     forged
+#                                          had stand-in values (select,
+#                                          datalist, radio and hidden input
+#                                          with RET, KEY radios of a group
+#                                          with RET radios)
+#     every user input parameter whose name is in NAME or whose (real) name
+#     is in DATA is moved to the safe input under the real name and removed
+#     from the user input. its values are taken only from DATA, a value not
+#     found there becomes undef, so the real names and values never reach the
+#     browser and cannot be forged. several values of one real name (a
+#     repeated "@name", several visible names of one real name, or a value
+#     already in the safe input) are merged into "@real_name". parameters in
+#     neither map stay in the user input
 # args:
 #       link_sid -- LINK session id
 #       link_key -- key inside the LINK session ARGS
@@ -560,60 +565,45 @@ sub __import_hidden_safe_input
     {
     my ( $at, $bin ) = $in =~ /^(\@?)(.*)\z/;
 
+    next unless exists $rmn->{ $bin } or exists $rmd->{ $bin };
+
     # current input value
     my $iv = $user_input_hr->{ $in };
 
     # get real name from the map, if mapped
-    my $rn = exists $rmn->{ $bin } ? $rmn->{ $bin } : undef;
-    if( defined $rn )
-      {
-      # parameter name is remapped
-      my $arn = '@' . $rn; # array real name
-      if( $at )
-        {
-        # parameter already has multiple values, remap the values
-        $safe_input_hr->{ $arn } ||= [];
-        push @{ $safe_input_hr->{ $arn } }, map { $rmd->{ $rn }{ $_ } } @$iv;
-        }
-      else
-        {
-        # it is single remapped parameter but may lead to already existing array
-        my $rv = exists $rmd->{ $rn } ? $rmd->{ $rn }{ $iv } : undef;
+    my $rn = exists $rmn->{ $bin } ? $rmn->{ $bin } : $bin;
 
-        if( exists $safe_input_hr->{ $rn } )
-          {
-          # parameter already exists but with single value, convert to array
-          $safe_input_hr->{ $arn } ||= [];
-          push @{ $safe_input_hr->{ $arn } }, $safe_input_hr->{ $rn }, $rv;
-          delete $safe_input_hr->{ $rn };
-          }
-        elsif( exists $safe_input_hr->{ $arn } )
-          {
-          # array parameter exists, add the new value to it
-          push @{ $safe_input_hr->{ $arn } }, $rv;
-          }
-        else
-          {
-          # no safe parameter exists, neither as array nor single, create new single one
-          $safe_input_hr->{ $rn } = $rv;
-          }
-        }
-      delete $user_input_hr->{ $in };
-      }
-    elsif( exists $rmd->{ $bin } )
+    my $arn = '@' . $rn; # array real name
+    if( $at )
       {
-      # names are not remapped but values are
-      if( $at )
+      # parameter already has multiple values, remap the values
+      $safe_input_hr->{ $arn } ||= [];
+      push @{ $safe_input_hr->{ $arn } }, map { $rmd->{ $rn }{ $_ } } @$iv;
+      }
+    else
+      {
+      # it is single remapped parameter name or value but may lead to already existing array
+      my $rv = exists $rmd->{ $rn } ? $rmd->{ $rn }{ $iv } : undef;
+
+      if( exists $safe_input_hr->{ $rn } )
         {
-        # array of input name non-remapped parameter but with remapped values
-        @$iv = map { $rmd->{ $bin }{ $_ } } @$iv;
+        # parameter already exists but with single value, convert to array
+        $safe_input_hr->{ $arn } ||= [];
+        push @{ $safe_input_hr->{ $arn } }, $safe_input_hr->{ $rn }, $rv;
+        delete $safe_input_hr->{ $rn };
+        }
+      elsif( exists $safe_input_hr->{ $arn } )
+        {
+        # array parameter exists, add the new value to it
+        push @{ $safe_input_hr->{ $arn } }, $rv;
         }
       else
         {
-        # single value but may be remapped
-        $user_input_hr->{ $in } = $rmd->{ $bin }{ $iv };
+        # no safe parameter exists, neither as array nor single, create new single one
+        $safe_input_hr->{ $rn } = $rv;
         }
       }
+    delete $user_input_hr->{ $in };
     }
 
   return $safe_input_hr;

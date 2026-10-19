@@ -1779,6 +1779,52 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   is( $r2->get_input_form_name(), 'roundtrip', 'get_input_form_name() after a round trip' );
 }
 
+# the return map: everything mapped goes to the safe input, values only from
+# the map, several values of one real name are merged into "@NAME"
+{
+  my ( $s1, $s2, $sm, $hr, $end );
+  request( COOKIE => $COOKIE, HOOK => sub
+    {
+    my $reo = shift;
+    my $f = Web::Reactor::HTML::Form->new( $reo );
+    $f->begin( NAME => 'remap' );
+    $s1  = $f->select( NAME => 'x', DATA => [ { KEY => 'a', VALUE => 'A' } ] );
+    $s2  = $f->select( NAME => 'x', DATA => [ { KEY => 'b', VALUE => 'B' } ] );
+    $sm  = $f->select( NAME => 'm', MULTIPLE => 1, DATA => [ { KEY => 'p', VALUE => 'P' }, { KEY => 'q', VALUE => 'Q' } ] );
+    $hr  = $f->input( NAME => 'h', HIDDEN => 1, RET => 'HV' );
+    $end = $f->end();
+    } );
+  my ( $n1 ) = $s1 =~ /name='([^']+)'/;
+  my ( $n2 ) = $s2 =~ /name='([^']+)'/;
+  my ( $nm ) = $sm =~ /name='([^']+)'/;
+  my ( $hv ) = $hr =~ /value='([^']+)'/;
+  my ( $state ) = $end =~ /value='([^']+)'/;
+
+  my %seen;
+  for( 1 .. 5 )
+    {
+    my ( $r ) = request( COOKIE => $COOKIE, QS => "_=$state&$n1=a&$n2=b" );
+    $seen{ join( ',', @{ $r->get_safe_input()->{ '@X' } || [] } ) }++;
+    }
+  is_deeply( [ keys %seen ], [ 'A,B' ], 'two hidden names of one NAME are merged into @NAME, the same every time' );
+
+  my ( $r ) = request( COOKIE => $COOKIE, QS => "_=$state&$nm=p&$nm=q&H=$hv&other=1" );
+  my $si = $r->get_safe_input();
+  my $ui = $r->get_user_input();
+  is_deeply( $si->{ '@M' }, [ 'P', 'Q' ], 'a MULTIPLE select comes as @NAME with the real values' );
+  is( $si->{ 'H' }, 'HV', 'a hidden RET input with its real name comes in the safe input' );
+  ok( ! exists $ui->{ 'H' } && ! exists $ui->{ '@' . uc $nm }, 'mapped parameters are removed from the user input' );
+  is( $ui->{ 'OTHER' }, 1, 'parameters in neither map stay in the user input' );
+
+  ( $r ) = request( COOKIE => $COOKIE, QS => "_=$state&$nm=p&$nm=forged&H=forged" );
+  $si = $r->get_safe_input();
+  is_deeply( $si->{ '@M' }, [ 'P', undef ], 'a value not in the map becomes undef in a repeated name' );
+  ok( exists $si->{ 'H' } && ! defined $si->{ 'H' }, 'a value not in the map becomes undef, it cannot be forged' );
+
+  ( $r ) = request( COOKIE => $COOKIE, QS => "_=$state&X=a" );
+  is( $r->get_safe_input()->{ 'X' }, 'A', 'the real name posted directly still takes its value from the map' );
+}
+
 # a radio group with KEY and RET radios: the checked KEY radio arrives too
 {
   my ( $end, $state );

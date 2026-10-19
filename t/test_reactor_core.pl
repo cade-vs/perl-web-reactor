@@ -451,6 +451,11 @@ is( ref $c6, 'ARRAY', 'two cookies produce two set-cookie headers' );
 is( scalar @$c6, 2, 'both cookies are present' );
 like( join( ' ', @$c6 ), qr/\ba=1\b/,        'first cookie value'  );
 like( join( ' ', @$c6 ), qr/b=2.*HttpOnly/i, 'second cookie with attributes' );
+{
+  my $o6s = app( env() );
+  $o6s->res_set_cookie( $_, value => 1 ) for qw( k c h a e j b g d f i );
+  is( join( '', map { /^(\w+)=/ ? $1 : '?' } @{ hdrs( $o6s->res_get_headers_ar() )->{ 'set-cookie' } } ), 'abcdefghijk', 'set-cookie headers are sorted by cookie name' );
+}
 
 is( scalar @{ app( env() )->res_get_headers_ar() } % 2, 0, 'header arrayref is always even length' );
 }

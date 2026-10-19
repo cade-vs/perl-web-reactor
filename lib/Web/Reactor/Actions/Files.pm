@@ -43,7 +43,7 @@ sub __find_code_by_name
 
   my $dirs = $cfg->{ 'ACTIONS_DIRS' };
   $dirs = [ $dirs ] if ! ref( $dirs ) and $dirs; # a single directory, as LIB_DIRS and HTML_DIRS allow
-  $dirs = [ $cfg->{ 'APP_ROOT' } . '/actions' ] if ! $dirs or ! @$dirs; # nothing specified, the default
+  $dirs = [ $reo->get_app_root() . '/actions' ] if ! $dirs or ! @$dirs; # nothing specified, the default
   my $pkgs = $cfg->{ 'ACTIONS_PKGS' } || 'reactor::actions::';
 
   my $found;
@@ -82,7 +82,6 @@ sub __find_code_by_name
 
   if( ! $@ )
     {
-    $reo->log_debug( "load action ok: $ap [$found]" );
     # file loaded but declares no main() (or a different package than ACTIONS_PKGS expects)
     if( ! defined &{ "${ap}::main" } )
       {
@@ -90,6 +89,7 @@ sub __find_code_by_name
       $reo->log( "error: action file [$found] loaded but package [$ap] has no main() sub, check ACTIONS_PKGS" );
       return undef;
       }
+    $reo->log_debug( "load action ok: $ap [$found]" );
     my $code = $act_cache->{ $name } = \&{ "${ap}::main" }; # call/function reference
     return $code;
     }

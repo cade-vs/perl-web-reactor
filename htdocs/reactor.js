@@ -477,7 +477,11 @@ function reactor_hover_show_delay( el, hl_name, delay, event )
   if( reactor_hover_layer_timeout_id ) 
     clearTimeout( reactor_hover_layer_timeout_id );
 
-  reactor_hover_layer = q( hl_name );
+  // one hover layer at a time: a hint inside another hinted element hides the
+  // outer one, the hide on mouseout only knows the current layer
+  var hl = q( hl_name );
+  if( reactor_hover_layer && reactor_hover_layer !== hl ) reactor_hover_layer.style.display = "none";
+  reactor_hover_layer = hl;
   reactor_hover_layer_timeout_id = setTimeout( reactor_hover_activate, delay );
   if( event ) reactor_hover_reposition( event ); // without the event the layer goes where the mouse was last // cc20261019-1
   // listeners, not onmouse* properties: handlers set by the page (ATTRS) or by
@@ -571,12 +575,13 @@ function reactor_popup_mouse_over( el, opt )
     // a one-shot listener, not onmouseout: handlers set by the page (ATTRS)
     // or by a hover hint on the same element stay
     if( el.reactor_popup_out ) el.removeEventListener( 'mouseout', el.reactor_popup_out );
-    el.reactor_popup_out = function( ev )
+    var handle_out;
+    handle_out = el.reactor_popup_out = function( ev )
                     {
                     if( ! reactor_mouse_left( el, ev ) ) return; // moved onto a child of the handle
                     //console.log( "mouse out from main element, cancel open timeout, set close timeout" );
                     if( el.open_to ) clearTimeout( el.open_to );
-                    el.removeEventListener( 'mouseout', el.reactor_popup_out );
+                    el.removeEventListener( 'mouseout', handle_out );
                     el.reactor_popup_out = null;
                     el.close_to   = setTimeout( function() 
                                                 { 
@@ -597,6 +602,18 @@ function reactor_popup_mouse_over( el, opt )
                     popup_layer.reactor_popup_out  = function( ev ) // cc20261019-1
                                               { 
                                               if( ! reactor_mouse_left( popup_layer, ev ) ) return; // moved onto a child of the layer // cc20261019-1
+                                              if( ev && ev.relatedTarget && el.contains( ev.relatedTarget ) )
+                                                {
+                                                // back on the handle: no close timer, the popup stays open while
+                                                // the mouse is over the handle or the layer, leaving the handle
+                                                // starts the close timer again
+                                                if( ! el.reactor_popup_out )
+                                                  {
+                                                  el.reactor_popup_out = handle_out;
+                                                  el.addEventListener( 'mouseout', handle_out );
+                                                  }
+                                                return;
+                                                }
                                               //console.log( "mouse leave popup, set close timeout" );
                                               reactor_popup_clear_tos( el );
                                               el.close_to = setTimeout( function() 
@@ -759,8 +776,10 @@ function reactor_reposition_div_to_xy( div, x, y )
 
 function reactor_element_disable_on_click( el, timeout )
 {
-  if( get_utime() < el.is_disabled ) return false;
-  el.is_disabled = get_utime() + timeout;
+  // disabled until its own timer below enables it again: no clock compare,
+  // whole (rounded) seconds would let a click through before the timeout ends
+  if( el.is_disabled ) return false;
+  el.is_disabled = 1;
   var con  = el.dataset.classOn;
   var coff = el.dataset.classOff;
   reactor_class_swap( el, con, coff );

@@ -196,7 +196,7 @@ sub process_request
   # *** encrypting password input parameters *********************************
   # names matching $Web::Reactor::Core::RE_PASSWORD_PARAM_NAMES
 
-  $self->__encrypt_pass_input_parameters( $user_input_hr ) unless $self->cfg->{ 'DISABLE_PASSWORD_ENCRYPT' };
+  $self->__encrypt_pass_input_parameters( $user_input_hr ) unless $cfg->{ 'DISABLE_PASSWORD_ENCRYPT' };
 
   # *** loading page session *************************************************
 
@@ -204,7 +204,7 @@ sub process_request
   my $page_shr = $page_sid ? $self->__sc_load( 'PAGE', $page_sid, $user_sid ) : undef;
   if( ! $page_shr )
     {
-    $self->log_debug( "warning: invalid page session [$page_sid]" ) if $page_sid;
+    $self->log( "warning: invalid page session [$page_sid]" ) if $page_sid;
     $page_shr = $self->sc_add( $self->__ses->create( 'PAGE', $user_sid, 8 ) );
     $page_sid = $page_shr->{ ':SID' };
     $self->log( "status: new page session created [$page_sid]" );

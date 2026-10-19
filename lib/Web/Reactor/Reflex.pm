@@ -193,7 +193,7 @@ sub get_user_input_button
     next unless /^\@?BUTTON:([a-z0-9_\-]+)(:(.+?))?(\.[XY])?\z/oi;
 
     # return ( button, button_id )
-    return wantarray ? ( $1, $3 ) : $1
+    return wantarray ? ( $1, $3 ) : $1;
     }
 
   return ();
@@ -374,7 +374,7 @@ sub html_hold_kit_css
   my $self = shift;
   my $css = shift;
 
-  my $text = qq{ <link href="$css" rel="stylesheet" type="text/css"> };
+  my $text = "<link href='$css' rel='stylesheet' type='text/css'>";
   $self->html_hold_kit_add( "KIT_HEAD", $text );
 }
 

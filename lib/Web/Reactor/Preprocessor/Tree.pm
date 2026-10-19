@@ -231,7 +231,7 @@ sub process_single_pass
   # FIXME: cache here? probably not, because of the modules: action tags
   #        produce different output on each call
   $text =~ s/<([\$\&\#]|\$\$+|\&\&)([a-zA-Z_\-0-9]+)(:([a-zA-Z_\-0-9]+))?(\s*[^>]*)?>/$self->__process_tag( $pn, $1, $2, $4, $5, $opt, $ctx )/ge;
-  $text =~ s/reactor_((new|back|here|none)_)?(href|src)=(["'])?([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"'#]*)(#[a-z_0-9\.]+)?(\4)?/$self->__process_href( $2, $3, $5, $7, $8 )/gie;
+  $text =~ s/reactor_((new|back|here|none)_)?(href|src)=(["'])?([a-z_0-9]+\.([a-z]+)|\.\/?)?\?([^\n\r\s>"'#]*)(#[A-Za-z0-9\-._~!\$&()*+,;=:\@\/?%]*)?(\4)?/$self->__process_href( $2, $3, $5, $7, $8 )/gie; # the anchor: RFC 3986 fragment characters, without the quote (sec-1, a:b, ...)
 
 #print STDERR Dumper( 'PROCESS POST --- ' x 7, $pn, $text );
 

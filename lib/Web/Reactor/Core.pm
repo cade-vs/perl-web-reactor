@@ -450,7 +450,7 @@ sub res_get_headers_ar
     }
 
   my $cookies = $self->{ 'OUT' }{ 'COOKIES' } || {};
-  for my $k ( keys %$cookies )
+  for my $k ( sort keys %$cookies ) # sorted as the other headers, the same order every time
     {
     push @ho, 'set-cookie', $cookies->{ $k };
     }

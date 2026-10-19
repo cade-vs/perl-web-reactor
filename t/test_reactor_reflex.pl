@@ -458,6 +458,8 @@ is( body( req( get( '_an=title' ) ) ), 't=[My Title]', 'set_browser_window_title
   my ( $tok ) = $ol->pre->process( 'main', q{<a reactor_href="?a=1%26x&amp;b=c%20d">x</a>} ) =~ /\?_=~([^"'>\s]+)/;
   my $hr = $ol->cry->thaw_base64url( $tok ) || {};
   is( join( ',', map { "$_=$hr->{ $_ }" } sort keys %$hr ), 'A=1&x,B=c d', 'template link %xx escapes are values, &amp; separates' );
+  like( $ol->pre->process( 'main', q{<a reactor_href="?a=1#sec-1.b:c">x</a>} ), qr{<a href=\?_=~[^"'>\s#]+#sec-1\.b:c>x</a>}, 'a template link anchor may have "-" and ":", the attribute ends cleanly' );
+  like( $ol->pre->process( 'main', q{<a reactor_href="?a=1#a<b">x</a>} ), qr{#a<b}, 'a character outside the RFC 3986 fragment set ends the anchor' );
 }
 
 $r = req( get( '_an=nosuch' ) );
@@ -563,7 +565,7 @@ $o->html_hold_kit_css( 's.css' );
 my $head = $o->html_hold_get( 'kit_head' );
 is( scalar( () = $head =~ /a\.js/g ), 1, 'html_hold_kit_js() adds a script once' );
 like( $head, qr/<script[^>]*src='a\.js'/, 'script tag' );
-like( $head, qr/<link[^>]*href="s\.css"/, 'stylesheet tag' );
+like( $head, qr/<link href='s\.css' rel='stylesheet' type='text\/css'>/, 'stylesheet tag, written as the script tag: no padding, single quotes' );
 
 # clearing the hold drops the kit snippets too
 $o->html_hold_reset();
@@ -824,9 +826,10 @@ like( logs(), qr/load action failed.*Can't locate object method/, 'Files: a miss
 unlike( logs(), qr/a module it uses cannot be found/, 'Files: a missing class method is not a missing module' );
 
 # an action file without main() is cached for the request
-$o = app();
+$o = app( undef, { DEBUG => 1 } );
 eval { $o->act->call( 'nomainfile' ) } for 1 .. 2;
 is( scalar( () = logs() =~ /has no main\(\) sub/g ), 1, 'an action file without main() is logged once per request' );
+unlike( logs(), qr/load action ok: \S*nomainfile/, 'an action file without main() is not logged as loaded ok' );
 like( $@, qr/code for action name \[nomainfile\] not found or cannot be loaded/, 'call() says the action was not found or cannot be loaded' );
 
 # ACTIONS_DIRS as one directory, a missing action is logged once with the dirs

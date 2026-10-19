@@ -861,7 +861,9 @@ sub image_button_default
   my %opt = @_;
 
   # out of sight as the begin() DEFAULT_BUTTON, no browser detection # cc20261017-reo-optional
-  $opt{ 'ATTRS' } = { %{ $opt{ 'ATTRS' } || {} }, %DEFAULT_BUTTON_ATTRS };
+  # the caller's names are lower-cased first, so STYLE or TabIndex cannot win over the defaults
+  my %attrs = map { lc( $_ ) => $opt{ 'ATTRS' }{ $_ } } keys %{ $opt{ 'ATTRS' } || {} };
+  $opt{ 'ATTRS' } = { %attrs, %DEFAULT_BUTTON_ATTRS };
 
   return $self->image_button( %opt );
 }

@@ -63,8 +63,6 @@ function run_timers()
 }
 function pending_timers() { return __timers.length; }
 
-var navigator = { userAgent: "FakeBrowser/1.0" };
-
 // session storage, can be made to throw as a browser does when it is blocked
 var __storage = {};
 var __storage_blocked = false;
@@ -416,6 +414,20 @@ my $TESTS = <<'JS';
   t_ok( nothrow && hl.style.display == "block", 'reactor_hover_show() without the event shows the layer where the mouse was last' );
   fire( el, 'mouseout' );
 
+  // a hinted element inside another hinted element: one hint at a time
+  var ho = mk( 'DIV', 'HLO' ); ho.style.display = "none";
+  var hi = mk( 'DIV', 'HLI' ); hi.style.display = "none";
+  var eo = mk( 'TR', 'HEO' );
+  var ei = eo.appendChild( mk( 'TD', 'HEI' ) );
+  reactor_hover_show( eo, 'HLO', { clientX: 10, clientY: 10 } );
+  run_timers();
+  reactor_hover_show( ei, 'HLI', { clientX: 20, clientY: 10, relatedTarget: eo } );
+  run_timers();
+  t_is( ho.style.display + " " + hi.style.display, "none block", 'the inner hint hides the outer one' );
+  fire( ei, 'mouseout', { relatedTarget: eo } );
+  fire( eo, 'mouseout' );
+  t_is( ho.style.display + " " + hi.style.display, "none none", 'leaving both elements leaves no hint shown' );
+
   // a page handler (ATTRS) and a popup on the same element keep working
   var pp = mk( 'DIV', 'PP' ); pp.style.display = "none";
   var eh = mk( 'SPAN', 'EH', { popupLayerId: 'PP' } );
@@ -517,6 +529,19 @@ my $TESTS = <<'JS';
   run_timers();
   t_is( pb.style.display, "none", 'the popup closes after the timeout' );
 
+  // from the popup back onto its handle: it stays open, leaving the handle closes it
+  reactor_popup_mouse_over( eb, { click_open: 1, timeout: 100 } );
+  fire( eb, 'mouseout', { relatedTarget: pb } );
+  fire( pb, 'mouseover' );
+  fire( pb, 'mouseout', { relatedTarget: eb } );
+  t_is( pending_timers(), 0, 'moving from the popup back onto the handle starts no close timer' );
+  run_timers();
+  t_is( pb.style.display, "block", 'the popup stays open while the mouse is on the handle' );
+  fire( eb, 'mouseout', { relatedTarget: null } );
+  t_is( pending_timers(), 1, 'leaving the handle again starts the close timer' );
+  run_timers();
+  t_is( pb.style.display, "none", 'and the popup closes' );
+
   // moving inside the popup onto its own child does not start the close timer // cc20261019-1
   reactor_popup_mouse_over( eb, { click_open: 1, timeout: 100 } );
   fire( eb, 'mouseout' );
@@ -593,7 +618,6 @@ my $TESTS = <<'JS';
   t_is( pl.style.top, "1634px", 'the popup of a relative element is placed in page coordinates' );
   reactor_popup_hide( el );
   el.computed.position = "";
-  scroll_to( 0, 1000 );
 
   // an element in a container scrolled by 500, the document not scrolled
   scroll_to( 0, 0 );
@@ -642,6 +666,20 @@ my $TESTS = <<'JS';
   run_timers();
   t_ok( b.classList.contains( 'btn' ) && ! b.classList.contains( 'btn-off' ), 'the element is enabled again after the timeout' );
   t_is( b.is_disabled, 0, 'the disabled mark is cleared' );
+
+  // the clock does not decide, only the timer: a click when the rounded
+  // seconds say the timeout is over, but the timer has not run, is dropped
+  var real_utime = get_utime;
+  var now = 10;
+  get_utime = function() { return now; };
+  reactor_element_disable_on_click( b, 3 );
+  now = 13;
+  t_is( reactor_element_disable_on_click( b, 3 ), false, 'a click before the timer runs is dropped whatever the clock says' );
+  t_is( pending_timers(), 1, 'there is one enable timer' );
+  run_timers();
+  t_is( reactor_element_disable_on_click( b, 3 ), true, 'after the timer a click goes through again' );
+  run_timers();
+  get_utime = real_utime;
 }
 
 /*** ftree *****************************************************************/

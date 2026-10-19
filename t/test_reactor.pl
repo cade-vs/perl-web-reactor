@@ -631,6 +631,14 @@ my ( $COOKIE, $USID, $PSID );
   is( $r2->get_safe_input()->{ 'COLOUR' }, 'red', 'safe input arrives through the link session' );
   is( body( $res ), 'OTHER', 'requested page rendered' );
 
+  # a link to a page session which does not exist gets a new one, logged at DEBUG 0
+  my $bad;
+  request( COOKIE => $COOKIE, HOOK => sub { $bad = $_[0]->args( _P => 'NoSuchPageSid1' ) } );
+  my $mark = scalar @LOG;
+  my ( $r4 ) = request( COOKIE => $COOKIE, QS => "_=$bad", CFG => { DEBUG => 0 } );
+  isnt( $r4->get_page_session_id(), 'NoSuchPageSid1', 'a missing page session gets a new one' );
+  ok( log_since( $mark, qr/warning: invalid page session \[NoSuchPageSid1\]/ ), 'the invalid page session is logged also at DEBUG 0' );
+
   # the same link without the cookie does not resolve
   my ( $r3, $res3 ) = request( QS => "_=$link" );
   is_deeply( $r3->get_safe_input(), {}, 'a link does not resolve under another cookie session' );
@@ -1928,6 +1936,9 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( $f->input( NAME => 'd', DATALIST => [ { KEY => '*', VALUE => 9, LABEL => 'Nine' } ] ), qr/data-key='9'/, 'Form without a reactor: datalist keys are the values' );
   unlike( $f->button( NAME => 'b', VALUE => 'x', HINT => 'h' ), qr/onmouseover/, 'Form without a reactor: no hint' );
   like( $f->image_button_default( NAME => 'def', SRC => 'e.png' ), qr/tabindex='-1'/, 'image_button_default() is out of sight, no browser detection' );
+  my $ibd = $f->image_button_default( NAME => 'def', SRC => 'e.png', ATTRS => { STYLE => 'color: red', TabIndex => 3, title => 't' } );
+  ok( $ibd =~ /style='position: absolute;/ && $ibd =~ /tabindex='-1'/ && $ibd !~ /color: red/, 'image_button_default() keeps out of sight whatever the case of the caller ATTRS names' );
+  like( $ibd, qr/title='t'/, 'image_button_default() keeps the other caller ATTRS' );
   $f->state( A => 1 );
   my $e = $f->end();
   unlike( $e, qr/name='_'/, 'Form without a reactor: no state keeper' );

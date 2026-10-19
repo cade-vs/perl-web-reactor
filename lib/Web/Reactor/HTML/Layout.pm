@@ -55,15 +55,15 @@ DEMO:
 
   push @data, [
               '123',
-              { ARGS => 'align=right', DATA => 'asd' },
+              { ARGS => "style='text-align: right'", DATA => 'asd' },
               'qwe'
               ];
   push @data, {
                 CLASS => 'grid',
                 DATA => [
                         '123',
-                        { ARGS  => 'align=center', DATA => 'asd' },
-                        { CLASS => 'fmt-img',      DATA => 'qwe' },
+                        { ARGS  => "style='text-align: center'", DATA => 'asd' },
+                        { CLASS => 'fmt-img',                     DATA => 'qwe' },
                         ],
               };
   push @data, {
@@ -86,7 +86,7 @@ DEMO:
               DATA         => [ { WIDTH => '20%', DATA => 'w' } ], # cell width attribute
               };
 
-  $text .= html_table( \@data, ARGS => 'width=100%' );
+  $text .= html_table( \@data, ARGS => "style='width: 100%'" );
 
 table options:
 
@@ -293,8 +293,8 @@ sub __css_size
 {
   my $size = shift;
 
-  return "${size}px" if $size =~ /^\d+(\.\d+)?$/;
-  return $size       if $size =~ /^\d+(\.\d+)?(%|px|em|rem)$/;
+  return "${size}px" if $size =~ /^\d+(\.\d+)?\z/;
+  return $size       if $size =~ /^\d+(\.\d+)?(%|px|em|rem)\z/;
   boom "invalid width [$size], expected a number with an optional %, px, em or rem";
 }
 
@@ -381,7 +381,7 @@ sub html_layout_hbox_flex
     {
     my $data = shift @data;
     my $flex = shift @opt; # cc20261017-2 0 is a valid weight
-    $flex = 1 unless $flex =~ /^\s*\d+(\.\d+)?\s*$/; # cc20261017-2 a number only, it goes into the style
+    $flex = 1 unless $flex =~ /^\s*\d+(\.\d+)?\s*\z/; # cc20261017-2 a number only, it goes into the style
     $flex =~ s/\s+//g;
     $text .= "<div style='flex:$flex; padding: 1em'>$data</div>";
     }
@@ -417,9 +417,10 @@ format is: 'left-spec=right-spec'
 left-spec  is formatting for the left data.
 right-spec is formatting for the right data.
 
-both specs are:
+the left spec is align-symbol . width-len%, the right spec is
+width-len% . align-symbol (the align symbols are on the outer sides):
 
-align-symbol . width-len%
+[<>]nn%=nn%[<>]
 
 examples:
 
@@ -439,7 +440,7 @@ sub __2lr_format
 {
   my $fm = shift;
 
-  $fm =~ /^([<>]?)((\d+)%?)?=(=)?((\d+)%?)?([<>]?)$/ or boom "invalid format [$fm]";
+  $fm =~ /^([<>]?)((\d+)%?)?=(=)?((\d+)%?)?([<>]?)\z/ or boom "invalid format [$fm]";
   my ( $la, $lw, $nw, $rw, $ra ) = ( $1, $3, $4, $6, $7 );
   boom "invalid format [$fm], a width cannot be over 100%" if $lw > 100 or $rw > 100; # cc20261017-2 the other side would be negative
 

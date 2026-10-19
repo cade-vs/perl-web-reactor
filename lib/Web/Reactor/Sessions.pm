@@ -51,7 +51,8 @@ our %SESSION_TYPES = (
 #               LINK), undef for the rest
 #       len  -- session id length (optional, default SESS_LENGTH config or 73)
 #       sid  -- fixed session id (optional, i.e. a HOLD session of a user),
-#               instead of a new random one, len is not used then
+#               instead of a new random one, len is not used then (a
+#               given len is still checked)
 # returns:
 #       new session hashref with :TYPE, :SID and :PSID set, undef if a fixed
 #       sid exists already, booms on failure
@@ -78,7 +79,8 @@ sub create
     my $rc = $self->_storage_create( $key, $shr );
     return $shr  if $rc;
     return undef if defined $rc; # exists, i.e. another request created it meanwhile
-    $self->_storage_delete( $key );
+    # undef: the storage removed its own partial session, a delete here could
+    # hit an existing one (the error may come before anything was created)
     boom "Web::Reactor::Sessions::create: storage error creating session type [$type] fixed sid [$fsid], key [@$key], " . $self->_storage_debug_info();
     }
 
@@ -96,7 +98,6 @@ sub create
     my $rc = $self->_storage_create( $key, $shr );
     return $shr if $rc;
     next if defined $rc;
-    $self->_storage_delete( $key );
     boom "Web::Reactor::Sessions::create: storage error creating session type [$type] parent sid [$psid], key [@$key], " . $self->_storage_debug_info();
     }
 
@@ -122,7 +123,9 @@ sub load
 
   my $shr = $self->_storage_load( $key ) or return undef;
 
-  $shr->{ ':CLOSED' } = 1 if $self->_storage_is_closed( $key ); # the close mark wins over the data, see close()
+  # the close mark and its close fields win over the data, see close(), a mark
+  # without fields still closes
+  $shr->{ ':CLOSED' } = 1 if $self->_storage_is_closed( $key, $shr );
 
   return $shr;
 }
@@ -151,9 +154,13 @@ sub save
 
 # closes a session for good: the close fields (and :CLOSED = 1) are set in shr
 # and saved with the session data as its last save, then the storage sets the
-# close mark, apart from the session data. every later load() has :CLOSED,
-# every later save() is refused, so no save of any request can undo it. the
-# first close stays: a second one cannot save its fields and does nothing
+# close mark, apart from the session data, with a copy of the close fields (a
+# stale save between the two would overwrite them in the data, the mark keeps
+# them, see _storage_is_closed()). every later load() gets :CLOSED and the
+# close fields of the mark over the data, every later save() is refused, so no
+# save of any request can undo it. the first close stays: a second one cannot
+# save its fields and leaves the stored session and its mark as they are, only
+# the in-memory shr gets its fields
 # args:
 #       shr    -- session hashref, as returned by create() or load()
 #       fields -- close fields, i.e. ':ETIME' => time(), ':CLOSE_REASON' => 'logout'
@@ -172,7 +179,7 @@ sub close
   @$shr{ keys %fields } = values %fields;
   $self->_storage_save( $key, $shr ); # the last save, 0 if closed before
 
-  return $self->_storage_close( $key );
+  return $self->_storage_close( $key, \%fields );
 }
 
 # deletes a session from the storage
@@ -225,7 +232,9 @@ sub __shr_to_key
 # create new session storage indexed by the given key components
 # it is important that this function try to do atomic create in the storage.
 # it must (and expected to) fail if session with the same key exists and never
-# overwrite existing session storage!
+# overwrite existing session storage! on an error after the session was
+# created (i.e. writing its data) it removes that partial session itself,
+# never one it did not create
 # args:
 #       key  -- key components array reference, from compose_key_from_sid():
 #               [ TYPE, SID ] or, for types with a parent, [ TYPE, PSID, SID ]
@@ -238,14 +247,15 @@ sub _storage_create { boom "Web::Reactor::Sessions::*::_storage_create() is not 
 # args:
 #       key  -- key components array reference, see _storage_create()
 # returns:
-#       1 if deleted or already missing, undef if failed
+#       1 if deleted or already missing, undef if failed. the close mark of the
+#       session (see _storage_close()) must go with it
 sub _storage_delete   { boom "Web::Reactor::Sessions::*::_storage_delete() is not implemented!"; }
 
 # loads session data from the storage
 # args:
 #       key  -- key components array reference, see _storage_create()
 # returns:
-#       hashref of session data or undef if error
+#       hashref of session data or undef if missing or on error
 sub _storage_load   { boom "Web::Reactor::Sessions::*::_storage_load() is not implemented!"; }
 
 # saves session data to the storage, see save(): a closed session or one
@@ -263,17 +273,21 @@ sub _storage_save   { boom "Web::Reactor::Sessions::*::_storage_save() is not im
 
 # marks the session closed for good, apart from the session data, see close()
 # args:
-#       key  -- key components array reference, see _storage_create()
+#       key    -- key components array reference, see _storage_create()
+#       fields -- hashref of the close fields, kept with the close mark (optional)
 # returns:
-#       1 if closed (also if closed before, the first close stays), undef on
-#       storage error
+#       1 if closed (also if closed before, the first close and its fields
+#       stay), undef on storage error
 sub _storage_close  { boom "Web::Reactor::Sessions::*::_storage_close() is not implemented!"; }
 
 # checks the close mark, see close()
 # args:
 #       key  -- key components array reference, see _storage_create()
+#       hr   -- hashref, gets the close fields kept with the close mark
+#               (optional, nothing is read without it)
 # returns:
-#       1 if session is closed, undef if not
+#       undef if the session is not closed, else hr with the close fields (as
+#       many as could be read, none for a mark without fields) or 1 without hr
 sub _storage_is_closed { boom "Web::Reactor::Sessions::*::_storage_is_closed() is not implemented!"; }
 
 # checks if session exists in the storage

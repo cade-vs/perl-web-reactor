@@ -34,7 +34,8 @@ sub get_min_ses_id_len { return $MIN_SES_ID_LEN; }
 # create new session storage indexed by the given key components
 # it is important that this function try to do atomic create in the storage.
 # it must (and expected to) fail if session with the same key exists and never
-# overwrite existing session storage!
+# overwrite existing session storage! a file it created but could not write
+# is removed here, see Sessions::_storage_create()
 # args:
 #       key  -- key components array reference, from compose_key_from_sid():
 #               [ TYPE, SID ] or, for types with a parent, [ TYPE, PSID, SID ]
@@ -52,10 +53,10 @@ sub _storage_create
   if( sysopen $F, $fn, O_CREAT | O_EXCL | O_WRONLY, 0600 )
     {
     my $j = hash2json( $shr );
-    return undef unless $j;
-    return undef unless print $F $j;
-    return undef unless close $F;
-    return 1;
+    return 1 if $j and print( $F $j ) and close( $F );
+    close( $F );
+    unlink( $fn ); # only the file created here, a partial session
+    return undef;
     }
   else
     {
@@ -67,7 +68,7 @@ sub _storage_create
 # args:
 #       key  -- key components array reference, see _storage_create()
 # returns:
-#       hashref of session data or undef if error
+#       hashref of session data or undef if missing, not readable or on error
 sub _storage_load
 {
   my $self = shift;
@@ -127,40 +128,54 @@ sub _storage_save
   return undef;
 }
 
-# marks the session closed for good: a separate empty close mark file next to
-# the session file, a save never touches it
+# marks the session closed for good: a separate close mark file next to the
+# session file, with the close fields as json, a save never touches it
 # args:
-#       key  -- key components array reference, see _storage_create()
+#       key    -- key components array reference, see _storage_create()
+#       fields -- hashref of the close fields (optional, an empty mark without)
 # returns:
 #       1 if closed (also if it was closed before, the first close mark stays),
 #       undef on storage error
 sub _storage_close
 {
-  my $self = shift;
-  my $key  = shift;
+  my $self   = shift;
+  my $key    = shift;
+  my $fields = shift;
 
-  my $fn = $self->__closed_fn( {}, @$key );
+  my $fn = $self->_key_to_fn_closed( {}, @$key );
   my $F;
-  return close( $F ) ? 1 : undef if sysopen $F, $fn, O_CREAT | O_EXCL | O_WRONLY, 0600;
+  if( sysopen $F, $fn, O_CREAT | O_EXCL | O_WRONLY, 0600 )
+    {
+    my $j = $fields ? hash2json( $fields ) : '';
+    return ( defined $j and print( $F $j ) and close( $F ) ) ? 1 : undef; # a mark without its fields still closes
+    }
   return $!{EEXIST} ? 1 : undef; # closed before, the first close stays
 }
 
-# checks the close mark, see Sessions::close()
+# checks the close mark, see Sessions::close() and Sessions::_storage_is_closed()
 # args:
 #       key  -- key components array reference, see _storage_create()
+#       hr   -- hashref, gets the close fields of the close mark (optional)
 # returns:
-#       1 if session is closed, undef if not
+#       undef if not closed, else hr (with the fields which could be read) or
+#       1 without hr
 sub _storage_is_closed
 {
   my $self = shift;
   my $key  = shift;
+  my $hr   = shift;
 
-  my $fn = $self->__closed_fn( { READONLY => 1 }, @$key );
-  return -e $fn;
+  my $fn = $self->_key_to_fn_closed( { READONLY => 1 }, @$key );
+  return undef unless -e $fn;
+  return 1 unless $hr;
+
+  my $data = -s $fn ? eval { hash_load_json( $fn ) } : undef; # an empty or unreadable mark still closes
+  @$hr{ keys %$data } = values %$data if $data;
+  return $hr;
 }
 
 # the close mark file name, the session file name with .closed
-sub __closed_fn
+sub _key_to_fn_closed
 {
   my $self = shift;
 
@@ -172,19 +187,25 @@ sub __closed_fn
 # args:
 #       key  -- key components array reference, see _storage_create()
 # returns:
-#       1 if deleted or it did not exist, undef if failed
+#       1 if deleted or it did not exist, undef if failed. the session file goes
+#       first, then its close mark: if the session cannot be deleted, it keeps
+#       its mark and stays closed
 sub _storage_delete
 {
   my $self = shift;
   my $key  = shift;
 
-  my $fn = $self->_key_to_fn( { READONLY => 1 }, @$key );
+  my $fn  = $self->_key_to_fn( { READONLY => 1 }, @$key );
+  my $cfn = $self->_key_to_fn_closed( { READONLY => 1 }, @$key );
 
-  unlink( $self->__closed_fn( { READONLY => 1 }, @$key ) ); # the close mark goes with the session
-  return 1 if unlink( $fn ) or ! -e $fn;
+  for my $f ( $fn, $cfn ) # the close mark goes with the session
+    {
+    next if unlink( $f ) or ! -e $f;
+    $self->reo()->log( "error: cannot delete session file: $f ($!)" );
+    return undef;
+    }
 
-  $self->reo()->log( "error: cannot delete session file: $fn ($!)" );
-  return undef;
+  return 1;
 }
 
 # checks if session exists in the storage
@@ -262,7 +283,7 @@ sub _key_to_fn
   my @key  = @_;
 
   my $r = shift @key; # this should be type
-  boom "invalid key component 0, needs ALPHA type, got [$r]" unless $r =~ /^[A-Z]+$/;
+  boom "invalid key component 0, needs ALPHA type, got [$r]" unless $r =~ /^[A-Z]+\z/;
 
   my $cfg = $self->cfg();
 
@@ -284,7 +305,7 @@ sub _key_to_fn
 
   my $fn  = $vd . '/' . $r; # session file name without extension
   my $dir = $fn;
-  $dir =~ s/\/[^\/]*$//;
+  $dir =~ s/\/[^\/]*\z//;
   dir_path_ensure( $dir ) unless $opt->{ 'READONLY' };
 
   return $fn . '.wrs2';

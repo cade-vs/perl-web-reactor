@@ -82,7 +82,7 @@ sub __find_code_by_name
 
   if( ! $@ )
     {
-    $reo->log_debug( "status: load action ok: $ap [$found]" );
+    $reo->log_debug( "load action ok: $ap [$found]" );
     # file loaded but declares no main() (or a different package than ACTIONS_PKGS expects)
     if( ! defined &{ "${ap}::main" } )
       {

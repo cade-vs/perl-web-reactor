@@ -71,7 +71,7 @@ sub new
 
 ### FUNC PLUGS ###############################################################
 
-# the session object is internal to Reactor, it is just a storage implementation (create, load, save, delete),
+# the session object is internal to Reactor, it is just a storage implementation (create, load, save, close, delete),
 # the session state cache and all visible API are inside Reactor, see SESSION STATE & CACHE.
 sub __ses
 {
@@ -120,7 +120,8 @@ sub process_request
   $cookie_sid = __input_sid_check( $self->get_cookie( $cookie_name ) );
   $self->log_debug( "debug: incoming COOKIE SESSION cookie name [$cookie_name] cookie sid [$cookie_sid]" );
 
-  # a closed cookie session (logout, login rotation, stale) reaches nothing
+  # a closed cookie session (login rotation, logout, expired, invalid, stale)
+  # reaches nothing
   if( $cookie_sid and $cookie_shr = $self->__sc_load( 'COOK', $cookie_sid ) and ! $cookie_shr->{ ':CLOSED' } )
     {
     $self->__set_cookie_session( $cookie_shr );
@@ -284,15 +285,17 @@ sub process_request
 ##   COOK session:
 ##     - created with create( 'COOK' ) (73 chars id), holds :USER_SID and
 ##       :CTIME, tracked and saved like the other sessions
-##     - deleted when a new cookie replaces it (login, logout, expired,
-##       einvalid, stale), a failed delete is only logged
+##     - closed (close mark, with the reason) when a new cookie replaces it
+##       (login, logout, expired, invalid, stale), never deleted, a failed
+##       close is only logged
 ##
 ##   user session:
 ##     - :COOKIE_SID holds the current COOK session id, a cookie whose COOK
 ##       session points to a user session with a different :COOKIE_SID is
-##       rejected (guards a failed delete and login races)
+##       rejected (guards a failed close and login races)
 ##     - :COOKIE_SID_HISTORY keeps every COOK session id linked to it, with
-##       time and reason (new, login), for audits, since COOK files are deleted
+##       time and reason (new, login), for audits: all COOK sessions of a user
+##       session in one place (the closed COOK files stay, with their marks)
 ##
 ##   connect: cookie -> COOK session -> :USER_SID -> user session, check
 ##            :COOKIE_SID, then the usual :XTIME, :CLOSED and :HTTP_CHECK_HR
@@ -321,8 +324,9 @@ sub process_request
 ##       session, so both the PAGE and the LINK namespaces are new
 ##     - HOLD stays, it is keyed by the login ident
 ##
-##   expired or einvalid user session: close it and the COOK session,
-##            create a new user session and a new COOK session.
+##   expired or invalid user session (eexpired/einvalid page): close it and
+##            the COOK session, create a new user session and a new COOK
+##            session.
 ##
 ##   parallel requests: an in-flight request with the old cookie after login
 ##            gets a new anonymous session and may overwrite the login cookie.
@@ -337,7 +341,7 @@ sub process_request
 
 sub __input_sid_check
 {
-  return $_[0] =~ /^[a-zA-Z0-9_]+$/ ? $_[0] : undef;
+  return $_[0] =~ /^[a-zA-Z0-9_]+\z/ ? $_[0] : undef;
 }
 
 sub __create_new_cookie_session
@@ -410,8 +414,8 @@ sub __create_new_user_session
 }
 
 # links a cookie session and a user session both ways and records the cookie
-# session id in the user session history, COOK files are deleted when replaced
-# so the history is the only audit trail of the cookies of a user session
+# session id in the user session history, the audit trail of all cookies of a
+# user session in one place (replaced COOK sessions are closed and stay)
 sub __link_cookie_session
 {
   my $self       = shift;
@@ -500,9 +504,10 @@ sub __import_single_safe_entry
   my $self = shift;
   my $z    = shift;
 
-  return $self->__import_hidden_safe_input( $1, $2  ) if $z =~ /^([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)$/;
+  return $self->__import_hidden_safe_input( $1, $2  ) if $z =~ /^([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\z/;
   return $self->SUPER::__import_single_safe_entry( $z );
 }
+
 
 # resolves a hidden "sid.key" token to the link data stored by args():
 #   - the LINK session is loaded under the active cookie session, so tokens
@@ -534,48 +539,84 @@ sub __import_hidden_safe_input
   my $link_sid = shift;
   my $link_key = shift;
 
-  my %safe_input_hr;
-
   my $cookie_shr      = $self->get_cookie_session() or return {};
   my $link_session_hr = $self->__sc_load( 'LINK', $link_sid, $cookie_shr->{ ':SID' } ) or return {};
   my $ldhr = $link_session_hr->{ 'ARGS' }{ $link_key } or return {}; # link data hashref
   # a deep copy: the safe input must not share nested values with the link
   # data, or a change of the request would be saved back into the link and
   # every later click on it would see the changed data
-  %safe_input_hr = %{ dclone( $ldhr ) };
+  my $safe_input_hr = dclone( $ldhr );
 
   # remap incoming parameter names and values, hidden by the FORMs engine
-  my $form_id = $safe_input_hr{ 'FORM_ID' }; # FIXME: replace with _FRI
-  if( $form_id and exists $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id } )
-    {
-    my $rmn = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'NAME' }; # return map names
-    my $rmd = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'DATA' }; # return map data
+  my $form_id = $safe_input_hr->{ 'FORM_ID' }; # FIXME: replace with _FRI
+  return $safe_input_hr unless $form_id and exists $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id };
 
-    my $user_input_hr = $self->get_user_input();
-    # remap input data
-    for my $n ( keys %$user_input_hr )
+  my $rmn = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'NAME' }; # return map names
+  my $rmd = $link_session_hr->{ 'FORM_RET_MAP' }{ $form_id }{ 'DATA' }; # return map data
+
+  my $user_input_hr = $self->get_user_input();
+  # remap input data
+  for my $in ( sort keys %$user_input_hr )
+    {
+    my ( $at, $bin ) = $in =~ /^(\@?)(.*)\z/;
+
+    # current input value
+    my $iv = $user_input_hr->{ $in };
+
+    # get real name from the map, if mapped
+    my $rn = exists $rmn->{ $bin } ? $rmn->{ $bin } : undef;
+    if( defined $rn )
       {
-      # repeated parameters (multiple select, etc.) come as "@NAME" with an array of values
-      my ( $at, $bn ) = $n =~ /^(\@?)(.*)$/s;
-      my $rn = exists $rmn->{ $bn } ? $rmn->{ $bn } : $bn; # real name
-      my $nn = $at . $rn;
-      if( $nn ne $n )
+      # parameter name is remapped
+      my $arn = '@' . $rn; # array real name
+      if( $at )
         {
-        # remap names
-        $user_input_hr->{ $nn } = $user_input_hr->{ $n };
-        delete $user_input_hr->{ $n };
+        # parameter already has multiple values, remap the values
+        $safe_input_hr->{ $arn } ||= [];
+        push @{ $safe_input_hr->{ $arn } }, map { $rmd->{ $rn }{ $_ } } @$iv;
         }
-      if( exists $rmd->{ $rn } )
+      else
         {
-        # remap values
-        my $v = $user_input_hr->{ $nn };
-        $safe_input_hr{ $nn } = $at ? [ map { $rmd->{ $rn }{ $_ } } @$v ] : $rmd->{ $rn }{ $v };
-        delete $user_input_hr->{ $nn };
+        # it is single remapped parameter but may lead to already existing array
+        my $rv = exists $rmd->{ $rn } ? $rmd->{ $rn }{ $iv } : undef;
+
+        if( exists $safe_input_hr->{ $rn } )
+          {
+          # parameter already exists but with single value, convert to array
+          $safe_input_hr->{ $arn } ||= [];
+          push @{ $safe_input_hr->{ $arn } }, $safe_input_hr->{ $rn }, $rv;
+          delete $safe_input_hr->{ $rn };
+          }
+        elsif( exists $safe_input_hr->{ $arn } )
+          {
+          # array parameter exists, add the new value to it
+          push @{ $safe_input_hr->{ $arn } }, $rv;
+          }
+        else
+          {
+          # no safe parameter exists, neither as array nor single, create new single one
+          $safe_input_hr->{ $rn } = $rv;
+          }
+        }
+      delete $user_input_hr->{ $in };
+      }
+    elsif( exists $rmd->{ $bin } )
+      {
+      # names are not remapped but values are
+      if( $at )
+        {
+        # array of input name non-remapped parameter but with remapped values
+        @$iv = map { $rmd->{ $bin }{ $_ } } @$iv;
+        }
+      else
+        {
+        # single value but may be remapped
+        $user_input_hr->{ $in } = $rmd->{ $bin }{ $iv };
         }
       }
     }
 
-  return \%safe_input_hr;
+  return $safe_input_hr;
 }
 
 
@@ -733,8 +774,6 @@ sub __sc_close
   my $shr    = shift;
   my %fields = ( ':ETIME' => time(), ':ETIME_STR' => scalar localtime(), @_ ); # the close time, the caller may give its own
 
-  @$shr{ keys %fields } = values %fields;
-
   defined eval { $self->__ses->close( $shr, %fields ) } or $self->log( "error: cannot close session [$shr->{ ':TYPE' }:$shr->{ ':SID' }]" . ( $@ ? " ($@)" : '' ) );
   $self->sc_remove( $shr );
 }
@@ -889,8 +928,6 @@ sub get_top_page_session_id
 
   return $shr->{ ':TOP_PAGE_SID' };
 }
-
-##############################################################################
 
 ##############################################################################
 #
@@ -1158,7 +1195,7 @@ sub forward_new_action
 sub __param
 {
   my $self = shift;
-  my $save = shift; # 0 not save, 1 save in cache, 2 save in cache and page session (ps)
+  my $save = shift; # 0 not save, 1 save in the page session cache (SAVE_SAFE_INPUT/SAVE_USER_INPUT), 2 also as top-level page session keys ($ps->{ $p })
   my $safe = shift; # 0 user (unsafe) input, 1 safe input
 
   my $input_hr;
@@ -1631,12 +1668,14 @@ Web::Reactor can encrypt sensitive data with ChaCha20-Poly1305, see cry()
 and argsx().
 See CRYPTOGRAPHY section below.
 
-=head2 Password Encryption (Optional)
+=head2 Password Encryption
 
 Data such as passwords can be encrypted with an RSA public key through rsa().
 Configure RSA_PUB_KEY with the name of the public key PEM file.
 
-=begin comment
+Password input encryption is on by default: without RSA_PUB_KEY a request
+with a non-empty password parameter fails, unless DISABLE_PASSWORD_ENCRYPT is
+set.
 
 Web::Reactor, and not Web::Reactor::Reflex or Web::Reactor::Core, also
 encrypts password input by itself: the value of every user input parameter
@@ -1652,8 +1691,6 @@ supported: it is dropped and logged. A request with a non-empty password
 parameter booms when RSA_PUB_KEY is not configured or its file cannot be read,
 unless DISABLE_PASSWORD_ENCRYPT is set, which leaves all user input as it
 arrives.
-
-=end comment
 
 =head2 Content Security Policy (Optional)
 
@@ -1722,8 +1759,6 @@ Action module example, file APP_ROOT/actions/test.pm (see ACTIONS below):
     $text .= "<input type=submit name=button:form_ok>";
     $text .= "<input type=submit name=button:form_cancel>";
     $text .= "</form>";
-
-    my $form = $reo->new_form();
 
     $text .= "<p><hr><p>";
 
@@ -1945,7 +1980,7 @@ Upon creation, Web::Reactor instance gets hash with config entries/keys.
   HTML_DIRS                 -- HTML template dirs, each with <lang>/ and default/
                                subdirs (default: ["$APP_ROOT/html"])
   SESS_VAR_DIR              -- Session storage dir (default: "$APP_ROOT/var")
-  SESS_LENGTH               -- USER and COOK session id length, min 8 (default: 73),
+  SESS_LENGTH               -- USER and COOK session id length, min 4 (default: 73),
                                PAGE and LINK session ids are always 8
   SESS_LETTERS              -- session id and link key characters, only A-Z a-z 0-9 and _
                                (default: A-Z a-z 0-9)
@@ -2123,15 +2158,12 @@ a LINK session instead. Both arrive the same way in get_safe_input().
   my $ctext = $rsa->encrypt_base64url( $secret ); # only the private key decrypts
   my $ok    = $rsa->verify_base64url( $message, $signature );
 
-=begin comment
-
 rsa() booms if RSA_PUB_KEY is not configured or its file cannot be read. The
 file is read once per reactor object, on the first rsa() call. The reactor
 holds only the public key, decrypting with the private key belongs to the
 backend. User input parameters named PASS* or containing PASSWORD arrive
-encrypted this way, see Password Encryption above.
-
-=end comment
+encrypted with the same key as hex text (encrypt_hex()), see Password
+Encryption above.
 
 =head2 Security Considerations
 
@@ -2194,8 +2226,18 @@ Extend by subclassing Web::Reactor::Sessions to use different storage backends
   _storage_create( $key, $shr ) -- atomic create, 1 created, 0 id exists,
                                    undef on error, never overwrites
   _storage_load( $key )         -- session hashref or undef
-  _storage_save( $key, $shr )   -- true if saved
-  _storage_delete( $key )       -- true if deleted or missing
+  _storage_save( $key, $shr )   -- 1 if saved, 0 if refused because the session
+                                   is closed or missing (never creates), undef
+                                   on error
+  _storage_close( $key, $fields )
+                                -- set the close mark (once, the first stays),
+                                   keeping the $fields hashref with it, 1 if
+                                   closed (or closed before), undef on error
+  _storage_is_closed( $key [, $hr] )
+                                -- undef if not closed, else 1, or $hr filled
+                                   with the close fields of the mark
+  _storage_delete( $key )       -- true if deleted or missing, removes the
+                                   close mark too
   _storage_exists( $key )       -- true if exists
   _storage_debug_info()         -- storage description for error messages
 
@@ -2317,11 +2359,13 @@ When deploying Web::Reactor applications:
 
 1. User input is never automatically trusted
 
-2. Always use get_safe_input() for form data, not get_user_input()
+2. Take mapped values (links, select, checkbox, radio, hidden RET inputs) from
+   get_safe_input(), they cannot be changed by the client. Typed text fields
+   arrive only in get_user_input() and must be validated
 
 3. Implement application-level validation in action modules:
 
-   if ( $reo->param('amount') < 0 ) {
+   if ( $reo->param_unsafe('amount') < 0 ) { # a typed field, user input
      $reo->log("error: negative amount not allowed");
      return $reo->render_page( 'error_invalid' );
    }

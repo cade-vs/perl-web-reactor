@@ -507,7 +507,7 @@ sub __import_user_input
 
   # check valid params names and preprocess multiple values
   # import plain parameters from GET/POST request
-  PARAM_LOOP: for my $n ( sort keys %$params ) # cc20261018-1
+  for my $n ( sort keys %$params ) # cc20261018-1
     {
     unless( $self->__input_param_name_check( $n ) )
       {
@@ -518,14 +518,17 @@ sub __import_user_input
     my @v = $params->get_all( $n );
     my $un = uc $n; # FIXME: option? uc/lc/asis # cc20261018-1
 
-    for( my $vi = 0; $vi < @v; $vi++ )
+    # an invalid value is dropped alone, for general safety, the other values
+    # of the parameter stay
+    my @ok;
+    for my $v ( @v )
       {
-      # ignore the whole array if any value is invalid
-      next PARAM_LOOP if $self->__input_param_invalid_value( $un, $v[$vi] ); # cc20261018-1
-      $v[$vi] = $self->__input_param_make_safe_value( $un, decode( 'UTF-8', $v[$vi] ) ); # cc20261018-1
+      next if $self->__input_param_invalid_value( $un, $v ); # cc20261018-1
+      push @ok, $self->__input_param_make_safe_value( $un, decode( 'UTF-8', $v ) ); # cc20261018-1
       }
+    next unless @ok;
 
-    push @{ $values{ $un } }, @v; # cc20261018-1
+    push @{ $values{ $un } }, @ok; # cc20261018-1
     }
 
   for my $n ( sort keys %values ) # cc20261018-1
@@ -593,8 +596,10 @@ sub __input_param_make_safe_value
   return $v;
 }
 
-# must return 1 for values which must be removed from input or 0 for ok
-# this is called before __input_param_make_safe_value, default is pass all
+# must return 1 for a value which must be removed from input (only this value) or 0 for ok
+# this is called before __input_param_make_safe_value, default is pass all. it
+# gets the raw value (UTF-8 bytes), __input_param_make_safe_value() gets the
+# decoded characters
 sub __input_param_invalid_value
 {
   my $self = shift;
@@ -703,20 +708,21 @@ sub render
   # sent as it is, its TYPE keeps the charset given
   $page_type =~ s/\s*;\s*charset\s*=[^;]*//gi if $page_type_is_text and ! $page_fh; # cc20261018-1-tobeverified
 
-  # preparing headers -------------------------------------------------------- # cc20261018-1-tobeverified FIXME: charset removed, done above
+  # preparing headers --------------------------------------------------------
   # TODO: move to func
   $self->res_set_headers( 'content-type'        => $page_type );
   if( $file_name )
     {
-    # sanitize + RFC 6266 encode: strip CR/LF/controls (header injection),
-    # escape/quote the ASCII form, add RFC 5987 filename* for non-ASCII names
-    ( my $fn_ascii = $file_name ) =~ s/[\x00-\x1f\x7f]//g;   # strip control chars incl CR/LF/NUL
-    $fn_ascii =~ s/(["\\])/\\$1/g;                           # escape quote and backslash
+    # sanitize + RFC 6266 encode: strip CR/LF/controls (header injection) from
+    # both forms, escape/quote the ASCII form, add RFC 5987 filename* for
+    # non-ASCII names
+    ( my $fn_clean = $file_name ) =~ s/[\x00-\x1f\x7f]//g;   # strip control chars incl CR/LF/NUL
+    ( my $fn_ascii = $fn_clean ) =~ s/(["\\])/\\$1/g;        # escape quote and backslash
     $fn_ascii =~ s/[^\x20-\x7e]/_/g;                         # replace remaining non-ASCII
     my $cd = qq{$disp_type; filename="$fn_ascii"};
-    if( $file_name =~ /[^\x20-\x7e]/ )
+    if( $fn_clean =~ /[^\x20-\x7e]/ )
       {
-      ( my $fn_utf8 = encode( 'UTF-8', $file_name ) ) =~ s/([^A-Za-z0-9_.~-])/sprintf '%%%02X', ord $1/ge;
+      ( my $fn_utf8 = encode( 'UTF-8', $fn_clean ) ) =~ s/([^A-Za-z0-9_.~-])/sprintf '%%%02X', ord $1/ge;
       $cd .= "; filename*=UTF-8''$fn_utf8";
       }
     $self->res_set_headers( 'content-disposition' => $cd );
@@ -765,7 +771,7 @@ sub portray
 
   $type = $SIMPLE_PORTRAY_TYPE_MAP{ $type } || $type;
 
-  boom "portray needs mime type xxx/xxx as arg 2, got [$type]" unless $type =~ /^[a-z\-_0-9]+\/[a-z\-_0-9\.\+]+$/;
+  boom "portray needs mime type xxx/xxx as arg 2, got [$type]" unless $type =~ /^[a-z\-_0-9]+\/[a-z\-_0-9\.\+]+\z/;
 
   return { %opt, DATA => $data, TYPE => $type }; # the checked TYPE wins over one in %opt
 }
@@ -796,13 +802,14 @@ Web::Reactor::Core - PSGI request/response foundation for Web::Reactor
 
   package Web::Reactor::Hello;
   use parent 'Web::Reactor::Core';
+  use Data::Tools; # str_html_escape()
 
   sub process_request
   {
     my $self = shift;
 
     my $in   = $self->get_user_input();
-    my $name = $in->{ 'NAME' } || 'world';
+    my $name = str_html_escape( $in->{ 'NAME' } || 'world' ); # user input goes escaped into html
 
     $self->render( $self->portray( "<h1>hello $name</h1>", 'html' ) );
   }
@@ -1166,12 +1173,13 @@ Returns 1 if the name is acceptable, 0 otherwise.
 
 =item C<__input_param_invalid_value( $name, $value )>
 
-Return 1 to drop the parameter (all of its values), 0 to keep it. Default
-keeps everything.
+Return 1 to drop this value (only this one, the other values of the
+parameter stay), 0 to keep it. Default keeps everything. C<$value> is the raw
+value as sent (UTF-8 bytes, not decoded yet).
 
 =item C<__input_param_make_safe_value( $name, $value )>
 
-Cleans one value, default strips NUL bytes.
+Cleans one value (decoded characters), default strips NUL bytes.
 
 =back
 

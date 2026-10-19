@@ -33,7 +33,8 @@ sub __find_code_by_name
   # action packages are found via require() through @INC, LIB_DIRS are pushed there by Web::Reactor::Actions::new()
 
   # actions sets list
-  my @asl = @{ $cfg->{ 'ACTIONS_SETS' } || [] };
+  my $sets = $cfg->{ 'ACTIONS_SETS' };
+  my @asl  = ref( $sets ) ? @$sets : $sets ? ( $sets ) : (); # a single string is a list of one, as LIB_DIRS
   @asl = ( $app_name, "Base", "Core" ) unless @asl > 0;
 
   # action package

@@ -416,6 +416,15 @@ ok( $@, '_key_to_fn() booms on invalid id component' );
   my $hold = $ses->create( 'HOLD', undef, undef, 'HoldSerialTest' );
   is( $hold->{ ':SID' }, 'HoldSerialTest', 'create() with a fixed sid' );
   is( $ses->create( 'HOLD', undef, undef, 'HoldSerialTest' ), undef, 'create() of an existing fixed sid returns undef' );
+  {
+    # a storage error before anything is created (i.e. out of file descriptors)
+    # must not delete the existing session
+    no warnings 'redefine';
+    local *Web::Reactor::Sessions::Filesystem::_storage_create = sub { undef };
+    eval { $ses->create( 'HOLD', undef, undef, 'HoldSerialTest' ) };
+    like( $@, qr/storage error creating session/, 'create() booms on a storage error' );
+  }
+  ok( $ses->exists( $hold ), 'a storage error in create() leaves the existing session' );
   ok( $ses->save( $hold ), 'a created session saves' );
   $ses->delete( $hold );
 
@@ -426,7 +435,17 @@ ok( $@, '_key_to_fn() booms on invalid id component' );
   is( $cl->{ ':CLOSED' }, 1, 'close() sets :CLOSED in the session' );
   my $cfn = ses_file( $reo, 'USER', $cl->{ ':SID' } ) . '.closed';
   ok( -e $cfn, 'close() writes the close mark next to the session file' );
-  ok( -z $cfn, 'the close mark is empty, a flag only' );
+  my $key = $ses->compose_key_from_sid( 'USER', $cl->{ ':SID' } );
+  is( $ses->_storage_is_closed( $key ), 1, '_storage_is_closed() without a hashref returns 1' );
+  my %cf;
+  is( $ses->_storage_is_closed( $key, \%cf ), \%cf, '_storage_is_closed() with a hashref returns it' );
+  is( "$cf{ ':CLOSED' }:$cf{ ':LOGGED_IN' }:$cf{ ':CLOSE_REASON' }", '1:0:logout', 'the close mark keeps the close fields' );
+  is( $ses->_storage_is_closed( $ses->compose_key_from_sid( 'USER', 'NoSuchSessionIdAtAll' ), \%cf ), undef, '_storage_is_closed() of an open session returns undef' );
+  my $bare = $ses->create( 'USER' );
+  my $bkey = $ses->compose_key_from_sid( 'USER', $bare->{ ':SID' } );
+  ok( $ses->_storage_close( $bkey ), '_storage_close() without fields' );
+  my %bf;
+  ok( $ses->_storage_is_closed( $bkey, \%bf ) && ! %bf, 'a close mark without fields is closed, with no fields' );
   $old->{ 'X' } = 1;
   is( eval { $ses->save( $old ) }, 0, 'save() of a copy loaded before the close is refused, no throw' );
   my $now = $ses->load( 'USER', $cl->{ ':SID' } );
@@ -436,6 +455,12 @@ ok( $@, '_key_to_fn() booms on invalid id component' );
   is( $ses->save( $now ), 0, 'even a current copy of a closed session is not saved' );
   is( $ses->close( $cl, ':CLOSE_REASON' => 'expired' ), 1, 'a second close() does nothing and succeeds' );
   is( $ses->load( 'USER', $cl->{ ':SID' } )->{ ':CLOSE_REASON' }, 'logout', 'the first close stays' );
+  my %cf2;
+  $ses->_storage_is_closed( $key, \%cf2 );
+  is( $cf2{ ':CLOSE_REASON' }, 'logout', 'the close mark keeps the fields of the first close' );
+  file_save( ses_file( $reo, 'USER', $cl->{ ':SID' } ), hash2json( { %$old, ':LOGGED_IN' => 1 } ) ); # a stale save between the last save and the mark
+  my $back = $ses->load( 'USER', $cl->{ ':SID' } );
+  is( "$back->{ ':CLOSED' }:$back->{ ':LOGGED_IN' }:$back->{ ':CLOSE_REASON' }", '1:0:logout', 'load() maps the close fields of the mark over the data' );
   my $raw = $ses->create( 'USER' );
   $ses->close( $raw );
   my $rfn = ses_file( $reo, 'USER', $raw->{ ':SID' } ) . '.closed';
@@ -443,6 +468,16 @@ ok( $@, '_key_to_fn() booms on invalid id component' );
   is( $ses->load( 'USER', $raw->{ ':SID' } )->{ ':CLOSED' }, 1, 'load() takes :CLOSED from the close mark, not from the data' );
   ok( $ses->delete( $raw ), 'delete() of a closed session' );
   ok( ! -e $rfn, 'delete() removes the close mark too' );
+  {
+    # a session which cannot be deleted keeps its close mark and stays closed
+    my $kp  = $ses->create( 'USER' );
+    $ses->close( $kp );
+    my $kfn = ses_file( $reo, 'USER', $kp->{ ':SID' } );
+    unlink( $kfn ); mkdir( $kfn ); # a directory cannot be unlinked
+    is( $ses->delete( $kp ), undef, 'delete() fails when the session file cannot be removed' );
+    ok( -e "$kfn.closed", 'and keeps the close mark' );
+    rmdir( $kfn ); unlink( "$kfn.closed" );
+  }
   is( $ses->close( $raw ), 0, 'close() of a deleted session returns 0' );
   ok( ! -e $rfn, 'and leaves no close mark' );
   my $h2 = $ses->create( 'HOLD', undef, undef, 'HoldCloseTest' );
@@ -1381,6 +1416,16 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   ok(   html_check_ident( '' ),      'html_check_ident() empty is valid' );
   ok( ! html_check_name( '' ),       'html_check_name() empty is not valid' );
   ok(   html_check_name( 'a.b:c_1' ), 'html_check_name() letters, digits, dot, colon, underscore' );
+  ok( ! html_check_name( "ab\n" ),   'html_check_name() rejects a trailing newline' );
+  ok( ! html_check_ident( "ab\n" ),  'html_check_ident() rejects a trailing newline' );
+  ok( ! html_check_tag_name( "div\n" ), 'html_check_tag_name() rejects a trailing newline' );
+  ok( ! Web::Reactor::__input_sid_check( "abcdefgh\n" ), 'a cookie sid with a trailing newline is not accepted' );
+  eval { Web::Reactor::Actions::check_action_name( undef, "main\n" ) };
+  like( $@, qr/invalid action name/, 'an action name with a trailing newline is invalid' );
+  eval { Web::Reactor::Preprocessor::Tree::check_page_name( undef, "main\n" ) };
+  like( $@, qr/invalid page name/, 'a page name with a trailing newline is invalid' );
+  eval { Web::Reactor::Actions::check_action_name( undef, "main" ); Web::Reactor::Preprocessor::Tree::check_page_name( undef, "main" ) };
+  is( $@, '', 'the same names without the newline are valid' );
   eval { html_check_name_boom( 'a b' ) };
   like( $@, qr/invalid or empty NAME \[a b\]/, 'html_check_name_boom() booms' );
   eval { html_check_ident_boom( 'a b' ) };
@@ -1734,6 +1779,25 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   is( $r2->get_input_form_name(), 'roundtrip', 'get_input_form_name() after a round trip' );
 }
 
+# a radio group with KEY and RET radios: the checked KEY radio arrives too
+{
+  my ( $end, $state );
+  request( COOKIE => $COOKIE, HOOK => sub
+    {
+    my $reo = shift;
+    my $f = Web::Reactor::HTML::Form->new( $reo );
+    $f->begin( NAME => 'radios' );
+    $f->radio( NAME => 'mix', KEY => 'plain' );
+    $f->radio( NAME => 'mix', RET => 'mapped' );
+    $f->radio( NAME => 'only', KEY => 'k1' );
+    $end = $f->end();
+    } );
+  ( $state ) = $end =~ /value='([^']+)'/;
+  my ( $r ) = request( COOKIE => $COOKIE, QS => "_=$state&MIX=plain&ONLY=k1" );
+  is( $r->get_safe_input()->{ 'MIX' }, 'plain', 'a KEY radio in a group with RET radios arrives with its key' );
+  is( $r->get_user_input()->{ 'ONLY' }, 'k1', 'a group of KEY radios only stays plain user input' );
+}
+
 # ATTRS: extra attributes on all elements, escaped, name/form/id and the
 # attributes an element needs to work cannot be replaced
 {
@@ -1747,6 +1811,10 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( $f->button( NAME => 'b', VALUE => 'v', ATTRS => { onClick => q{a("x")} } ), qr/onclick='a\(&#34;x&#34;\)'/, 'ATTRS values are escaped' );
   like( $f->checkbox( NAME => 'c', ATTRS => { onclick => 'x()', title => 't' } ), qr/onclick='reactor_form_checkbox_toggle\(this\)'.*title='t'|title='t'.*onclick='reactor_form_checkbox_toggle\(this\)'/, 'ATTRS keeps the checkbox toggle' );
   like( $f->textarea( NAME => 't', ATTRS => { id => 'nope' } ), qr/^(?!.*id='nope')/s, 'ATTRS cannot set id' );
+  like( $f->checkbox( NAME => 'c', ID => 'cid' ), qr/<input [^>]*id='cid'[^>]*type='checkbox'/, 'checkbox() ID goes on the visible checkbox' );
+  like( $f->radio( NAME => 'r', KEY => 1, ID => 'rid' ), qr/<input [^>]*id='rid'[^>]*type='radio'/, 'radio() ID' );
+  eval { $f->checkbox( NAME => 'c', ID => 'bad id' ) };
+  ok( $@, 'checkbox() booms on an invalid ID' );
   eval { $f->input( NAME => 'i', ATTRS => 'style=x' ) };
   like( $@, qr/ATTRS must be a HASH reference/, 'ATTRS must be a hash reference' );
   my %pa = html_popup_layer_attrs( $APP, VALUE => 'picker', TYPE => 'CONTEXT' );
@@ -1762,10 +1830,20 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   my @dl = ( { KEY => '*', VALUE => '', LABEL => 'none' }, { KEY => '*', VALUE => 5, LABEL => 'Five' } );
   unlike( $f->input( NAME => 'dl', DATALIST => \@dl ), qr/value='none'[^>]*list=|list=[^>]*value='none'/, 'input() DATALIST without a selected value selects nothing' );
   like(   $f->input( NAME => 'dl', DATALIST => \@dl, DATALIST_SELECTED_VALUE => 5 ), qr/<input [^>]*list=[^>]*value='Five'/, 'input() DATALIST_SELECTED_VALUE selects the entry' );
+  my $dld = $f->input( NAME => 'dld', DATALIST => \@dl, DATALIST_SELECTED_VALUE => 5, DISABLED => 1 );
+  like( $dld, qr/<input [^>]*disabled='disabled'[^>]*type='hidden'/, 'input() DATALIST DISABLED disables the hidden key input too, it sends no value' );
+  unlike( $f->input( NAME => 'dle2', DATALIST => \@dl ), qr/disabled/, 'input() DATALIST without DISABLED has no disabled input' );
+  $f->input( NAME => 'dlk', DATALIST => [ { KEY => 'A', LABEL => 'aa' } ] );
+  is( $f->{ 'RET_MAP' }{ 'DATA' }{ 'DLK' }{ 'A' }, 'A', 'input() DATALIST entry without VALUE maps to its KEY, as select()' );
+  my $fnr = Web::Reactor::HTML::Form->new();
+  $fnr->begin( NAME => 'nrk' );
+  like( $fnr->input( NAME => 'dlk', DATALIST => [ { KEY => 'A', LABEL => 'aa' } ] ), qr/data-key='A'/, 'without a reactor the entry sends its KEY' );
   my $dle = $f->input( NAME => 'dle', DATALIST => [ { KEY => '*', VALUE => 1, LABEL => '&#8709; A&amp;B' } ], DATALIST_SELECTED_VALUE => 1 ); # cc20261017-item-85
   like( $dle, qr/<option [^>]*value='\x{2205} A&#38;B'/, 'input() DATALIST decodes the label character references for the list' ); # cc20261017-item-85
   like( $dle, qr/<input [^>]*list=[^>]*value='\x{2205} A&#38;B'/, 'input() DATALIST decoded label in the input' ); # cc20261017-item-85
   is( $f->textarea( NAME => 'ta', VALUE => q{a<b "c"} ) =~ m{>(.*)</textarea>}s ? $1 : '', 'a&#60;b "c"', 'textarea() escapes only what element content needs' );
+  is( $f->textarea( NAME => 'ta', VALUE => "\nline2" ) =~ m{>(.*)</textarea>}s ? $1 : '', "\n\nline2", 'textarea() keeps a leading empty line, the parser drops the first line feed' );
+  is( $f->textarea( NAME => 'ta', VALUE => "line1\n" ) =~ m{>(.*)</textarea>}s ? $1 : '', "line1\n", 'textarea() leaves other values as they are' );
   unlike( $f->checkbox_multi( NAME => 'cm' ), qr/<span [^>]*class=/, 'checkbox_multi() span has no default class' ); # cc20261017
   like(   $f->checkbox_multi( NAME => 'cm', CLASS => 'cmc' ), qr/<span [^>]*class='cmc'/, 'checkbox_multi() CLASS on the span' ); # cc20261017
 }
@@ -1779,6 +1857,16 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   isnt( $u1, $u2, 'html_uniq_id() gives a new id each time' );
   ok( html_check_name( $u1 ), 'html_uniq_id() is a valid name' );
 
+  {
+    package Web::Reactor::TestReflexOnly;
+    our @ISA = ( 'Web::Reactor::Reflex' );
+    package main;
+    my $rx = bless { %$APP }, 'Web::Reactor::TestReflexOnly';
+    eval { Web::Reactor::HTML::Form->new( $rx ) };
+    like( $@, qr/HTML::Form needs a Web::Reactor object or none/, 'HTML::Form->new() booms on a Reflex object, it has no LINK session' );
+    ok( Web::Reactor::HTML::Form->new( undef, NAME => 'x' ), 'HTML::Form->new( undef, ... ) works without a reactor' );
+  }
+
   my $f = Web::Reactor::HTML::Form->new();
   my $b = $f->begin( NAME => 'nr', DEFAULT_BUTTON => 'OK' );
   like(   $b, qr/<form [^>]*name='nr'/, 'Form without a reactor: begin()' );
@@ -1787,6 +1875,10 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( $f->select( NAME => 's', DATA => [ { KEY => '*', VALUE => 7, LABEL => 'Seven' } ] ), qr/<select [^>]*name='S'.*<option value='7'>Seven/s, 'Form without a reactor: select sends the real name and value' );
   like( $f->radio( NAME => 'r', RET => 'rv' ), qr/value='rv'/, 'Form without a reactor: radio RET is sent' );
   like( $f->input( NAME => 'h', HIDDEN => 1, RET => 'hv' ), qr/name='H'[^>]*value='hv'|value='hv'[^>]*name='H'/, 'Form without a reactor: hidden RET is sent' );
+  like( $f->input( NAME => 'h', HIDDEN => 1, RET => 0 ), qr/value='0'/, 'Form without a reactor: hidden RET 0 is sent as 0' );
+  my $ib = $f->image_button( NAME => 'ok', SRC => 'a.png', DISABLED => 1 );
+  like( $ib, qr/disabled='disabled'/, 'image_button() DISABLED disables it' );
+  like( $ib, qr/class='image_button disabled-button'/, 'image_button() DISABLED adds the disabled-button class, as button()' );
   like( $f->input( NAME => 'd', DATALIST => [ { KEY => '*', VALUE => 9, LABEL => 'Nine' } ] ), qr/data-key='9'/, 'Form without a reactor: datalist keys are the values' );
   unlike( $f->button( NAME => 'b', VALUE => 'x', HINT => 'h' ), qr/onmouseover/, 'Form without a reactor: no hint' );
   like( $f->image_button_default( NAME => 'def', SRC => 'e.png' ), qr/tabindex='-1'/, 'image_button_default() is out of sight, no browser detection' );
@@ -1824,6 +1916,8 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   ok( $@, 'image_button() booms on a NAME ending with the click suffix' );
   eval { Web::Reactor::HTML::Form->new()->begin( NAME => 'bd', DEFAULT_BUTTON => 'a.b' ) };
   ok( $@, 'begin() booms on a DEFAULT_BUTTON Reflex cannot read back' );
+  my $dbf = Web::Reactor::HTML::Form->new()->begin( NAME => 'db', DEFAULT_BUTTON => 'button:ok' );
+  like( $dbf, qr/name='button:OK'/, 'begin() DEFAULT_BUTTON is upper-cased and a "button:" prefix is stripped, as button() NAME' );
 }
 
 ##############################################################################

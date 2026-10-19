@@ -51,7 +51,7 @@ sub new
   # under Web::Reactor (the id scope is the page session) a named tab set keeps
   # the same controller id in all requests of the page, so the active tab is
   # restored after a reload. an unnamed one, or any under Reflex, gets a new id
-  # each time. without a reactor a named one keeps its name as the id # cc20261017-1
+  # each time. without a reactor a named one gets "RE_TAB_" . NAME as the id # cc20261017-1
   my @scope = $reo ? ( $reo->get_uniq_id_scope() ) : ();
   $self->{ 'TABS_LIST'         } = []; # contain tab IDs
   $self->{ 'TAB_CONTROLLER_ID' } = defined $opt{ 'NAME' } ? join( '_', 'RE_TAB', @scope, $opt{ 'NAME' } ) : 'RE_TAB_' . ( $reo ? $reo->create_uniq_id() : html_uniq_id() ); # cc20261017-1
@@ -87,7 +87,7 @@ sub add
   __check_html_id( 'TAB_ID',    $opt{ 'TAB_ID'    } ) if defined $opt{ 'TAB_ID'    };
   __check_html_id( 'HANDLE_ID', $opt{ 'HANDLE_ID' } ) if defined $opt{ 'HANDLE_ID' };
 
-  boom "invalid tab TYPE [$et], can be only one of DIV|TR|TD" unless $et =~ /^(DIV|TR|TD)$/;
+  boom "invalid tab TYPE [$et], can be only one of DIV|TR|TD" unless $et =~ /^(DIV|TR|TD)\z/;
 
   my $tab_controller_id =    $self->{ 'TAB_CONTROLLER_ID' };
 
@@ -208,7 +208,7 @@ Without them the handles do nothing.
 =head1 WITHOUT A REACTOR
 
 new() without the reactor object works too: the ids come from
-Web::Reactor::HTML::Utils html_uniq_id() (a named tab set uses its NAME), the
+Web::Reactor::HTML::Utils html_uniq_id() (a named tab set uses "RE_TAB_" and its NAME), the
 page must load js/reactor.js itself and print the html which finish()
 returns (the tab controller) anywhere after the tabs.
 
@@ -229,8 +229,8 @@ Options:
                 id scope is the page session), so the active tab is
                 remembered (per browser tab, sessionStorage) across reloads.
                 under Web::Reactor::Reflex the scope changes per request,
-                so nothing is remembered. without a reactor the NAME itself
-                is the id (and the active tab is remembered). unnamed tab
+                so nothing is remembered. without a reactor the id is
+                "RE_TAB_" and the NAME (and the active tab is remembered). unnamed tab
                 sets never remember the active tab
   CLASS_ON   -- handle class of the active tab
   CLASS_OFF  -- handle class of the other tabs

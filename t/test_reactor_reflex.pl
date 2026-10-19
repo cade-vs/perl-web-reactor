@@ -586,6 +586,7 @@ is( $o->html_hold_get( 'browser_window_title' ), 'Hi there', 'set_browser_window
 is( body( req( get( '_an=btn&BUTTON:SAVE:42=1' ) ) ),   'btn=[SAVE] id=[42] scalar=[SAVE]', 'button with id' );
 is( body( req( get( '_an=btn&BUTTON:CANCEL=1' ) ) ),    'btn=[CANCEL] id=[] scalar=[CANCEL]', 'button without id' );
 is( body( req( get( '_an=btn&BUTTON:GO.X=3&BUTTON:GO.Y=4' ) ) ), 'btn=[GO] id=[] scalar=[GO]', 'image button coordinates are stripped' );
+is( body( req( get( '_an=btn&' . join( '&', map { "BUTTON:B$_=1" } reverse 1 .. 9 ) ) ) ), 'btn=[B1] id=[] scalar=[B1]', 'several buttons: the first in sorted name order' );
 is( body( req( get( '_an=btn&button:save:7=1' ) ) ),    'btn=[SAVE] id=[7] scalar=[SAVE]', 'button parameter name is case insensitive' );
 is( body( req( get( '_an=btn&other=1' ) ) ),            'btn=[] id=[] scalar=[]', 'no button pressed' );
 }
@@ -772,6 +773,7 @@ like( logs(), qr/code for action name \[hello\] not found/, 'the two dispatchers
 
 # the normal fallback to the next set is only a debug message
 is( body( req( get( '_an=inbase' ), $over ) ), 'IN BASE', 'an action only in Base is found through the sets' );
+is( body( req( get( '_an=pkg' ), { %$over, ACTIONS_SETS => 'testreflex' } ) ), 'from package', 'ACTIONS_SETS as a single string is a list of one' );
 unlike( logs(), qr/^error:/m, 'the normal fallback to the next set logs no error' );
 
 # a broken app action stops the lookup, Base does not run in its place

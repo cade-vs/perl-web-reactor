@@ -326,6 +326,18 @@ ok( ! grep( { /^_AN/ } keys %{ app( env( 'QUERY_STRING' => '_AN%0A=x' ) )->get_u
   is( join( ' ', @{ $cs->{ '@X' } || [] } ), '3 1', 'two single case variants become one array' );
 }
 
+{
+  # an invalid value is dropped alone, the other values of the parameter stay
+  package TestAppRejectBad;
+  our @ISA = ( 'TestApp' );
+  sub __input_param_invalid_value { return $_[2] eq 'bad' ? 1 : 0 }
+  package main;
+  my $mk = sub { @LOG = (); TestAppRejectBad->new( env( 'QUERY_STRING' => shift ), { DEBUG => 0 } )->get_user_input() };
+  is( $mk->( 'x=bad&x=ok' )->{ 'X' }, 'ok', 'an invalid value is dropped, the other value stays' );
+  is( $mk->( 'name=bad&NAME=ok' )->{ 'NAME' }, 'ok', 'also across case variants' );
+  ok( ! exists $mk->( 'z=bad' )->{ 'Z' }, 'a parameter with only invalid values is gone' );
+}
+
 is( $in->{ 'NUL' }, 'ab', 'NUL bytes are stripped from values' );
 is( $in->{ 'UNI' }, "\x{2603}", 'values are decoded from UTF-8' );
 ok( utf8::is_utf8( $in->{ 'UNI' } ), 'decoded value is a character string' );
@@ -581,6 +593,11 @@ my $o6 = app( env() );
 eval { $o6->render( $o6->portray( 'x', 'bin', FILE_NAME => "a\r\nX-Injected: evil.pdf" ) ) };
 my $cd6 = hdrs( $o6->res_get_headers_ar() )->{ 'content-disposition' };
 unlike( $cd6, qr/[\r\n]/, 'CR/LF is stripped from the file name' );
+unlike( $cd6, qr/filename\*/, 'an ascii name with control characters gets no filename* form' );
+my $o6b = app( env() );
+eval { $o6b->render( $o6b->portray( 'x', 'bin', FILE_NAME => "\x{441}\n.pdf" ) ) };
+my $cd6b = hdrs( $o6b->res_get_headers_ar() )->{ 'content-disposition' };
+unlike( $cd6b, qr/%0A/i, 'filename* does not keep control characters either' );
 
 # non ascii file names get the RFC 5987 form alongside the ascii one
 my $o7 = app( env() );

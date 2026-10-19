@@ -33,7 +33,7 @@ sub new
   # single directory (scalar) specified, convert to list
   $dirs = [ $dirs ] if ! ref( $dirs ) and $dirs;
   # nothing specified, set default
-  $dirs = [ $reo->get_app_root() . '/lib/' ] if ! $dirs or @{ $dirs } < 1;
+  $dirs = [ $reo->get_app_root() . '/lib' ] if ! $dirs or @{ $dirs } < 1;
 
   for my $lib_dir ( @$dirs )
     {
@@ -113,7 +113,7 @@ sub __find_code_by_name
 sub check_action_name
 {
   my $self = shift;
-  boom "invalid action name [$_[0]]" unless $_[0] =~ /^[a-z0-9_]+$/;
+  boom "invalid action name [$_[0]]" unless $_[0] =~ /^[a-z0-9_]+\z/;
 }
 
 ##############################################################################

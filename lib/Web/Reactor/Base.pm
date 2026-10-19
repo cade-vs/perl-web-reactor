@@ -56,7 +56,7 @@ sub __set_reo
   my $reo = shift;
 
   # note: well, should be only reactor subclasses, not pawns but...
-  if( ref( $reo ) =~ /^Web::Reactor(::|$)/ )
+  if( ref( $reo ) =~ /^Web::Reactor(::|\z)/ )
     {
     $self->{ 'REO_REACTOR' } = $reo;
     $self->{ 'HAS_REO'     } = 1; # the link is weak, reo_optional() booms if it is gone # cc20261017-1

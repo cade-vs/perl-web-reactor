@@ -216,6 +216,9 @@ my $TESTS = <<'JS';
   var tr = mk( 'TR', 'sh_tr' );
   html_block_show( tr );
   t_is( tr.style.display, "table-row", 'html_block_show() gives a TR table-row' );
+  var th = mk( 'TH', 'sh_th' ); // cc20261019-1
+  html_block_show( th );
+  t_is( th.style.display, "table-cell", 'html_block_show() gives a TH table-cell' );
   var dv = mk( 'DIV', 'sh_dv' );
   dv.computed.display = "none"; // hidden by a stylesheet only
   html_block_toggle( dv );
@@ -408,6 +411,10 @@ my $TESTS = <<'JS';
   t_is( hl.style.display, "block", 'reactor_hover_show() shows with a zero delay' );
   t_ok( el.listeners.mousemove.length == 1 && el.listeners.mouseout.length == 1, 'the listeners are installed only once' );
   fire( el, 'mouseout' );
+  var nothrow = true; // cc20261019-1
+  try { reactor_hover_show( el, 'HL' ); run_timers(); } catch( e ) { nothrow = false; }
+  t_ok( nothrow && hl.style.display == "block", 'reactor_hover_show() without the event shows the layer where the mouse was last' );
+  fire( el, 'mouseout' );
 
   // a page handler (ATTRS) and a popup on the same element keep working
   var pp = mk( 'DIV', 'PP' ); pp.style.display = "none";
@@ -502,13 +509,39 @@ my $TESTS = <<'JS';
   t_is( pending_timers(), 0, 'moving onto a child of the element does not start the close timer' );
   fire( eb, 'mouseout', { relatedTarget: null } );
   t_is( pending_timers(), 1, 'leaving the element starts the close timer' );
-  pb.onmouseover();
+  fire( pb, 'mouseover' ); // cc20261019-1
   t_is( pending_timers(), 0, 'entering the popup cancels the close timer' );
   t_is( pb.style.display, "block", 'the popup stays open while the mouse is in it' );
-  pb.onmouseout();
+  fire( pb, 'mouseout' ); // cc20261019-1
   t_is( pending_timers(), 1, 'leaving the popup starts the close timer again' );
   run_timers();
   t_is( pb.style.display, "none", 'the popup closes after the timeout' );
+
+  // moving inside the popup onto its own child does not start the close timer // cc20261019-1
+  reactor_popup_mouse_over( eb, { click_open: 1, timeout: 100 } );
+  fire( eb, 'mouseout' );
+  fire( pb, 'mouseover' );
+  var pbc = pb.appendChild( mk( 'B', 'PBC' ) );
+  fire( pb, 'mouseout', { relatedTarget: pbc } );
+  t_is( pending_timers(), 0, 'moving onto a child of the popup does not start the close timer' );
+  t_is( pb.listeners.mouseout.length, 1, 'the popup keeps one mouseout listener' );
+  reactor_popup_hide( eb );
+
+  // a second delayed open before the delay ends replaces the timer
+  reactor_popup_mouse_over( eb, { timeout: 100 } );
+  reactor_popup_mouse_over( eb, { timeout: 100 } );
+  t_is( pending_timers(), 1, 'a second delayed open leaves one open timer' );
+  fire( eb, 'mouseout' );
+  run_timers();
+  t_is( pb.style.display, "none", 'leaving before the delay ends opens nothing' );
+
+  // a handle with only the on class gets it removed on hide
+  var pc = mk( 'DIV', 'PC' ); pc.style.display = "none";
+  var ec = mk( 'SPAN', 'EC', { popupLayerId: 'PC', popupClassOn: 'active' }, 'btn' );
+  reactor_popup_show( ec );
+  t_ok( ec.classList.contains( 'active' ), 'show adds the on class' );
+  reactor_popup_hide( ec );
+  t_ok( ! ec.classList.contains( 'active' ) && ec.classList.contains( 'btn' ), 'hide removes it, the other classes stay' );
 }
 
 /*** popup position, whatever is scrolled ***********************************/
@@ -674,6 +707,7 @@ my $TESTS = <<'JS';
   t_ok( dp.innerHTML.indexOf( "data-date='15.10.2026'" ) >= 0, 'a UTIME format like DMY24 gives D.M.Y dates' );
   nz_setup_picker( 'DP', 'DPT', new Date( 2026, 9, 15 ) );
   t_ok( dp.innerHTML.indexOf( "data-date='15.10.2026'" ) >= 0, 'without a format the picker gives D.M.Y, as current_date()' );
+  t_ok( ! ( 'fmt' in dp.dataset ), 'without a format no fmt is stored' ); // cc20261019-1
 }
 
 /*** image click loop ******************************************************/

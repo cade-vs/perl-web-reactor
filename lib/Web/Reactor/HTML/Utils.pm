@@ -405,7 +405,7 @@ sub __check_reo
 {
   my ( $reo, $func, $method, $what ) = @_;
 
-  boom "missing REO reactor object" if ref( $reo ) !~ /^Web::Reactor(::|$)/;
+  boom "missing REO reactor object" if ref( $reo ) !~ /^Web::Reactor(::|\z)/;
   boom "$func() needs $what, got [" . ref( $reo ) . "]" unless $reo->can( $method );
 
   return 1;
@@ -544,7 +544,7 @@ sub __popup_layer
   my $timeout = int( $opt{ 'TIMEOUT' } ); # a number for the javascript
   my $type    = uc $opt{ 'TYPE'    } || 'CLICK';
 
-  boom "invalid popup TYPE [$type], expected CLICK or CONTEXT" unless $type =~ /^(CLICK|CONTEXT)$/;
+  boom "invalid popup TYPE [$type], expected CLICK or CONTEXT" unless $type =~ /^(CLICK|CONTEXT)\z/;
   my $single  = $opt{ 'SINGLE'  } ? 1 : 0;
 
   $timeout = 200 unless $timeout > 0;
@@ -812,7 +812,7 @@ html_check_tag_name( $name ), html_check_attr_name( $name )
 
 return true if $name is a valid html tag or attribute name. tag names start
 with a letter, followed by letters and digits, custom element names
-(my-widget) may also have "-", "." and "_" after the first "-". attribute
+(my-widget) have at least one "-" and may also have "." and "_". attribute
 names are letters, digits, "_", ":" and "-" (stricter than the standard).
 
 html_check_tag_name_boom( $name, $msg ), html_check_attr_name_boom( $name, $msg )
@@ -824,7 +824,7 @@ boom with $msg (or a default message) if $name is not valid.
 sub html_check_tag_name
 {
   # $13.1.2.1, starts with a letter; $4.13.3 custom elements have a "-"
-  return $_[0] =~ /^[a-zA-Z](?:[a-zA-Z0-9]*|[a-zA-Z0-9._]*-[a-zA-Z0-9._-]*)$/;
+  return $_[0] =~ /^[a-zA-Z](?:[a-zA-Z0-9]*|[a-zA-Z0-9._]*-[a-zA-Z0-9._-]*)\z/;
 }
 
 sub html_check_tag_name_boom
@@ -834,7 +834,7 @@ sub html_check_tag_name_boom
 
 sub html_check_attr_name
 {
-  return $_[0] =~ /^[a-zA-Z_0-9\:\-]+$/; # $13.1.2.3 but extra strict
+  return $_[0] =~ /^[a-zA-Z_0-9\:\-]+\z/; # $13.1.2.3 but extra strict
 }
 
 sub html_check_attr_name_boom
@@ -860,7 +860,7 @@ boom with $msg (or a default message) if the value is not valid.
 
 sub html_check_name
 {
-  return $_[0] =~ /^[a-zA-Z0-9_:.]+$/;
+  return $_[0] =~ /^[a-zA-Z0-9_:.]+\z/;
 }
 
 sub html_check_name_boom
@@ -870,7 +870,7 @@ sub html_check_name_boom
 
 sub html_check_ident
 {
-  return $_[0] =~ /^[a-zA-Z0-9_:.\-]*$/;
+  return $_[0] =~ /^[a-zA-Z0-9_:.\-]*\z/;
 }
 
 sub html_check_ident_boom
@@ -895,7 +895,7 @@ click position suffix of image buttons. the _boom variant booms with $msg
 
 sub html_check_button_name
 {
-  return $_[0] =~ /^[a-zA-Z0-9_]+(:[a-zA-Z0-9_:.]+)?$/ && $_[0] !~ /\.[XY]$/i;
+  return $_[0] =~ /^[a-zA-Z0-9_]+(:[a-zA-Z0-9_:.]+)?\z/ && $_[0] !~ /\.[XY]\z/i;
 }
 
 sub html_check_button_name_boom
@@ -953,7 +953,7 @@ sub html_submit_on_change_js
   my $soc = shift;
 
   return undef unless $soc;
-  return 'this.form.submit()' if $soc =~ /^\d+$/;
+  return 'this.form.submit()' if $soc =~ /^\d+\z/;
   return $soc;
 }
 
@@ -1016,7 +1016,7 @@ sub html_args_style # cc20261017-2
   my $css  = shift;
 
   boom "css for a raw style attribute cannot have quotes [$css]" if $css =~ /['"]/;
-  $css =~ s/\s*;?\s*$/;/; # one ";" at the end
+  $css =~ s/\s*;?\s*\z/;/; # one ";" at the end
 
   $args =~ s/(?<![\w-])style\s*=\s*(['"])/style=$1$css /i
     or $args =~ s/(?<![\w-])style\s*=\s*([^\s'">]+)/style='$css $1'/i

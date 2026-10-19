@@ -42,6 +42,9 @@ sub new
   if( $reo )
     {
     $self->__set_reo( $reo ); # booms on a non-reactor object
+    # the hidden names and return values live in the LINK session, which only
+    # Web::Reactor has, without it (undef) nothing is hidden or mapped
+    boom "HTML::Form needs a Web::Reactor object or none (undef), got [" . ref( $reo ) . "]" unless $reo->can( 'get_link_session' );
     $cfg ||= $reo->cfg();
     }
   $self->{ 'CFG'   } = $cfg || {};
@@ -106,11 +109,12 @@ sub begin
   my $id        =    $opt{ 'ID'     };
   my $method    = uc $opt{ 'METHOD' } || 'POST';
   my $action    =    $opt{ 'ACTION' } || '?';
-  my $default_button =    $opt{ 'DEFAULT_BUTTON' };
+  my $default_button = uc $opt{ 'DEFAULT_BUTTON' }; # as button() NAME: upper case, without a "button:" prefix
+  $default_button =~ s/^button://i;
 
   $self->{ 'CLASS_MAP' } = $opt{ 'CLASS_MAP' } || {};
 
-  $method =~ /^(POST|GET)$/  or boom "METHOD can be either POST or GET";
+  $method =~ /^(POST|GET)\z/  or boom "METHOD can be either POST or GET";
 
   $name ||= $self->create_uniq_id(); # cc20261017-reo-optional
   $id   ||= $name . '.' . $self->create_uniq_id();
@@ -129,6 +133,7 @@ sub begin
   $self->{ 'FORM_NAME'  } = $name;
   $self->{ 'FORM_ID'    } = $id;
   $self->{ 'RET_MAP'    } = {}; # return data mapping (combo, checkbox, etc.)
+  $self->{ 'RADIO_KEYS' } = {}; # KEY radio values per NAME, see end()
 
   my %at;
 
@@ -222,6 +227,16 @@ sub end
     return $text;
     }
 
+  # a KEY radio in a NAME group which also has RET radios is mapped to itself,
+  # the posted value of a mapped name is looked up in the return map, an
+  # unmapped key would arrive as undef. groups of KEY radios only stay plain
+  my $rkeys = delete $self->{ 'RADIO_KEYS' } || {};
+  for my $n ( sort keys %$rkeys )
+    {
+    next unless $self->{ 'RET_MAP' }{ 'DATA' }{ $n };
+    $self->__ret_map_data( $n, map { $_ => $_ } sort keys %{ $rkeys->{ $n } } );
+    }
+
   my $link_shr = $reo->get_link_session();
   $link_shr->{ 'FORM_RET_MAP' }{ $form_id } = $self->{ 'RET_MAP' };
 
@@ -274,13 +289,16 @@ sub checkbox
   my $name  = uc $opt{ 'NAME'  };
   my $class =    $opt{ 'CLASS' } || $self->{ 'CLASS_MAP' }{ 'CHECKBOX' } || 'checkbox';
   my $value =    $opt{ 'VALUE' } ? 1 : 0;
+  my $id    =    $opt{ 'ID'    }; # of the visible checkbox, i.e. for <label for=...>
 
   __check_removed_options( \%opt );
 
   html_check_name_boom( $name );
+  html_check_ident_boom( $id );
 
   my %options;
   $options{ 'checked' } = undef if $value; # bare attribute
+  $options{ 'id'      } = $id   if $id ne '';
 
   my $text;
 
@@ -373,10 +391,12 @@ sub radio
   my $on    =    $opt{ 'ON'    }; # active?
   my $ret   =    $opt{ 'RET'   }; # map return value!
   my $key   =    $opt{ 'KEY'   };
+  my $id    =    $opt{ 'ID'    };
 
   __check_removed_options( \%opt );
 
   html_check_name_boom( $name );
+  html_check_ident_boom( $id );
 
   my $text;
 
@@ -385,47 +405,21 @@ sub radio
 
   my %options;
   $options{ 'checked' } = undef if $on; # bare attribute
+  $options{ 'id'      } = $id   if $id ne '';
 
   my $form_id = $self->{ 'FORM_ID' };
   $text .= html_element( 'input', undef, %options, type => 'radio', name => $name, value => $val, class => $class, form => $form_id, html_attrs_filter( $opt{ 'ATTRS' }, @ATTRS_PROTECTED, qw( type value ) ) );
 
   $self->__ret_map_data( $name, $val => $ret ) if $hide; # cc20261017-reo-optional
+  $self->{ 'RADIO_KEYS' }{ $name }{ $val } = 1 if ! defined $ret and $self->reo_optional(); # mapped in end() if the group has RET radios
 
   $text .= "\n";
   return $text;
 }
 
 ##############################################################################
-=pod
 
-$form->select( NAME => $name, DATA => $data, SELECTED => $selected );
-
-$data = [
-         {
-         KEY      => string      # visible html key, '*' or empty generates one
-         VALUE    => string      # return value, safely stored or encrypted
-         LABEL    => string      # visible text for this key/value
-         SELECTED => bool        # this option is selected
-         },
-       ];
-
-$data = {
-         KEY => {
-                VALUE => string      # return value, safely stored or encrypted
-                LABEL => string      # visible text for this key/value
-                ORDER => \d+         # sort order, then by KEY
-                },
-         KEY => label_string,
-        };
-
-if VALUE is missing, KEY will be returned
-
-array data keeps its order, hash data is sorted by ORDER and KEY
-
-$selected is a return value, or a hashref or arrayref of selected return values
-
-=cut
-
+# select() DATA, see the POD of select()
 sub select
 {
   my $self = shift;
@@ -442,7 +436,7 @@ sub select
   html_check_name_boom( $name );
   html_check_ident_boom( $id );
 
-  my $data     = $opt{ 'DATA'     }; # array reference or hash reference, inside hashesh are the same
+  my $data     = $opt{ 'DATA'     }; # array reference or hash reference, see the POD of select()
   my $selected = $opt{ 'SELECTED' }; # selected return value, hashref or arrayref of them
   my $sel_data;
 
@@ -571,6 +565,9 @@ sub textarea
   my $text;
   my $form_id = $self->{ 'FORM_ID' };
 
+  # the html parser drops one line feed right after <textarea>, a value which
+  # starts with one gets an extra one, so it keeps its leading empty line
+  $data = "\n" . $data if $data =~ /\A\r?\n/;
   $text .= html_element_e( 'textarea', $data, %options, class => $class, name => $name, rows => $rows, cols => $cols, form => $form_id, html_attrs_filter( $opt{ 'ATTRS' }, @ATTRS_PROTECTED ) );
 
   $text .= "\n";
@@ -595,13 +592,13 @@ sub input
 
   my $len   =    $opt{ 'LEN'     }; # sets both size and maxlength
   my $hid   =    $opt{ 'HIDDEN'  };
-  my $ret   =    $opt{ 'RET'     } || $opt{ 'RETURN'  }; # if return value should be mapped, works only with HIDDEN
+  my $ret   =    $opt{ 'RET'     } // $opt{ 'RETURN'  }; # if return value should be mapped, works only with HIDDEN, 0 is a value too
 
   my $phi   =    $opt{ 'PH' } || $opt{ 'PHI' };
 
   my $clear =    $opt{ 'DISABLED' } ? undef : $opt{ 'CLEAR'   };
 
-  my $datalist    = $opt{ 'DATALIST'              }; # array ref with 'key', 'value' and 'label' hash
+  my $datalist    = $opt{ 'DATALIST'              }; # array ref of { KEY, VALUE, LABEL } hashes, upper-case keys
   my $datalist_sv = $opt{ 'DATALIST_SELECTED_VALUE' } // $opt{ 'DATALIST_SELECTED_KEY' }; # VALUE of the selected item, DATALIST_SELECTED_KEY is the old name
 
   __check_removed_options( \%opt );
@@ -653,7 +650,7 @@ sub input
     my $id_js    = html_js_str( $id );
     my $clear_js = $datalist ? "set_value( $id_js, '' ); reactor_datalist_change( q( $id_js ), 0 ); return false;" : "return set_value( $id_js, '' )";
 
-    if( $clear =~ /^[a-z_\-0-9\/]+\.(png|jpg|jpeg|gif|svg)$/ )
+    if( $clear =~ /^[a-z_\-0-9\/]+\.(png|jpg|jpeg|gif|svg)\z/ )
       {
       $clear_tag = html_element( 'img', undef, class => 'icon-clear', onClick => $clear_js, src => $clear, %clear_hint ); # cc20261017-reo-optional
       }
@@ -690,6 +687,8 @@ sub input
       my $v = $e->{ 'VALUE' }; # actual value, if key is given or generated, return map is used key => value
       my $l = str_html_unescape( $e->{ 'LABEL' } ); # html label as in select(), the datalist shows its text: character references decoded # cc20261017-item-85
 
+      $v = $k if ! defined $v and $k ne '*'; # VALUE missing: KEY is returned, as in select()
+
       $k = $self->create_uniq_id() if $k eq '*';
       $k = $v                      if $k eq ''; # the value is visible, still mapped so mixed entries work
 
@@ -702,7 +701,9 @@ sub input
 
     $datalist_text = html_element( 'datalist', $datalist_text, id => $datalist_id );
 
-    $text .= html_element( 'input', undef, id => $input_id, type => 'hidden', name => $name_hidden, value => $datalist_key, form => $form_id );
+    # the hidden key input carries the value, a disabled datalist sends none
+    my @disabled = $opt{ 'DISABLED' } ? ( disabled => 'disabled' ) : ();
+    $text .= html_element( 'input', undef, id => $input_id, type => 'hidden', name => $name_hidden, value => $datalist_key, form => $form_id, @disabled );
     $text .= html_element( 'input', undef, %options, class => $class, value => $datalist_label, form => $form_id, list => $datalist_id, 'data-input-id' => $input_id, 'data-empty-key' => $empty_key // '', onChange => "reactor_datalist_change( this, 0 ); $on_change; return", html_attrs_filter( $opt{ 'ATTRS' }, @ATTRS_PROTECTED, qw( value list data-input-id data-empty-key onchange ) ) ) . $clear_tag;
     $text .= $datalist_text;
     }
@@ -824,6 +825,12 @@ sub image_button
 
   my %options;
 
+  if( $opt{ 'DISABLED' } ) # as button()
+    {
+    $options{ 'disabled' } = 'disabled';
+    $class   .= " disabled-button";
+    }
+
   for my $o ( qw( HEIGHT WIDTH ONMOUSEOVER ) )
     {
     my $e = $opt{ $o };
@@ -902,10 +909,13 @@ all elements belong to the form started by begin() through the html "form"
 attribute, so they can be placed anywhere in the page. element names are
 upper-cased, the submitted values come in the user input under them.
 
-select(), the DATALIST of input(), radio() with RET and a hidden input()
-with RET send only random keys to the browser: the real names and values are
-kept in the link session (the return map, stored by end()) and come back in
-the safe input under the element NAME, so they cannot be forged. several
+with a reactor, select(), the DATALIST of input(), radio() with RET and a
+hidden input() with RET do not send their return values to the browser, only
+keys: random ones for KEY "*" and RET, the given KEY otherwise (an empty KEY
+uses the VALUE). select() and the DATALIST also hide their NAME. the real
+names and values are kept in the link session (the return map, stored by
+end()) and come back in the safe input under the element NAME, so they cannot
+be forged. several
 selected values of a MULTIPLE select come as "@NAME" (array reference).
 
 a clicked button comes as get_input_button(): its NAME, or for a NAME like
@@ -936,8 +946,8 @@ Web::Reactor pages or without sessions. then:
   ATTRS     -- { attribute => value, ... } extra html attributes, escaped,
                they win over the generated ones except name, form, id and
                the ones the element needs to work (html_attrs_filter())
-  DISABLED  -- the element is disabled: input, textarea, select and button
-               (a disabled element sends no value)
+  DISABLED  -- the element is disabled: input, textarea, select, button and
+               image_button (a disabled element sends no value)
 
   EXTRA and ARGS (raw html attributes) are removed, they die, use ATTRS.
 
@@ -945,8 +955,10 @@ Web::Reactor pages or without sessions. then:
 
 =head2 new( $reo, $cfg, %opt ), new( $reo, %opt ), new( %opt )
 
-creates a form object. $reo is the Web::Reactor (or Reflex) object, it is
-optional (see WITHOUT A REACTOR), $cfg defaults to the reactor config.
+creates a form object. $reo is the Web::Reactor object or undef (or
+missing): without it nothing is hidden or mapped, see WITHOUT A REACTOR. a
+Web::Reactor::Reflex or Core object booms, they have no LINK session for the
+return map. $cfg defaults to the reactor config.
 Web::Reactor new_form() gives the same as new( $reo ). options:
 
   DEBUG       -- the form name and id get FORM_ and FORM_ID_ prefixes in the
@@ -958,7 +970,9 @@ starts the form, returns its html:
 
   NAME            -- form name (random if missing), it comes back as
                      get_input_form_name()
-  ID              -- form html id (from NAME if missing)
+  ID              -- form html id (from NAME if missing), letters, digits,
+                     "_", ":" and "." only (html_check_name()), stricter
+                     than the element ids
   METHOD          -- POST (default) or GET
   ACTION          -- form action url (default "?")
   DEFAULT_BUTTON  -- button NAME the Enter key presses
@@ -997,7 +1011,28 @@ value which is mapped (the browser sees a random key). ON makes it checked.
 
 =head2 select( NAME, DATA, SELECTED, %opt ), combo( ... )
 
-drop-down or list, DATA is described above select() in the source.
+drop-down or list:
+
+  $data = [
+           {
+           KEY      => string      # visible html key, '*' generates one, empty uses VALUE
+           VALUE    => string      # return value, kept in the link session (sent as is without a reactor)
+           LABEL    => string      # visible text for this key/value
+           SELECTED => bool        # this option is selected
+           },
+         ];
+
+  $data = {
+           KEY => {
+                  VALUE => string      # return value, kept in the link session (sent as is without a reactor)
+                  LABEL => string      # visible text for this key/value
+                  ORDER => \d+         # sort order, then by KEY
+                  },
+           KEY => label_string,
+          };
+
+if VALUE is missing, KEY will be returned. array data keeps its order, hash
+data is sorted by ORDER and KEY.
 
   SELECTED          -- selected return value, or hash or array ref of them
   SIZE, ROWS        -- visible rows, 1 (default) is a drop-down
@@ -1032,14 +1067,18 @@ text line or other input:
 
   DATALIST          -- [ { KEY, VALUE, LABEL }, ... ] search list, the LABEL is
                        shown and searched, the VALUE is returned (mapped as
-                       for select(), KEY "*" or empty generates the key).
+                       for select(), KEY "*" generates the key, an empty
+                       one uses the VALUE).
                        a datalist shows plain text: the character references
                        of the LABEL are decoded (Data::Tools
                        str_html_unescape(): numeric ones and the common
                        named ones), tags stay as text # cc20261017-item-85
   DATALIST_SELECTED_VALUE -- VALUE of the selected entry (the old name
                        DATALIST_SELECTED_KEY still works)
-  EMPTY_KEY         -- key sent when the text matches no entry
+  EMPTY_KEY         -- key sent when the text matches no entry. with a
+                       reactor it is mapped like the entry keys: the app
+                       gets the VALUE of the entry with that key, undef if
+                       no entry has it
   SUBMIT_ON_CHANGE  -- as for select()
 
 =head2 file_upload( NAME, MULTI, %opt ), file_upload_multi( ... )
@@ -1060,8 +1099,9 @@ and the DEFAULT_BUTTON of begin().
 
 =head2 image_button( NAME, SRC, %opt ), image_button_default( ... )
 
-image submit button, SRC (or IMG) is the image url. HEIGHT, WIDTH,
-ONMOUSEOVER, CONFIRM and HINT as for button(). image_button_default() is
+image submit button, SRC (or IMG) is the image url. HEIGHT, WIDTH and
+ONMOUSEOVER are image attributes, CONFIRM, HINT and DISABLED as for
+button(). image_button_default() is
 one for the default (Enter) button, rendered but out of sight as the
 DEFAULT_BUTTON of begin() (a display: none button is not pressed by Enter in
 some browsers).

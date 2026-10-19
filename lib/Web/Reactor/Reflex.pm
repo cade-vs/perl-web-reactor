@@ -40,8 +40,8 @@ sub new
 
   data_tools_set_text_io_encoding( 'UTF-8' );
 
-  boom "invalid APP_NAME [$cfg->{ 'APP_NAME' }]" unless    $cfg->{ 'APP_NAME' } =~ /^[a-z_0-9]+$/;
-  boom "invalid LANG     [$cfg->{ 'LANG' }]"     unless    $cfg->{ 'LANG' }     =~ /^([a-z][a-z])?$/;
+  boom "invalid APP_NAME [$cfg->{ 'APP_NAME' }]" unless    $cfg->{ 'APP_NAME' } =~ /^[a-z_0-9]+\z/;
+  boom "invalid LANG     [$cfg->{ 'LANG' }]"     unless    $cfg->{ 'LANG' }     =~ /^([a-z][a-z])?\z/;
   boom "invalid APP_ROOT [$cfg->{ 'APP_ROOT' }]" unless -d $cfg->{ 'APP_ROOT' };
 
   return $self;
@@ -185,12 +185,12 @@ sub get_user_input_button
 
   my $user_input_hr = $self->get_user_input();
 
-  for( keys %$user_input_hr )
+  for( sort keys %$user_input_hr ) # sorted, the same button every time if several are sent
     {
     # regular button BUTTON:CANCEL
     # button with id BUTTON:REDIRECT:USERID
     # a repeated button parameter comes as "@BUTTON:..."
-    next unless /^\@?BUTTON:([a-z0-9_\-]+)(:(.+?))?(\.[XY])?$/oi;
+    next unless /^\@?BUTTON:([a-z0-9_\-]+)(:(.+?))?(\.[XY])?\z/oi;
 
     # return ( button, button_id )
     return wantarray ? ( $1, $3 ) : $1
@@ -414,7 +414,7 @@ sub load_trans
 
   my $lang = lc $cfg->{ 'LANG' };
 
-  return 0 if $lang !~ /^[a-z][a-z]$/; # no LANG, nothing to load (new() allows nothing else)
+  return 0 if $lang !~ /^[a-z][a-z]\z/; # no LANG, nothing to load (new() allows nothing else)
 
   $self->{ 'TRANS' }{ 'LANG' } = $lang;
 
@@ -452,7 +452,7 @@ sub load_trans
     for( @temp )
       {
       s/^\s*//;
-      s/\s*$//;
+      s/\s*\z//;
       }
     %$hr = @temp;
     @temp = ();
@@ -601,7 +601,7 @@ Used by the plugs:
 any link arguments or forwards are used
 
 =item C<HTML_DIRS>     list (or single string) of template roots, default
-C<APP_ROOT/html>; see Web::Reactor::Preprocessor::Tree for the layout
+C<APP_ROOT/html>; see "PAGE NAMES, HTML FILE TEMPLATES, PAGE INSTANCES" in the Web::Reactor POD for the layout
 
 =item C<ACTIONS_DIRS>  list (or single string) of action file directories, default
 C<APP_ROOT/actions> (Web::Reactor::Actions::Files)
@@ -672,6 +672,7 @@ Redirects (302) to the current script with C<%args> as a safe input token.
 =item C<require_post_method()>
 
 Returns if the request is POST, otherwise renders page C<epostrequired>.
+The reactor does not ship this page, the application must provide it.
 
 =back
 
@@ -698,9 +699,10 @@ compatibility and ignored, a stateless reactor has nothing to go back to.
 
 =item C<get_user_input_button()>
 
-Finds the first C<BUTTON:NAME> or C<BUTTON:NAME:ID> parameter, also an image
-button (C<BUTTON:NAME.X>/C<.Y>) and a repeated one (C<@BUTTON:NAME>), returns
-C<( $name, $id )> in list context, C<$name> in scalar context.
+Finds the first (in sorted name order) C<BUTTON:NAME> or C<BUTTON:NAME:ID>
+parameter, also an image button (C<BUTTON:NAME.X>/C<.Y>) and a repeated one
+(C<@BUTTON:NAME>), returns C<( $name, $id )> in list context, C<$name> in
+scalar context.
 
 =item C<get_lang()>, C<get_app_name()>, C<get_app_root()>
 

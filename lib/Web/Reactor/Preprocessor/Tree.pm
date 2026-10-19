@@ -77,7 +77,7 @@ sub load_file
 
   # sanitize page name
   $pn =~ s|^\s*/*||o; # strip leading  /s (but checked again later in check_page_name())
-  $pn =~ s|/*\s*$||o; # strip trailing /s (but checked again later in check_page_name())
+  $pn =~ s|/*\s*\z||o; # strip trailing /s (but checked again later in check_page_name())
   $pn =~ s|\.+||go;   # remove all dots
   $pn =~ s|/+|/|go;   # compact repeating /s
 
@@ -205,7 +205,7 @@ sub __translate_literal
   my $tr  = shift;
   my $lit = shift;
 
-  ( my $key = $lit ) =~ s/^\s+|\s+$//g;
+  ( my $key = $lit ) =~ s/^\s+|\s+\z//g;
 
   return $tr->{ $key } || $lit;
 }
@@ -255,7 +255,7 @@ sub __process_tag
 #print STDERR Dumper( 'PROCESS ARGS --- ' x 7, ( $pn, $type, $tag, $args, $opt, $ctx ) );
   $tag = lc $tag; # tags are case insensitive, also for the loop detection below
 
-  $ctx = { %$ctx }; # FIXME: CHECK, was opt
+  $ctx = { %$ctx }; # per tag copy: siblings must not share SEEN keys, see the loop detection below
   $ctx->{ 'PATH' } .= ", $type$tag";
   my $path = $ctx->{ 'PATH' };
 
@@ -379,13 +379,13 @@ package Web::Reactor::Preprocessor::Tree;
 sub check_page_name
 {
   my $self = shift;
-  boom "invalid page name [$_[0]]" unless $_[0] =~ /^[a-z0-9_\-]+(\/[a-z0-9_\-]+)*$/o;
+  boom "invalid page name [$_[0]]" unless $_[0] =~ /^[a-z0-9_\-]+(\/[a-z0-9_\-]+)*\z/o;
 }
 
 sub check_page_file_name
 {
   my $self = shift;
-  boom "invalid page file name [$_[0]]" unless $_[0] =~ /^[a-z0-9_\-]+$/o;
+  boom "invalid page file name [$_[0]]" unless $_[0] =~ /^[a-z0-9_\-]+\z/o;
 }
 
 ##############################################################################

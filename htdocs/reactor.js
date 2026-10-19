@@ -82,7 +82,7 @@ function html_block_show( block )
 
   if( block.tagName == "TR" ) // cc20261017-1
     ds = "table-row";
-  else if( block.tagName == "TD" ) // cc20261017-1
+  else if( block.tagName == "TD" || block.tagName == "TH" ) // cc20261017-1 // cc20261019-1
     ds = "table-cell";
 
   block.style.display = ds;
@@ -275,8 +275,8 @@ function reactor_tab_activate_id( tab_id )
   {
   if( ! tab_id ) return false;
 
-  // the id may be a stale one restored from sessionStorage, i.e. the tab set
-  // has fewer tabs now, then there is nothing to activate
+  // an id which is not in the page (a wrong default or handle id) activates
+  // nothing, stale remembered ids are dropped by reactor_tab_restore()
   var tab = q( tab_id );
   if( ! tab ) return false;
 
@@ -312,7 +312,7 @@ function reactor_tab_activate( tab )
     {
     var t = q( tabs[z] );
     if( ! t ) continue;
-    t.style.display = "none";
+    html_block_hide( t ); // cc20261019-1
     reactor_class_swap( q( t.dataset.handleId ), con, coff );
     }
 
@@ -321,12 +321,7 @@ function reactor_tab_activate( tab )
     {
     try { sessionStorage.setItem( 'TABSET_ACTIVE_' + pkey, tab.id ); } catch( e ) {} // storage may be blocked
     }
-  if( tab.tagName == 'TR' )
-    tab.style.display = "table-row";
-  else if( tab.tagName == 'TD' )
-    tab.style.display = "table-cell";
-  else
-    tab.style.display = "block";
+  html_block_show( tab ); // cc20261019-1
 
   return false;
   }
@@ -484,7 +479,7 @@ function reactor_hover_show_delay( el, hl_name, delay, event )
 
   reactor_hover_layer = q( hl_name );
   reactor_hover_layer_timeout_id = setTimeout( reactor_hover_activate, delay );
-  reactor_hover_reposition( event );
+  if( event ) reactor_hover_reposition( event ); // without the event the layer goes where the mouse was last // cc20261019-1
   // listeners, not onmouse* properties: handlers set by the page (ATTRS) or by
   // a popup on the same element stay, installed once per element
   if( ! el.reactor_hover_on )
@@ -538,7 +533,7 @@ function reactor_popup_mouse_toggle( el ) // cc20261017-1
 
 /*-------------------------------------------------------------------*/
 
-var single_popup_handle; // the handle element of the open SINGLE popup // cc20261017-1
+var reactor_single_popup_handle; // the handle element of the open SINGLE popup // cc20261017-1 // cc20261019-1
 
 function reactor_popup_mouse_over( el, opt )
 {
@@ -559,17 +554,20 @@ function reactor_popup_mouse_over( el, opt )
     //console.log( "there is no open popup, set timeout for open" );
     if( opt.click_open )
       {
-      if( opt.single && single_popup_handle ) reactor_popup_hide( single_popup_handle ); // cc20261017-1
+      if( opt.single && reactor_single_popup_handle ) reactor_popup_hide( reactor_single_popup_handle ); // cc20261017-1 // cc20261019-1
       reactor_popup_show( el );
-      if( opt.single ) single_popup_handle = el; // cc20261017-1
+      if( opt.single ) reactor_single_popup_handle = el; // cc20261017-1 // cc20261019-1
       }
     else
+      {
+      if( el.open_to ) clearTimeout( el.open_to ); // a second call before the delay ends replaces the timer // cc20261019-1
       el.open_to = setTimeout( function()
                                {
-                               if( opt.single && single_popup_handle ) reactor_popup_hide( single_popup_handle ); // cc20261017-1
+                               if( opt.single && reactor_single_popup_handle ) reactor_popup_hide( reactor_single_popup_handle ); // cc20261017-1 // cc20261019-1
                                reactor_popup_show( el );
-                               if( opt.single ) single_popup_handle = el; // cc20261017-1
+                               if( opt.single ) reactor_single_popup_handle = el; // cc20261017-1 // cc20261019-1
                                }, timeout );
+      } // cc20261019-1
     // a one-shot listener, not onmouseout: handlers set by the page (ATTRS)
     // or by a hover hint on the same element stay
     if( el.reactor_popup_out ) el.removeEventListener( 'mouseout', el.reactor_popup_out );
@@ -584,25 +582,31 @@ function reactor_popup_mouse_over( el, opt )
                                                 { 
                                                 //console.log( "close timeout up, hide popup" );
                                                 reactor_popup_hide( el );
-                                                if( opt.single && single_popup_handle === el ) single_popup_handle = null; // not another one opened meanwhile // cc20261017-1
+                                                if( opt.single && reactor_single_popup_handle === el ) reactor_single_popup_handle = null; // not another one opened meanwhile // cc20261017-1 // cc20261019-1
                                                 }, timeout );
                     
-                    popup_layer.onmouseover = function() 
+                    // listeners, as for the handle, one pair per layer, replaced // cc20261019-1
+                    if( popup_layer.reactor_popup_over ) popup_layer.removeEventListener( 'mouseover', popup_layer.reactor_popup_over ); // cc20261019-1
+                    if( popup_layer.reactor_popup_out  ) popup_layer.removeEventListener( 'mouseout',  popup_layer.reactor_popup_out  ); // cc20261019-1
+                    popup_layer.reactor_popup_over = function() // cc20261019-1
                                               { 
                                               //console.log( "mouse inside popup, cancel all timeouts" );
                                               reactor_popup_clear_tos( el );
                                               };
 
-                    popup_layer.onmouseout  = function() 
+                    popup_layer.reactor_popup_out  = function( ev ) // cc20261019-1
                                               { 
+                                              if( ! reactor_mouse_left( popup_layer, ev ) ) return; // moved onto a child of the layer // cc20261019-1
                                               //console.log( "mouse leave popup, set close timeout" );
                                               reactor_popup_clear_tos( el );
                                               el.close_to = setTimeout( function() 
                                                                         { 
                                                                         reactor_popup_hide( el );
-                                                                        if( opt.single && single_popup_handle === el ) single_popup_handle = null; // cc20261017-1
+                                                                        if( opt.single && reactor_single_popup_handle === el ) reactor_single_popup_handle = null; // cc20261017-1 // cc20261019-1
                                                                         }, timeout );
                                               };
+                    popup_layer.addEventListener( 'mouseover', popup_layer.reactor_popup_over ); // cc20261019-1
+                    popup_layer.addEventListener( 'mouseout',  popup_layer.reactor_popup_out  ); // cc20261019-1
                     };
     el.addEventListener( 'mouseout', el.reactor_popup_out );
     }  
@@ -622,9 +626,9 @@ function reactor_popup_clear_tos( el )
 
 function reactor_popup_show( el )
 {
-  var class_on = el.dataset.popupClassOn;
-  if( class_on )
-    reactor_class_swap( el, el.dataset.popupClassOff, class_on );
+  // the classes swap both ways when any of them is given // cc20261019-1
+  if( el.dataset.popupClassOn || el.dataset.popupClassOff ) // cc20261019-1
+    reactor_class_swap( el, el.dataset.popupClassOff, el.dataset.popupClassOn ); // cc20261019-1
 
   var popup_layer = reactor_get_popup_layer( el );
   popup_layer.style.display  = "block";
@@ -639,9 +643,8 @@ function reactor_popup_show( el )
 
 function reactor_popup_hide( el )
 {
-  var class_off = el.dataset.popupClassOff;
-  if( class_off )
-    reactor_class_swap( el, el.dataset.popupClassOn, class_off );
+  if( el.dataset.popupClassOn || el.dataset.popupClassOff ) // cc20261019-1
+    reactor_class_swap( el, el.dataset.popupClassOn, el.dataset.popupClassOff ); // cc20261019-1
 
   var popup_layer = reactor_get_popup_layer( el );
   popup_layer.style.display = "none";
@@ -661,7 +664,7 @@ function reactor_popup_hide_by_id( id )
 
 /*-------------------------------------------------------------------*/
 
-// places the (shown, absolute) div under the element, inside the viewport.
+// places the (shown, absolute or fixed) div under the element, inside the viewport.
 // the element position comes from getBoundingClientRect(), which is in
 // viewport coordinates and already counts every scroll: the document, scrolled
 // containers and fixed bars (offsetTop sums miss the last two). the place is
@@ -864,12 +867,12 @@ function display_cal( dd )
   for( var i = 0; i < wd; i++ )
     text += "    ";
     
-  for( var i = 1; i <= date_days_in_month( y, m ); i++ )
+  for( i = 1; i <= date_days_in_month( y, m ); i++ ) // cc20261019-1
     {
-    var di2 = i < 10 ? "0" + i : i; // day, two digits like the month
-    var ds = di2 + "." + mm + "." + y; // DMY, the default, as in current_date() // cc20261017-1
-    if( fmt == 'YMD' ) ds = y + "." + mm + "." + di2; // cc20261017-1
-    if( fmt == 'MDY' ) ds = mm + "." + di2 + "." + y; // cc20261017-1
+    var day = i < 10 ? "0" + i : i; // day, two digits like the month // cc20261019-1
+    var ds = day + "." + mm + "." + y; // DMY, the default, as in current_date() // cc20261017-1 // cc20261019-1
+    if( fmt == 'YMD' ) ds = y + "." + mm + "." + day; // cc20261017-1 // cc20261019-1
+    if( fmt == 'MDY' ) ds = mm + "." + day + "." + y; // cc20261017-1 // cc20261019-1
     var tm = d > 0 && d == i ? "*" : " "; // the marked day
     text += "<span class=nz-date onclick='__nz_set( this )' data-date='"+ds+"' data-div-id='"+di+"'> " + ( i < 10 ? " " : "" ) + tm + i + "</span>";
     if( ( wd + i ) % 7 == 0 ) text += "\n";
@@ -903,7 +906,7 @@ function nz_setup_picker( div_id, target_id, dt, fmt, scb )
   dd.dataset.markM = m;
   dd.dataset.markD = d;
   dd.dataset.t     = target_id;
-  dd.dataset.fmt   = fmt;
+  if( fmt ) dd.dataset.fmt = fmt; else delete dd.dataset.fmt; // no "undefined" text, display_cal() falls back to DMY // cc20261019-1
   dd.set_callback = scb;
   
   display_cal( dd );

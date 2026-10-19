@@ -1184,6 +1184,16 @@ my ( $COOKIE, $USID, $PSID );
   $r->run( password => 'forced-pw' );
   ok( $r->{ 'HOOK_DONE' }, 'the forced arguments request ran' );
 
+  # the eexpired page (rendered before the page session) gets encrypted passwords too
+  my ( $re1, $rese1 ) = request( CFG => \%rsa_cfg, HOOK => sub { $_[0]->login( 'pwexp' ) } );
+  my $ue = $re1->get_user_session();
+  my $ust = $re1->__ses->load( 'USER', $ue->{ ':SID' } );
+  $ust->{ ':XTIME' } = time() - 10;
+  $re1->__ses->save( $ust );
+  my ( $re2, $rese2 ) = request( COOKIE => cookie_of( $rese1 ), CFG => \%rsa_cfg, QS => 'password=exp-pw' );
+  is( body( $rese2 ), 'EXPIRED', 'the expired session renders eexpired' );
+  is( $priv->decrypt_hex( $re2->get_user_input()->{ 'PASSWORD' } ), 'exp-pw', 'a password sent to an expired session is encrypted before the eexpired page' );
+
   request( COOKIE => $COOKIE, CFG => { DISABLE_PASSWORD_ENCRYPT => 1 }, QS => 'password=plain-pw&new_password=plain-new', HOOK => sub
     {
     my $ui = $_[0]->get_user_input();
@@ -1831,6 +1841,37 @@ my ( $APP ) = request( COOKIE => $COOKIE );
 
   ( $r ) = request( COOKIE => $COOKIE, QS => "_=$state&X=a" );
   is( $r->get_safe_input()->{ 'X' }, 'A', 'the real name posted directly still takes its value from the map' );
+}
+
+# a single visible name which sorts before a repeated "@NAME" of the same real
+# name is merged into "@NAME" too, whatever the sort order of the names
+{
+  my $tok;
+  request( COOKIE => $COOKIE, HOOK => sub
+    {
+    my $reo = shift;
+    $tok = $reo->args( FORM_ID => 'sortform' );
+    $reo->get_link_session()->{ 'FORM_RET_MAP' }{ 'sortform' } = { 'NAME' => { '1HID' => 'X' }, 'DATA' => { 'X' => { 'k' => 'K', 'm' => 'M', 'n' => 'N' } } };
+    } );
+  my ( $r ) = request( COOKIE => $COOKIE, QS => "_=$tok&1HID=k&X=m&X=n" );
+  my $si = $r->get_safe_input();
+  is_deeply( [ exists $si->{ 'X' }, $si->{ '@X' } ], [ '', [ 'K', 'M', 'N' ] ], 'a single value sorted before @NAME is merged into @NAME, no X is left' );
+}
+
+# a repeated hidden name without DATA (a select with no options) gives undef
+# values and adds no DATA entry to the return map in the LINK session
+{
+  my ( $tok, $lsid );
+  request( COOKIE => $COOKIE, HOOK => sub
+    {
+    my $reo = shift;
+    $tok  = $reo->args( FORM_ID => 'nodata' );
+    $lsid = $reo->get_link_session()->{ ':SID' };
+    $reo->get_link_session()->{ 'FORM_RET_MAP' }{ 'nodata' } = { 'NAME' => { 'HID' => 'Y' }, 'DATA' => {} };
+    } );
+  my ( $r ) = request( COOKIE => $COOKIE, QS => "_=$tok&HID=a&HID=b" );
+  is_deeply( $r->get_safe_input()->{ '@Y' }, [ undef, undef ], 'a repeated hidden name without DATA gives undef values' );
+  ok( ! exists $r->__ses->load( 'LINK', $lsid, $COOKIE )->{ 'FORM_RET_MAP' }{ 'nodata' }{ 'DATA' }{ 'Y' }, 'no DATA entry is added to the LINK session' );
 }
 
 # a radio group with KEY and RET radios: the checked KEY radio arrives too

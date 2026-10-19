@@ -102,8 +102,9 @@ row keys (hash row):
 
   DATA        -- the cells (array ref), a row without DATA is skipped
   CLASS       -- row class, else the stripe class
-  ARGS        -- raw row attributes, a class in it wins over the stripe class
-                 and a style in it gets display: none merged for -NODISPLAY
+  ARGS        -- raw row attributes, a class in it wins over CLASS and the
+                 stripe class, a style in it gets display: none merged for
+                 -NODISPLAY
   CID         -- collapse id, see below, letters, digits, "_", ".", ":" and
                  "-" only (html_check_ident()) # cc20261017-2
   CCL, PCCL   -- columns class list for this row / from this row on
@@ -114,7 +115,8 @@ cell keys (hash cell):
 
   DATA   -- cell text
   CLASS  -- cell class, else the column class
-  ARGS   -- raw cell attributes, a class in it wins over the column class
+  ARGS   -- raw cell attributes, a class in it wins over CLASS and the
+            column class
   WIDTH  -- cell width: a number (pixels) or a number with %, px, em or rem,
             it goes into the cell style # cc20261017-2
 
@@ -126,9 +128,10 @@ collapse identifier for rows
 an array row whose first element is a hash without DATA takes it as the row
 options, a hash with DATA is a cell # cc20261017-2
 
-the first cell of a row with a CID toggles the rows whose CID starts with it
-(ctable_row_click() in js/reactor.js, the page must load it). nested rows
-start visible unless they are also marked -NODISPLAY.
+the first cell of a row with a CID toggles its direct child rows (CID plus
+one more ".id" part) and hides the deeper ones (ctable_row_click() in
+js/reactor.js, the page must load it). nested rows start visible unless they
+are also marked -NODISPLAY.
 
 =cut
 
@@ -410,7 +413,8 @@ html_layout_2lr( $left, $right, $format ), html_layout_2lr_flex( $left, $right, 
 formats pair for left/right boxes aligned within specific width, as a table
 (html_layout_2lr()) or as a flex box (html_layout_2lr_flex(), without a
 format the left box takes the room and the right one is as narrow as its
-content)
+content). html_layout_2lr() without a format uses '<=>' (50%/50%, aligned
+outward)
 
 format is: 'left-spec=right-spec'
 
@@ -509,7 +513,8 @@ one spec per cell, separated by "," or ";":
   =           -- the cell takes all the free room
   xN          -- the spec is used for N cells
 
-cells beyond the specs get flex 1, centered content.
+cells beyond the specs get flex 1. all cells get align-content: center
+(vertically centered), "|" centers the text.
 
 example:
 

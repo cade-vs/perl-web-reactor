@@ -276,6 +276,14 @@ sub _split_dir_components
   return $r;
 }
 
+# the session file name of a key, the session var dir is created if missing
+# args:
+#       opt  -- hashref of options: READONLY -- do not create the directories
+#               of the session itself (for load, exists, delete)
+#       key  -- key components, see _storage_create(), as a list
+# returns:
+#       session file name, "<var dir>/<TYPE>/<split dirs>/<id>.wrs2", booms on
+#       an invalid key component
 sub _key_to_fn
 {
   my $self = shift;

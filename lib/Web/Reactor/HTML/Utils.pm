@@ -442,7 +442,8 @@ $reo must be a Web::Reactor::Reflex or Web::Reactor object.
 
 =cut
 
-# returns the value for html tag attribute "onmouseover"
+# returns the value for html tag attribute "onmouseover" (the layer goes into
+# the KIT_HTML hold), in list context ( handle, layer html ) without the hold
 sub html_hover_layer
 {
   my $reo = shift;
@@ -996,7 +997,7 @@ sub html_attrs_filter
 html_args_style( $args, $css )
 
 returns the raw html attributes string $args with the css declarations $css
-(i.e. "width: 20%;") added: merged into a style already in $args (quoted or
+(e.g. "width: 20%;") added: merged into a style already in $args (quoted or
 not), so the element has only one style attribute (a browser keeps the first
 and drops the rest), or appended as a new style attribute. $css must not
 contain quotes, it booms.

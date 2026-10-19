@@ -419,7 +419,6 @@ sub radio
 
 ##############################################################################
 
-# select() DATA, see the POD of select()
 sub select
 {
   my $self = shift;
@@ -520,7 +519,7 @@ sub select
   return $text;
 }
 
-# combo is a select with one row, which is the select() default
+# combo() is an alias of select(), one row is the select() default
 sub combo
 {
   my $self = shift;
@@ -911,8 +910,9 @@ all elements belong to the form started by begin() through the html "form"
 attribute, so they can be placed anywhere in the page. element names are
 upper-cased, the submitted values come in the user input under them.
 
-with a reactor, select(), the DATALIST of input(), radio() with RET and a
-hidden input() with RET do not send their return values to the browser, only
+with a reactor, select(), the DATALIST of input(), radio() with RET (and the
+KEY radios of a group with RET radios) and a hidden input() with RET do not
+send their return values to the browser, only
 keys: random ones for KEY "*" and RET, the given KEY otherwise (an empty KEY
 uses the VALUE). select() and the DATALIST also hide their NAME. the real
 names and values are kept in the link session (the return map, stored by
@@ -934,7 +934,8 @@ Web::Reactor pages or without sessions. then:
     of input(), radio() with RET and a hidden input() with RET send the
     real values under the real names
   - end() writes the form state (state() data, FORM_NAME, FORM_ID) as
-    plain hidden inputs, there is no state keeper "_"
+    plain hidden inputs, there is no state keeper "_", state() can hold
+    only plain values then (end() booms on a reference)
   - HINT options are ignored, the hover layers need the reactor page holds
 
 =head1 OPTIONS OF ALL ELEMENTS
@@ -972,12 +973,14 @@ starts the form, returns its html:
 
   NAME            -- form name (random if missing), it comes back as
                      get_input_form_name()
-  ID              -- form html id (from NAME if missing), letters, digits,
+  ID              -- form html id (NAME and a unique id if missing), letters, digits,
                      "_", ":" and "." only (html_check_name()), stricter
                      than the element ids
   METHOD          -- POST (default) or GET
   ACTION          -- form action url (default "?")
-  DEFAULT_BUTTON  -- button NAME the Enter key presses
+  DEFAULT_BUTTON  -- button NAME the Enter key presses (upper-cased, a
+                     "button:" prefix is removed), written right after the
+                     form start: Enter presses the first submit button
   NO_AUTOCOMPLETE -- no browser autocomplete for the form
   CLASS_MAP       -- { CHECKBOX, CHECKBOX_MULTI, RADIO, SELECT, TEXTAREA,
                      INPUT, FILE_UPLOAD, BUTTON, IMAGE_BUTTON } default
@@ -1003,13 +1006,17 @@ classic checkbox, sends 1 or 0. VALUE true makes it checked.
 
 checkbox with STAGES states (default 2), a click goes to the next one,
 sends the state number 0 .. STAGES-1. LABELS is an array ref with the html
-for each state (a state without a label shows its number), HINT is a hover
-layer text. checkbox_3state() has 3 stages and "?", "&radic;", "x" labels.
+for each state (a state without a label shows its number, the default
+labels are "x" and "&radic;"), HINT is a hover layer text. checkbox_3state()
+has 3 stages and "?", "&radic;", "x" labels.
 
 =head2 radio( NAME, KEY or RET, ON, %opt )
 
 one radio button of the NAME group. KEY is the sent value, or RET a return
 value which is mapped (the browser sees a random key). ON makes it checked.
+with a reactor, the KEY radios of a group which also has RET radios are
+mapped to themselves in end(), so the whole group comes in the safe input; a
+group of KEY radios only comes in the user input.
 
 =head2 select( NAME, DATA, SELECTED, %opt ), combo( ... )
 
@@ -1053,7 +1060,8 @@ data is sorted by ORDER and KEY.
 
 =head2 input( NAME, VALUE, %opt )
 
-text line or other input:
+text line or other input (with DATALIST the VALUE is not used, the shown
+text comes from DATALIST_SELECTED_VALUE):
 
   SIZE, WIDTH       -- visible size
   MAXLEN, MAX       -- maximum length
@@ -1063,7 +1071,9 @@ text line or other input:
   HIDDEN            -- hidden input
   RET, RETURN       -- with HIDDEN: return value, mapped, VALUE is not used
   PH, PHI           -- placeholder text
-  CLEAR             -- clear button: 1 (a cross), a text or an image file name
+  CLEAR             -- clear button: 1 (a cross), html (not escaped) or an
+                       image file name (lower-case letters, digits, "_", "-",
+                       "/" and one dot before png, jpg, jpeg, gif or svg)
   NO_AUTOCOMPLETE   -- no browser autocomplete
   READONLY, RO; REQUIRED, REQ; FOCUS_AUTO_CLEAR -- as for textarea()
 
@@ -1081,7 +1091,7 @@ text line or other input:
                        reactor it is mapped like the entry keys: the app
                        gets the VALUE of the entry with that key, undef if
                        no entry has it
-  SUBMIT_ON_CHANGE  -- as for select()
+  SUBMIT_ON_CHANGE  -- as for select(), only with DATALIST
 
 =head2 file_upload( NAME, MULTI, %opt ), file_upload_multi( ... )
 
@@ -1101,12 +1111,13 @@ and the DEFAULT_BUTTON of begin().
 
 =head2 image_button( NAME, SRC, %opt ), image_button_default( ... )
 
-image submit button, SRC (or IMG) is the image url. HEIGHT, WIDTH and
-ONMOUSEOVER are image attributes, CONFIRM, HINT and DISABLED as for
-button(). image_button_default() is
-one for the default (Enter) button, rendered but out of sight as the
+image submit button, SRC (or IMG) is the image url. HEIGHT and WIDTH are
+image attributes, ONMOUSEOVER is an event handler (HINT replaces it),
+CONFIRM, HINT and DISABLED as for button(). image_button_default() is one
+for the default (Enter) button, rendered but out of sight as the
 DEFAULT_BUTTON of begin() (a display: none button is not pressed by Enter in
-some browsers).
+some browsers). Enter presses the first submit button of the form, so it
+must come before the other buttons in the page.
 
 =head2 get_id()
 

@@ -537,7 +537,7 @@ function reactor_popup_mouse_toggle( el ) // cc20261017-1
 
 /*-------------------------------------------------------------------*/
 
-var reactor_single_popup_handle; // the handle element of the open SINGLE popup // cc20261017-1 // cc20261019-1
+var reactor_single_popup_handle; // the handle element of the last opened SINGLE popup, it may be closed already (hiding it again does no harm) // cc20261017-1 // cc20261019-1
 
 function reactor_popup_mouse_over( el, opt )
 {

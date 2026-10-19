@@ -557,7 +557,8 @@ otherwise C<render_page( $name || 'main' )>
 =back
 
 Both render helpers hand their output to Core's C<render()>, which sinks
-C<RENDER> and returns the PSGI response.
+C<RENDER> and does not return, C<run()> catches it and builds the PSGI
+response.
 
 =head1 URL PARAMETERS
 
@@ -720,6 +721,12 @@ insensitive.
 
 =item C<html_hold_set( %chunks )>, C<html_hold_get( $name )>,
 C<html_hold_del( $name )>, C<html_hold_clear()>, C<html_hold_reset( %chunks )>
+
+C<html_hold_set()> adds or replaces chunks (names lower-cased) and returns
+the hold hashref, C<html_hold_get()> returns one chunk or undef,
+C<html_hold_del()> removes one chunk and its kit snippets,
+C<html_hold_clear()> removes all chunks and kit snippets,
+C<html_hold_reset()> clears and then sets the given chunks.
 
 =item C<html_hold_kit_add( $name, $text )>
 

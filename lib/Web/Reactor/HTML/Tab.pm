@@ -120,8 +120,8 @@ sub add
 }
 
 # puts tab controller inside the KIT_HTML hold, pages show it with <$$kit_html>
-# when no tab was added with ON, the first tab is shown unless another one is
-# restored from the browser session. a second call does nothing. without a
+# when no tab was added with ON, the first tab is shown. a tab remembered in
+# the browser session wins over the first and over the ON tab. a second call does nothing. without a
 # reactor object it returns the controller html instead # cc20261017-1
 
 sub finish
@@ -243,7 +243,8 @@ switches to this tab, or give the hashref to html_element(), and the tab
 html where the tab goes.
 
   TYPE          -- DIV, TR or TD, the element which holds the tab (required)
-  ON            -- the tab is shown at first, only one tab may be ON
+  ON            -- the tab is shown at first, only one tab may be ON (a tab
+                   remembered in the browser session wins over it)
   CLASS         -- class of the tab element (default "reactor_tab")
   HANDLE_CLASS  -- other handle classes, kept when the tab is switched
   TAB_ID        -- tab element id (default generated)
@@ -261,7 +262,8 @@ escaped. Booms after C<finish()>.
 
 Puts the tab controller into the C<KIT_HTML> hold, or returns its html
 without a reactor object. When no tab was added with C<ON>, the first one is
-shown unless another one is remembered. Call it once after the last
+shown. A tab remembered in the browser session wins over the first and over
+the C<ON> tab. Call it once after the last
 C<add()>, later calls do nothing.
 
 =back

@@ -49,7 +49,8 @@ our %SESSION_TYPES = (
 #       type -- session type, one of %SESSION_TYPES
 #       psid -- parent session id, required for types with a parent (PAGE,
 #               LINK), undef for the rest
-#       len  -- session id length (optional, default SESS_LENGTH config or 73)
+#       len  -- session id length (optional, default SESS_LENGTH config or 73),
+#               in debug mode a "Name_" prefix is added, the id is longer
 #       sid  -- fixed session id (optional, i.e. a HOLD session of a user),
 #               instead of a new random one, len is not used then (a
 #               given len is still checked)
@@ -133,8 +134,9 @@ sub load
 # saves session data to the storage, under the key built from the session's
 # own :TYPE, :SID and :PSID. a closed session (see close()) is never saved
 # again and a session missing in the storage is never created by a save (only
-# create() creates, so a stale copy cannot bring back a deleted session): both
-# are not saved and return 0, nothing is thrown
+# create() creates, so a stale copy cannot bring back a deleted session, only
+# a delete() racing the save itself can, Reactor never deletes): both are not
+# saved and return 0, nothing is thrown
 # TODO: detection of overlapping saves, as a side API of the storage, outside
 #       the session data: Filesystem by the file mtime/inode/size, SQL by a
 #       separate serial column, key/value storages to be decided. it only
@@ -314,7 +316,8 @@ sub _storage_debug_info { boom "Web::Reactor::Sessions::*::_storage_debug_info()
 #       len  --  session id length (optional, 0 or undef for default length)
 #       letters -- letters to be used for session id creation (optional,
 #                  default SESS_LETTERS config or A-Z a-z 0-9), only A-Z a-z
-#                  0-9 and _ are allowed, no duplicates
+#                  0-9 and _ are allowed, they should have no duplicates
+#                  (not checked, duplicates bias the ids)
 # returns:
 #       id -- session id string
 sub create_id
@@ -330,6 +333,16 @@ sub create_id
   return Crypt::PRNG::random_string_from( $let, $len );
 }
 
+# builds the storage key of a session from its type and ids, checks them
+# args:
+#       type -- session type, one of %SESSION_TYPES
+#       sid  -- session id
+#       psid -- parent session id, required for types with a parent (PAGE,
+#               LINK), must be empty for the rest
+# returns:
+#       key components array reference: [ TYPE, SID ] or, for types with a
+#       parent, [ TYPE, PSID, SID ]. booms on an invalid type, a malformed sid
+#       or psid, a missing psid or a psid given for a type without a parent
 sub compose_key_from_sid
 {
   my $self = shift;

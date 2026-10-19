@@ -53,7 +53,7 @@ sub new
   $self->{ 'CFG' }                    = dclone( $cfg );
   $self->{ 'CFG' }{ 'CHARSET' }       = 'UTF-8'; # force UTF-8 always
   $self->{ 'IN'  }{ 'ENV'         }   = $env = { %$env }; # including headers
-  $self->{ 'IN'  }{ 'ENV'         }{ '_CLIENT_IP' } = $self->get_client_ip(); # this is always end-point client browser IP, regardless of cloudflare proxy etc.
+  $self->{ 'IN'  }{ 'ENV'         }{ '_CLIENT_IP' } = $self->get_client_ip(); # the client browser IP behind a proxy only when CLOUDFLARE/PROXY_REMOTE is configured, see get_client_ip()
 
   $self->set_debug( $cfg->{ 'DEBUG' } );
 
@@ -1063,7 +1063,8 @@ HTTP status, defaults to 200 when unset.
 Records headers, names lowercased, later calls overwrite earlier ones for
 the same name. Booms on a CR or LF in a name or value. Two names are special:
 C<status> sets the HTTP status instead, C<content-charset> is appended to
-C<content-type> as C<; charset=...> when the response is built.
+C<content-type> as C<; charset=...> when the response is built, unless
+C<content-type> already has a charset (then it is dropped).
 
 =item C<res_clear_headers()>
 
@@ -1103,8 +1104,9 @@ returns. Keys:
   FILE_NAME         adds a Content-Disposition header, see below
   DISPOSITION_TYPE  inline (default) or attachment, used only with FILE_NAME
 
-For C<text/*> types the charset header is set to UTF-8 and DATA is encoded
-from characters to bytes; a FH is sent as is. FILE_NAME is sanitized for
+For C<text/*> types DATA is encoded from characters to bytes and sent as
+UTF-8: a charset given in TYPE is replaced by UTF-8. A FH is sent as is: a
+charset given in TYPE is kept, UTF-8 is added only when TYPE has none. FILE_NAME is sanitized for
 header injection and, when it contains non-ASCII, sent both as an ASCII
 fallback and as an RFC 5987 C<filename*> parameter. C<HTTP_CSP> from the
 config is added when set.

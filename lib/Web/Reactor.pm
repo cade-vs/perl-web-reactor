@@ -149,6 +149,13 @@ sub process_request
     ( $user_sid, $user_shr ) = $self->__create_new_user_session();
     }
 
+  # *** import user input parameters as early as possible ********************
+  my $user_input_hr = $self->get_user_input();
+  %$user_input_hr = ( %$user_input_hr, %args ) if $args;
+  # *** encrypting password input parameters *********************************
+  # param names matching $Web::Reactor::Core::RE_PASSWORD_PARAM_NAMES
+  $self->__encrypt_pass_input_parameters( $user_input_hr ) unless $cfg->{ 'DISABLE_PASSWORD_ENCRYPT' };
+
   # *** check expire time of the USER SESSION ********************************
 
   if( ( $user_shr->{ ':LOGGED_IN' } and $user_shr->{ ':XTIME' } > 0 and time() > $user_shr->{ ':XTIME' } )
@@ -185,18 +192,9 @@ sub process_request
   my $user_session_expire = $cfg->{ 'USER_SESSION_EXPIRE' } || 600; # 10 minutes
   $self->set_user_session_expire_time_in( $user_session_expire );
 
-  my $user_input_hr = $self->get_user_input();
+  # *** import safe parameters ***********************************************
   my $safe_input_hr = $self->get_safe_input();
-
-  # merge forced parameters
-  # FIXME: TODO: should it go only to the safe params, or?
-  %$user_input_hr = ( %$user_input_hr, %args ) if $args;
   %$safe_input_hr = ( %$safe_input_hr, %args ) if $args;
-
-  # *** encrypting password input parameters *********************************
-  # names matching $Web::Reactor::Core::RE_PASSWORD_PARAM_NAMES
-
-  $self->__encrypt_pass_input_parameters( $user_input_hr ) unless $cfg->{ 'DISABLE_PASSWORD_ENCRYPT' };
 
   # *** loading page session *************************************************
 
@@ -266,8 +264,9 @@ sub process_request
 ## DESIGN: cookie sessions
 ##
 ## the cookie value is the id of a COOK session, never the user session id.
-## the COOK session is used only on connect to find the user session, so the
-## internal user session id never leaves the server.
+## the COOK session is used on connect to find the user session, so the
+## internal user session id never leaves the server, and it is the parent of
+## the LINK sessions (link tokens resolve only under the same cookie).
 ##
 ##   session types and parents (%SESSION_TYPES in Web::Reactor::Sessions):
 ##     - USER, COOK and HOLD have no parent
@@ -565,20 +564,23 @@ sub __import_hidden_safe_input
     {
     my ( $at, $bin ) = $in =~ /^(\@?)(.*)\z/;
 
-    next unless exists $rmn->{ $bin } or exists $rmd->{ $bin };
-
     # current input value
     my $iv = $user_input_hr->{ $in };
 
     # get real name from the map, if mapped
     my $rn = exists $rmn->{ $bin } ? $rmn->{ $bin } : $bin;
 
+    next unless exists $rmn->{ $bin } or exists $rmd->{ $rn };
+
     my $arn = '@' . $rn; # array real name
     if( $at )
       {
-      # parameter already has multiple values, remap the values
+      # parameter already has multiple values, remap the values. a single
+      # value of the same real name, already in the safe input (from a name
+      # sorted before this one), goes into the array first and is removed
       $safe_input_hr->{ $arn } ||= [];
-      push @{ $safe_input_hr->{ $arn } }, map { $rmd->{ $rn }{ $_ } } @$iv;
+      push @{ $safe_input_hr->{ $arn } }, delete $safe_input_hr->{ $rn } if exists $safe_input_hr->{ $rn };
+      push @{ $safe_input_hr->{ $arn } }, map { exists $rmd->{ $rn } ? $rmd->{ $rn }{ $_ } : undef } @$iv;
       }
     else
       {
@@ -589,8 +591,7 @@ sub __import_hidden_safe_input
         {
         # parameter already exists but with single value, convert to array
         $safe_input_hr->{ $arn } ||= [];
-        push @{ $safe_input_hr->{ $arn } }, $safe_input_hr->{ $rn }, $rv;
-        delete $safe_input_hr->{ $rn };
+        push @{ $safe_input_hr->{ $arn } }, delete $safe_input_hr->{ $rn }, $rv;
         }
       elsif( exists $safe_input_hr->{ $arn } )
         {
@@ -1614,7 +1615,8 @@ All session cookies are set with:
 
   - httponly: Prevents JavaScript access (XSS protection)
   - secure: Only sent over HTTPS (unless DISABLE_SECURE_COOKIES=1)
-  - samesite=lax: CSRF protection (cookies not sent on cross-site requests)
+  - samesite=lax: CSRF protection (cookies not sent on cross-site subrequests
+    and POSTs, still sent on cross-site top-level GET navigation)
 
 =head2 Session Hijacking Prevention
 
@@ -2172,7 +2174,9 @@ Create and protect the session directory:
   chown www-data:www-data /var/reactor/sessions
 
 Session files are stored as JSON, one file per session, with .wrs2 extension
-and mode 0600.
+and mode 0600. A closed session (logout, expired, invalid, replaced cookie
+session) also has a close mark file next to it, "<session file>.closed", with
+its close fields as JSON, mode 0600.
 
 =head2 Installation
 
@@ -2335,7 +2339,9 @@ When deploying Web::Reactor applications:
 4. Form and link CSRF protection is automatic
 
    Links and forms carry a "_" token which resolves only in the LINK session
-   of the same cookie session, use args*() and new_form() to build them
+   of the same cookie session, use args()/args_*() and new_form() to build
+   them. argsx() tokens carry their data encrypted and resolve under any
+   cookie, they are not bound to the session
 
 5. Log security events:
 
@@ -2349,9 +2355,10 @@ When deploying Web::Reactor applications:
 
 1. User input is never automatically trusted
 
-2. Take mapped values (links, select, checkbox, radio, hidden RET inputs) from
-   get_safe_input(), they cannot be changed by the client. Typed text fields
-   arrive only in get_user_input() and must be validated
+2. Take mapped values (links, select, datalist, radio and hidden input with
+   RET, KEY radios of a group with RET radios) from get_safe_input(), they
+   cannot be changed by the client. Typed text fields, checkboxes and KEY
+   radios arrive only in get_user_input() and must be validated
 
 3. Implement application-level validation in action modules:
 

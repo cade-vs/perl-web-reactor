@@ -14,7 +14,7 @@ use strict;
 use List::Util qw( first );
 use Exception::Sink;
 use Data::Dumper;
-use Data::Tools 1.53; # file_text_load()
+use Data::Tools 1.53; # the version the whole distribution needs, see Makefile.PL
 use Web::Reactor::Preprocessor;
 
 use parent 'Web::Reactor::Preprocessor';
@@ -62,7 +62,7 @@ sub load_page
 # by load_page() and for <#include> tags, not part of the preprocessor api
 # args:
 #       $page_name  -- page name (path), it should be sanitized, the file is
-#                      looked up for this page in the file, storage, or sth.
+#                      looked up for this page in the HTML_DIRS tree
 #       $file_name  -- file name inside the page (no path, no extension),
 #                      'index' is the page itself, other names are includes
 #

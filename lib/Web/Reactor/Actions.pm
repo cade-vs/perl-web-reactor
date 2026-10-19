@@ -58,7 +58,8 @@ sub new
 #                    other callers may pass any named arguments
 # returns:
 #       action result: text to be replaced in output, or portray data (see
-#       Web::Reactor::Core::portray()), undef if the action failed
+#       Web::Reactor::Core::portray()), undef if the action failed. booms on
+#       an invalid name and when the action is unknown or cannot be loaded
 sub call
 {
   my $self  = shift;

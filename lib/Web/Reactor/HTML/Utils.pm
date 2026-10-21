@@ -336,7 +336,11 @@ sub __html_ftree_branch
     # nested rows start hidden: into a style already in the row args (quoted
     # or not), so the row has only one style attribute
     $r_args = html_args_hide( $r_args ) if $level > 0;
+    # the indent is a share of the row width: 6% per level, up to 61% (level
+    # 10), deeper levels keep it, the label always has room and a width over
+    # 100% cannot happen
     my $pad = $level * 6 + 1;
+    $pad = 61 if $pad > 61;
     my $cell = Web::Reactor::HTML::Layout::html_layout_2lr( '&nbsp;', $label, "$pad=<" );
 
     if( ref( $sub_data ) eq 'ARRAY' )
@@ -656,10 +660,18 @@ html_tabs_table( $reo, \@tabs, %opt )
 
 table with tabs, one tab is visible at a time, see Web::Reactor::HTML::Tab.
 
+$reo may be undef: then the page must load js/reactor.js itself and the tab
+controller is added to the end of the returned html (with a reactor it goes
+into the KIT_HTML hold, see Web::Reactor::HTML::Tab).
+
 @tabs is a list of hash refs with this content:
 
     LABEL          -- label text for this tab handle
-    LABEL_TD_ARGS  -- further optional arguments for the label TD
+    LABEL_TD_ARGS  -- further optional arguments for the label TD. a class
+                      in it is kept when the tab is switched, an id in it
+                      becomes the tab handle id (HTML::Tab HANDLE_ID, safe
+                      characters only), an onclick in it booms (the label TD
+                      onclick switches the tab)
     TEXT           -- text to show when tab handle clicked
     TEXT_TD_ARGS   -- TD element args, same as above
     ON             -- if true, this tab will be initially visible, only one
@@ -741,13 +753,19 @@ sub html_tabs_table
     # only one class attribute and the class is kept when the tab is switched
     my $handle_class;
     $handle_class = $2 if $label_args =~ s/(?<![\w-])class\s*=\s*(['"])(.*?)\1//i or $label_args =~ s/(?<![\w-])class\s*=\s*()([^\s>'"]+)//i;
+    # the same for an id, it becomes the handle id (checked by HTML::Tab). the
+    # handle has its own onclick, a second one would be dropped by the browser
+    my $handle_id;
+    $handle_id = $2 if $label_args =~ s/(?<![\w-])id\s*=\s*(['"])(.*?)\1//i or $label_args =~ s/(?<![\w-])id\s*=\s*()([^\s>'"]+)//i;
+    boom "LABEL_TD_ARGS cannot have onclick, the label TD onclick switches the tab, got [$label_args]" if $label_args =~ /(?<![\w-])onclick\s*=/i;
 
-    my ( $tab_handle, $tab_html ) = $tab->add( "<td $text_args>$text</td>", TYPE => 'TR', ON => $on, TAB_ID => $tab_id, HANDLE_CLASS => $handle_class );
+    my ( $tab_handle, $tab_html ) = $tab->add( "<td $text_args>$text</td>", TYPE => 'TR', ON => $on, TAB_ID => $tab_id, HANDLE_CLASS => $handle_class, HANDLE_ID => $handle_id );
 
     push @label_td, "<td $label_args $tab_handle>$label</td>";
     push @text_td,  $tab_html;
     }
-  $tab->finish();
+  # without a reactor finish() returns the tab controller, it goes after the table
+  my $controller = $tab->finish();
 
   my $args  = $opt{ 'ARGS' };
 
@@ -780,6 +798,7 @@ sub html_tabs_table
     $text .= join( '', @text_td );
     }
   $text .= "</table>\n";
+  $text .= $controller if defined $controller;
 
 
   return $text;

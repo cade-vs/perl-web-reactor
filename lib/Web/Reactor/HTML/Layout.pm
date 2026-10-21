@@ -269,7 +269,7 @@ sub html_table
 
       # the cell CLASS or the column class, unless ARGS already sets one
       $c_args .= html_attrs( class => $c_class ) if $c_class ne '' and $c_args !~ /(?<![\w-])class\s*=/i; # cc20261017-2 escaped
-      $c_args .= html_attrs( onclick => 'ctable_row_click( this )', 'data-cid' => $cid ) if $cn == 0 and $cid; # cc20261017-2
+      $c_args .= html_attrs( onclick => 'ctable_row_click( this )' ) if $cn == 0 and $cid; # cc20261017-2 the cid is on the row, ctable_row_click() reads it there
       $c_args  =~ s/^\s+//; # cc20261017-2
       $text .= "    <td $c_args>$val</td>\n";
       $cn++;
@@ -511,7 +511,11 @@ one spec per cell, separated by "," or ";":
   w           -- wrap
   p           -- preformatted (white-space: pre)
   =           -- the cell takes all the free room
+  N           -- flex weight of the cell (default 1), i.e. "<100,1n" gives
+                 the first cell 100 parts of the room and the second one 1
   xN          -- the spec is used for N cells
+
+any other character in a spec booms.
 
 cells beyond the specs get flex 1. all cells get align-content: center
 (vertically centered), "|" centers the text.
@@ -545,7 +549,10 @@ sub __html_box_fmt_parse
     # the class prefix is taken off first, so its letters are not read as flags
     $arg .= html_attrs( class => $1 ) . ' ' if $f =~ s/^([^:]+)://; # cc20261017-2 escaped
 
+    boom "invalid box format spec [$f] in [$fmt], expected only < > | n w p = N xN" unless $f =~ /^(?:[<>|nwp=]|x\d+|\d+)*\z/i;
+
     my $wid = 1;
+    $wid  = $1                      if $f =~ /(?<![x\d])(\d+)/i; # a number not after "x" is the flex weight
     $wid  = 1000                    if $f =~ /=/;
 
     my $sty;

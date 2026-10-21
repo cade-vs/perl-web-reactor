@@ -308,7 +308,8 @@ sub checkbox
   #print STDERR "ccccccccccccccccccccc CHECKBOX [$name] [$value]\n";
   $text .= "\n";
   $text .= html_element( 'input', undef, type => 'hidden', name => $name, id => $ch_id, value => $value, form => $form_id );
-  $text .= html_element( 'input', undef, %options, type => 'checkbox', 'data-checkbox-input-id' => $ch_id, form => $form_id, onclick => 'reactor_form_checkbox_toggle(this)', class => $class, html_attrs_filter( $opt{ 'ATTRS' }, @ATTRS_PROTECTED, qw( type onclick data-checkbox-input-id ) ) );
+  # ATTRS cannot set checked: the hidden input holds the sent value, VALUE sets both
+  $text .= html_element( 'input', undef, %options, type => 'checkbox', 'data-checkbox-input-id' => $ch_id, form => $form_id, onclick => 'reactor_form_checkbox_toggle(this)', class => $class, html_attrs_filter( $opt{ 'ATTRS' }, @ATTRS_PROTECTED, qw( type onclick data-checkbox-input-id checked ) ) );
   $text .= "\n";
 
   return $text;
@@ -549,7 +550,12 @@ sub textarea
   html_check_name_boom( $name );
   html_check_ident_boom( $id );
 
-  ( $cols, $rows ) = ( $1, $2 ) if $geo =~ /(\d+)[\*\/\\](\d+)/;
+  # the whole GEOMETRY must be "COLS*ROWS", both above 0, anything else booms
+  if( $geo ne '' )
+    {
+    boom "invalid GEOMETRY [$geo], expected COLS*ROWS (or COLS/ROWS, COLS\\ROWS), both above 0" unless $geo =~ /^\s*([1-9]\d*)\s*[\*\/\\]\s*([1-9]\d*)\s*\z/;
+    ( $cols, $rows ) = ( $1, $2 );
+    }
 
 
   my %options;
@@ -595,9 +601,10 @@ sub input
 
   my $phi   =    $opt{ 'PH' } || $opt{ 'PHI' };
 
-  my $clear =    $opt{ 'DISABLED' } ? undef : $opt{ 'CLEAR'   };
+  # no clear button on a field which cannot be changed, it would clear it anyway
+  my $clear =    ( $opt{ 'DISABLED' } or $opt{ 'READONLY' } or $opt{ 'RO' } ) ? undef : $opt{ 'CLEAR' };
 
-  my $datalist    = $opt{ 'DATALIST'              }; # array ref of { KEY, VALUE, LABEL } hashes, upper-case keys
+  my $datalist    = $opt{ 'DATALIST'              }; # array ref of { KEY, VALUE, LABEL } hashes, keys in any case
   my $datalist_sv = $opt{ 'DATALIST_SELECTED_VALUE' } // $opt{ 'DATALIST_SELECTED_KEY' }; # VALUE of the selected item, DATALIST_SELECTED_KEY is the old name
 
   __check_removed_options( \%opt );
@@ -680,7 +687,8 @@ sub input
     my $datalist_label;
 
     my $datalist_text;
-    for my $e ( @$datalist )
+    # copies with upper-case keys, as select(), the caller's data is not changed
+    for my $e ( map { my %e = %$_; hash_uc_ipl( \%e ); \%e } @$datalist ) # TODO: FIXME: cleanup
       {
       my $k = $e->{ 'KEY'   }; # html-visible key, which is returned
       my $v = $e->{ 'VALUE' }; # actual value, if key is given or generated, return map is used key => value
@@ -1000,7 +1008,8 @@ the html. the form state is cleared, the object can begin() a new form.
 
 =head2 checkbox( NAME, VALUE, %opt )
 
-classic checkbox, sends 1 or 0. VALUE true makes it checked.
+classic checkbox, sends 1 or 0. VALUE true makes it checked (ATTRS cannot
+set checked, the sent value is kept in a hidden input).
 
 =head2 checkbox_multi( NAME, VALUE, STAGES, LABELS, HINT, %opt ), checkbox_3state( ... )
 
@@ -1052,7 +1061,8 @@ data is sorted by ORDER and KEY.
 =head2 textarea( NAME, VALUE, %opt )
 
   ROWS, COLS        -- size (default 10 rows, 50 columns)
-  GEOMETRY, GEO     -- "COLS*ROWS" (also "/" or "\" between)
+  GEOMETRY, GEO     -- "COLS*ROWS" (also "/" or "\" between), wins over
+                       ROWS and COLS, both above 0, anything else booms
   MAXLEN, MAX       -- maximum length
   READONLY, RO      -- read only
   REQUIRED, REQ     -- required
@@ -1073,14 +1083,16 @@ text comes from DATALIST_SELECTED_VALUE):
   PH, PHI           -- placeholder text
   CLEAR             -- clear button: 1 (a cross), html (not escaped) or an
                        image file name (lower-case letters, digits, "_", "-",
-                       "/" and one dot before png, jpg, jpeg, gif or svg)
+                       "/" and one dot before png, jpg, jpeg, gif or svg),
+                       not shown with DISABLED, READONLY or RO
   NO_AUTOCOMPLETE   -- no browser autocomplete
   READONLY, RO; REQUIRED, REQ; FOCUS_AUTO_CLEAR -- as for textarea()
 
   DATALIST          -- [ { KEY, VALUE, LABEL }, ... ] search list, the LABEL is
                        shown and searched, the VALUE is returned (mapped as
                        for select(), KEY "*" generates the key, an empty
-                       one uses the VALUE).
+                       one uses the VALUE, entry keys in any case, as
+                       for select()).
                        a datalist shows plain text: the character references
                        of the LABEL are decoded (Data::Tools
                        str_html_unescape(): numeric ones and the common

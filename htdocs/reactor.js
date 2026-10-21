@@ -10,11 +10,6 @@
 
 // no browser sniffing: old msie (dataset, classList, closest() missing) is not supported // cc20261017-1
 
-function get_utime()
-{
-  return Math.round((new Date()).getTime() / 1000);
-}
-
 function q( id )
 {
   return document.getElementById( id );
@@ -327,28 +322,34 @@ function reactor_tab_activate( tab )
   }
 
 // called by the tab controller (HTML::Tab finish()) when the page loads: shows
-// the tab remembered in the browser session, if it is still in the page, else
-// default_tab_id (if given)
+// the tab remembered in the browser session, if it is still a tab of this
+// controller in the page, else default_tab_id (if given)
 function reactor_tab_restore( ctrl_id, default_tab_id )
   {
   var tab_id;
   var ctrl = q( ctrl_id ); // cc20261017-1
   if( ctrl && ctrl.dataset.persist ) // a new id each request would leave keys never read again // cc20261017-1
     try { tab_id = sessionStorage.getItem( 'TABSET_ACTIVE_' + ctrl_id ); } catch( e ) {} // storage may be blocked
+  // only a tab of this controller: the page may have changed since the id was
+  // stored, the same id may now be another element or a tab of another set
+  if( tab_id && ( ctrl.dataset.tabsList || "" ).split( "," ).indexOf( tab_id ) < 0 ) tab_id = null;
   if( ! tab_id || ! q( tab_id ) ) tab_id = default_tab_id;
   return reactor_tab_activate_id( tab_id );
   }
 
 /***************************************************************************/
 
+// a change event only when the sent value changes, as for the multi-state
+// checkbox (set_all() touches checkboxes which may already have the value)
 function reactor_form_checkbox_set( el, value )
 {
    var ch_id  = el.dataset.checkboxInputId;
    var cb     = q( ch_id );
+   var old    = cb.value;
    cb.value   = value ? 1 : 0;
    el.checked = value;
 
-   reactor_fire_change( cb );
+   if( cb.value != old ) reactor_fire_change( cb );
 }
 
 // fires a change event on el, so its onchange handler (and listeners) run
@@ -484,6 +485,13 @@ function reactor_hover_show_delay( el, hl_name, delay, event )
   reactor_hover_layer = hl;
   reactor_hover_layer_timeout_id = setTimeout( reactor_hover_activate, delay );
   if( event ) reactor_hover_reposition( event ); // without the event the layer goes where the mouse was last // cc20261019-1
+  if( ! event && reactor_hover_layer_x === undefined )
+    {
+    // no mouse position seen yet: at the element's bottom left corner
+    var r = el.getBoundingClientRect();
+    reactor_hover_layer_x = r.left;
+    reactor_hover_layer_y = r.bottom;
+    }
   // listeners, not onmouse* properties: handlers set by the page (ATTRS) or by
   // a popup on the same element stay, installed once per element
   if( ! el.reactor_hover_on )
@@ -549,8 +557,7 @@ function reactor_popup_mouse_over( el, opt )
   if( popup_layer.style.display == 'block' )
     {
     //console.log( "there is open popup, remove all running timeouts and close it" );
-    reactor_popup_clear_tos( el );
-    reactor_popup_hide( el );
+    reactor_popup_hide( el ); // clears the timeouts too
     return false;
     }  
   else

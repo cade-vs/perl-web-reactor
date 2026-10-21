@@ -277,9 +277,10 @@ sub _split_dir_components
 }
 
 # the session file name of a key, the session var dir is created if missing
+# (not with READONLY)
 # args:
-#       opt  -- hashref of options: READONLY -- do not create the directories
-#               of the session itself (for load, exists, delete)
+#       opt  -- hashref of options: READONLY -- do not create any directory,
+#               not even the session var dir (for load, exists, delete)
 #       key  -- key components, see _storage_create(), as a list
 # returns:
 #       session file name, "<var dir>/<TYPE>/<split dirs>/<id>.wrs2", booms on
@@ -301,8 +302,10 @@ sub _key_to_fn
     boom "missing APP_ROOT or not a directory [$app_root]" unless -d $app_root; # FIXME: function? get_app_root()
     }
   my $vd = $self->__sess_var_dir();
-  dir_path_ensure( $vd ) unless -d $vd;
-  boom "missing SESS_VAR_DIR or APP_ROOT/var [$vd]" unless -d $vd;
+  # READONLY creates nothing: a missing var dir (i.e. reset by operations)
+  # only means the session is not there
+  dir_path_ensure( $vd ) unless -d $vd or $opt->{ 'READONLY' };
+  boom "missing SESS_VAR_DIR or APP_ROOT/var [$vd]" unless -d $vd or $opt->{ 'READONLY' };
 
   while( @key > 0 )
     {

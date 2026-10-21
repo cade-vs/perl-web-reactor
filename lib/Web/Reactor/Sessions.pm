@@ -160,9 +160,10 @@ sub save
 # stale save between the two would overwrite them in the data, the mark keeps
 # them, see _storage_is_closed()). every later load() gets :CLOSED and the
 # close fields of the mark over the data, every later save() is refused, so no
-# save of any request can undo it. the first close stays: a second one cannot
-# save its fields and leaves the stored session and its mark as they are, only
-# the in-memory shr gets its fields
+# save of any request can undo it. the first close stays: a second one finds
+# the mark and returns at once, nothing is changed. a save racing the close
+# may still change the data, as it could right before the close, the mark
+# forbids any further use
 # args:
 #       shr    -- session hashref, as returned by create() or load()
 #       fields -- close fields, i.e. ':ETIME' => time(), ':CLOSE_REASON' => 'logout'
@@ -176,6 +177,7 @@ sub close
   my %fields = ( @_, ':CLOSED' => 1 );
 
   my $key = $self->__shr_to_key( $shr );
+  return 1 if $self->_storage_is_closed( $key ); # closed before, the first close and its fields stay
   return 0 unless $self->_storage_exists( $key ); # no close mark without a session
 
   @$shr{ keys %fields } = values %fields;
@@ -184,18 +186,29 @@ sub close
   return $self->_storage_close( $key, \%fields );
 }
 
-# deletes a session from the storage
+# deletes a closed session from the storage (see close()): an open one is not
+# deleted, it must be closed first, so no session disappears without its close
+# record and a close racing the delete leaves no orphan close mark. the
+# session data goes first, then the close mark
 # args:
 #       shr  -- session hashref, as returned by create() or load()
 # returns:
-#       1 if deleted or already missing, undef if failed, the close mark (see
-#       close()) goes with the session
+#       1 if deleted or already missing, 0 if not closed (not deleted, logged),
+#       undef if failed
 sub delete
 {
   my $self = shift;
   my $shr  = shift; # session hashref
 
-  return $self->_storage_delete( $self->__shr_to_key( $shr ) );
+  my $key = $self->__shr_to_key( $shr );
+  if( ! $self->_storage_is_closed( $key ) )
+    {
+    return 1 unless $self->_storage_exists( $key ); # already missing
+    $self->reo()->log( "warning: session [$shr->{ ':TYPE' }:$shr->{ ':SID' }] is not closed, not deleted, close() it first" );
+    return 0;
+    }
+
+  return $self->_storage_delete( $key );
 }
 
 # checks if session exists in the storage
@@ -350,17 +363,18 @@ sub compose_key_from_sid
   my $sid  = shift;
   my $psid = shift;
 
-  boom "invalid session type [$type]" unless exists $SESSION_TYPES{ $type };
-  boom "invalid SID [$sid]"   unless __check_session_id( $sid   );
-  boom "invalid PSID [$psid]" if $psid and ! __check_session_id( $psid  );
+  my $me = 'Web::Reactor::Sessions::compose_key_from_sid';
+  boom "$me: invalid session type [$type]" unless exists $SESSION_TYPES{ $type };
+  boom "$me: invalid SID [$sid]"   unless __check_session_id( $sid   );
+  boom "$me: invalid PSID [$psid]" if $psid and ! __check_session_id( $psid  );
 
   if( $SESSION_TYPES{ $type } )
     {
-    boom "missing PSID for SID [$sid] type [$type]" unless $psid;
+    boom "$me: missing PSID for SID [$sid] type [$type]" unless $psid;
     }
   else
     {
-    boom "PSID not applicable for session type [$type]" if $psid;
+    boom "$me: PSID not applicable for session type [$type]" if $psid;
     }
 
   my @key;

@@ -719,6 +719,15 @@ is( $o2->load_trans(), 1, 'load_trans() with a single TRANS_FILE' );
 is( $o2->{ 'TRANS' }{ 'bg' }{ 'only' }, 'one', 'TRANS_FILE is loaded' );
 ok( ! exists $o2->{ 'TRANS' }{ 'bg' }{ 'hello' }, 'TRANS_FILE replaces the directory scan' );
 
+{
+  # translation files are UTF-8 text, keys and values come as characters
+  put( 'trans3/bg/u.tr', Encode::encode( 'UTF-8', "\x{0437}\x{0434}\x{0440}=Hi\nhello=\x{0437}\x{0434}\x{0440}\n" ) );
+  my $ou = app( env(), { LANG => 'bg', TRANS_DIRS => [ "$ROOT/trans3" ] } );
+  $ou->load_trans();
+  is( $ou->{ 'TRANS' }{ 'bg' }{ "\x{0437}\x{0434}\x{0440}" }, 'Hi', 'a non-ASCII translation key is a character string' );
+  is( $ou->{ 'TRANS' }{ 'bg' }{ 'hello' }, "\x{0437}\x{0434}\x{0440}", 'a non-ASCII translation value is a character string' );
+}
+
 my $o3 = app( env(), { LANG => 'en', TRANS_DIRS => [ "$ROOT/trans" ] } );
 is( $o3->load_trans(), 1, 'load_trans() with no files for the language' );
 is_deeply( $o3->{ 'TRANS' }{ 'en' }, {}, 'no files gives an empty translation table' );

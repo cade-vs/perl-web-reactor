@@ -290,6 +290,18 @@ my $TESTS = <<'JS';
   t_is( t1.style.display, "block", 'a stale remembered tab id falls back to the default' );
   t_is( reactor_tab_activate_id( 'NOPE' ), false, 'reactor_tab_activate_id() with an unknown id does nothing' );
 
+  // a remembered id which is in the page but not a tab of this controller
+  var oc = mk( 'DIV', 'OC', { tabsList: 'O1', classOn: 'on', classOff: 'off' } );
+  var o1 = mk( 'DIV', 'O1', { controllerId: 'OC', handleId: 'OH1' } );
+  o1.style.display = "none";
+  sessionStorage.setItem( 'TABSET_ACTIVE_C', 'O1' );
+  reactor_tab_restore( 'C', 'T1' );
+  t_is( t1.style.display, "block", 'a remembered tab of another tab set falls back to the default' );
+  t_is( o1.style.display, "none",  'a remembered tab of another tab set is not shown' );
+  sessionStorage.setItem( 'TABSET_ACTIVE_C', 'H2' );
+  reactor_tab_restore( 'C', 'T1' );
+  t_is( t1.style.display, "block", 'a remembered id of another element falls back to the default' );
+
   __storage_blocked = true;
   var threw = false;
   try { reactor_tab_activate_id( 'T2' ); reactor_tab_restore( 'C', 'T1' ); } catch( e ) { threw = true; }
@@ -346,6 +358,13 @@ my $TESTS = <<'JS';
   t_ok( c1.checked && ! c2.checked && h1.value == 1 && h2.value == 0, 'reactor_form_checkbox_set_all( -1 ) inverts all' );
   reactor_form_checkbox_set_all( 'F', 0 );
   t_ok( ! c1.checked && ! c2.checked && h1.value == 0 && h2.value == 0, 'reactor_form_checkbox_set_all( 0 ) clears all' );
+  var before_changes = changes;
+  reactor_form_checkbox_set_all( 'F', 0 );
+  t_is( changes, before_changes, 'reactor_form_checkbox_set_all() fires no change for checkboxes which keep their value' );
+  reactor_form_checkbox_set( c1, true );
+  reactor_form_checkbox_set_all( 'F', 1 );
+  t_is( changes, before_changes + 2, 'reactor_form_checkbox_set_all() fires one change per changed checkbox' );
+  reactor_form_checkbox_set_all( 'F', 0 );
 }
 
 /*** multi-state checkboxes ************************************************/
@@ -383,6 +402,14 @@ my $TESTS = <<'JS';
 
 /*** hover layers **********************************************************/
 {
+  // the first hint without an event, no mouse position seen yet
+  var hl0 = mk( 'DIV', 'HL0' ); hl0.style.display = "none"; hl0.__w = 100; hl0.__h = 50;
+  var el0 = mk( 'SPAN', 'HE0' ); el0.__rect = { left: 40, top: 60 }; el0.__w = 50; el0.__h = 20;
+  reactor_hover_show( el0, 'HL0' );
+  run_timers();
+  t_is( hl0.style.left + " " + hl0.style.top, "56px 96px", 'the first hint without an event goes under its element, not to NaN' );
+  reactor_hover_hide();
+
   var hl = mk( 'DIV', 'HL' ); hl.style.display = "none"; hl.__w = 100; hl.__h = 50;
   var el = mk( 'SPAN', 'HE' );
   reactor_hover_show_delay( el, 'HL', 250, { clientX: 990, clientY: 100 } );
@@ -667,19 +694,13 @@ my $TESTS = <<'JS';
   t_ok( b.classList.contains( 'btn' ) && ! b.classList.contains( 'btn-off' ), 'the element is enabled again after the timeout' );
   t_is( b.is_disabled, 0, 'the disabled mark is cleared' );
 
-  // the clock does not decide, only the timer: a click when the rounded
-  // seconds say the timeout is over, but the timer has not run, is dropped
-  var real_utime = get_utime;
-  var now = 10;
-  get_utime = function() { return now; };
+  // only the timer enables it again: a click before the timer runs is dropped
   reactor_element_disable_on_click( b, 3 );
-  now = 13;
-  t_is( reactor_element_disable_on_click( b, 3 ), false, 'a click before the timer runs is dropped whatever the clock says' );
+  t_is( reactor_element_disable_on_click( b, 3 ), false, 'a click before the timer runs is dropped' );
   t_is( pending_timers(), 1, 'there is one enable timer' );
   run_timers();
   t_is( reactor_element_disable_on_click( b, 3 ), true, 'after the timer a click goes through again' );
   run_timers();
-  get_utime = real_utime;
 }
 
 /*** ftree *****************************************************************/

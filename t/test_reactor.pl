@@ -344,6 +344,7 @@ my $ses = $reo->__ses;
   local $ses->cfg()->{ 'SESS_LENGTH' } = 32;
   my $shr = $ses->create( 'USER' );
   like( $shr->{ ':SID' }, qr/^(\w+_)?[A-Za-z0-9]{32}\z/, 'create() honours SESS_LENGTH' );
+  $ses->close( $shr );
   $ses->delete( $shr );
 
   local $ses->cfg()->{ 'SESS_LETTERS' } = 'ab';
@@ -357,7 +358,14 @@ my $ses = $reo->__ses;
   is_deeply( $ses->compose_key_from_sid( 'COOK', 'abcdefgh' ), [ 'COOK', 'abcdefgh' ], 'compose_key_from_sid() COOK has no parent' );
   is_deeply( $ses->compose_key_from_sid( 'HOLD', 'abcdefgh' ), [ 'HOLD', 'abcdefgh' ], 'compose_key_from_sid() HOLD has no parent' );
   eval { $ses->compose_key_from_sid( 'USER', "abcdefgh\n" ) };
-  like( $@, qr/invalid SID/, 'compose_key_from_sid() rejects a sid with a trailing newline' );
+  like( $@, qr/Web::Reactor::Sessions::compose_key_from_sid: invalid SID/, 'compose_key_from_sid() rejects a sid with a trailing newline, the message names the function' );
+  {
+    # reading creates no directory, a missing session var dir only means no session
+    local $ses->cfg()->{ 'SESS_VAR_DIR' } = "$APP_ROOT/no-such-var";
+    is( $ses->load( 'USER', 'abcdefgh' ), undef, 'load() with a missing session var dir finds no session' );
+    ok( ! $ses->exists( { ':TYPE' => 'USER', ':SID' => 'abcdefgh' } ), 'exists() too' );
+    ok( ! -e "$APP_ROOT/no-such-var", 'and creates no directory' );
+  }
   eval { $ses->_key_to_fn( { READONLY => 1 }, 'USER', "abcdefgh\n" ) };
   like( $@, qr/invalid key component/, 'the storage rejects a key component with a trailing newline' );
   is_deeply( $ses->compose_key_from_sid( 'PAGE', 'abcdefgh', 'useruser' ), [ 'PAGE', 'useruser', 'abcdefgh' ], 'compose_key_from_sid() PAGE goes under USER' );
@@ -408,7 +416,7 @@ ok( $@, '_key_to_fn() booms on invalid id component' );
   is( ( stat ses_file( $reo, 'USER', $shr->{ ':SID' } ) )[ 2 ] & 0777, 0600, 'saved session file mode is 0600' );
 
   my $gone = $ses->create( 'USER' );
-  ok( $ses->delete( $gone ), 'a session deleted by another request' );
+  ok( $ses->close( { %$gone } ) && $ses->delete( $gone ), 'a session closed and deleted by another request' );
   is( $ses->save( $gone ), 0, 'save() does not bring back a deleted session' );
   ok( ! $ses->exists( $gone ), 'the deleted session stays deleted' );
   is( $ses->save( { ':TYPE' => 'HOLD', ':SID' => 'HoldSerialTest', ':PSID' => undef } ), 0, 'save() never creates a session' );
@@ -426,6 +434,7 @@ ok( $@, '_key_to_fn() booms on invalid id component' );
   }
   ok( $ses->exists( $hold ), 'a storage error in create() leaves the existing session' );
   ok( $ses->save( $hold ), 'a created session saves' );
+  $ses->close( $hold );
   $ses->delete( $hold );
 
   # close() saves the close fields and sets the close mark, no save can undo it
@@ -486,14 +495,22 @@ ok( $@, '_key_to_fn() booms on invalid id component' );
   $h2 = $ses->create( 'HOLD', undef, undef, 'HoldCloseTest' );
   ok( ! $ses->load( 'HOLD', 'HoldCloseTest' )->{ ':CLOSED' }, 'a fixed sid created again after close and delete is open' );
   ok( $ses->save( $h2 ), 'and saves' );
+  $ses->close( $h2 );
   $ses->delete( $h2 );
 
   is( $ses->load( 'USER', 'NoSuchSessionIdAtAll' ), undef, 'load() of an unknown id returns undef' );
   ok( ! $ses->exists( { ':TYPE' => 'USER', ':SID' => 'NoSuchSessionIdAtAll' } ), 'exists() false for an unknown id' );
 
-  ok( $ses->delete( $shr ), 'delete()' );
+  my $m0 = scalar @LOG;
+  is( $ses->delete( $shr ), 0, 'delete() of an open session is refused' );
+  ok( $ses->exists( $shr ) && log_since( $m0, qr/is not closed, not deleted/ ), 'the open session stays and the refusal is logged' );
+  ok( $ses->close( $shr ), 'close() before delete()' );
+  ok( $ses->delete( $shr ), 'delete() of a closed session' );
   ok( ! $ses->exists( $shr ), 'delete() removes the session' );
   ok( $ses->delete( $shr ), 'delete() of a missing session is fine' );
+  my %before = %$cl;
+  is( $ses->close( $cl, ':CLOSE_REASON' => 'again' ), 1, 'close() of a closed session returns 1' );
+  is( $cl->{ ':CLOSE_REASON' }, $before{ ':CLOSE_REASON' }, 'and changes nothing, not even the in-memory session' );
 
   my $page = $ses->create( 'PAGE', 'useruseruser', 8 );
   is( $page->{ ':PSID' }, 'useruseruser', 'create() stamps :PSID for PAGE' );
@@ -1388,6 +1405,13 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   unlike( $ft, qr/<tr [^>]*style=[^>]*style=/, 'html_ftree() nested rows with a style in ARGS_TR get one style attribute' );
   is( scalar( () = $ft =~ /style='display: none; color: red'/g ), 3, 'html_ftree() merges display none into the style of every nested row' );
 
+  {
+    my $deep = [ 'leaf' ];
+    $deep = [ { LABEL => 'b', DATA => $deep } ] for 1 .. 18;
+    my $dt = eval { html_ftree( $deep ) };
+    is( $@, '', 'html_ftree() with 18 nesting levels does not boom' );
+    like( $dt, qr/width: 61%/, 'html_ftree() deep levels keep the largest indent' );
+  }
   ok( ! defined &html_ctable, 'html_ctable() is removed, html_ftree() does the same' );
 
   like( html_debug( { A => 1 } ), qr/<pre>.*'A' =&#62; 1.*<\/pre>/s, 'html_debug() dumps its arguments' );
@@ -1554,6 +1578,10 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( $tabs, qr/L2/, 'html_tabs_table() renders the second label' );
   like( $tabs, qr/T1/, 'html_tabs_table() renders the first tab'    );
   like( $tabs, qr/reactor_tab_activate_id/, 'html_tabs_table() wires the tab handler' );
+  unlike( $tabs, qr/reactor_tab_controller/, 'html_tabs_table() with a reactor leaves the tab controller to the KIT_HTML hold' );
+  my $ntabs = html_tabs_table( undef, [ { LABEL => 'L1', TEXT => 'T1', ON => 1 }, { LABEL => 'L2', TEXT => 'T2' } ] );
+  like( $ntabs, qr{</table>\n\s*<div [^>]*class='reactor_tab_controller'}, 'html_tabs_table() without a reactor returns the tab controller after the table' );
+  like( $ntabs, qr/reactor_tab_restore\(/, 'html_tabs_table() without a reactor keeps the restore call' );
 
   my $vtabs = html_tabs_table( $APP, [ { LABEL => 'L', TEXT => 'T' } ], VERTICAL => 1 );
   like( $vtabs, qr/width=50%/, 'html_tabs_table() vertical layout' );
@@ -1566,6 +1594,16 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   my $wtabs = html_tabs_table( $APP, [ { LABEL => 'L1', TEXT => 'T1', ON => 1, LABEL_TD_ARGS => "class='md:w-1/2'" } ] );
   like( $wtabs, qr{class='md:w-1/2'}, 'html_tabs_table() takes class names with : and /' );
   like( $wtabs, qr{data-class-keep='md:w-1/2'}, 'html_tabs_table() keeps the label class through tab switches' );
+  my $itabs = html_tabs_table( $APP, [ { LABEL => 'L1', TEXT => 'T1', LABEL_TD_ARGS => "id='lab1' data-x=1" }, { LABEL => 'L2', TEXT => 'T2', LABEL_TD_ARGS => "id=lab2" } ] );
+  unlike( $itabs, qr/<td [^>]*\bid=[^>]*\bid=/i, 'html_tabs_table() gives a label TD only one id attribute' );
+  like( $itabs, qr/<td [^>]*\bid='lab1'[^>]*>L1</, 'html_tabs_table() a quoted id in LABEL_TD_ARGS is the handle id' );
+  like( $itabs, qr/<td [^>]*\bid='lab2'[^>]*>L2</, 'html_tabs_table() an unquoted id in LABEL_TD_ARGS is the handle id' );
+  like( $itabs, qr/<td [^>]*data-x=1[^>]*>L1</,    'html_tabs_table() keeps the other LABEL_TD_ARGS' );
+  like( $itabs, qr/data-handle-id='lab1'/,         'html_tabs_table() the tab knows the handle id from LABEL_TD_ARGS' );
+  eval { html_tabs_table( $APP, [ { LABEL => 'L1', TEXT => 'T1', LABEL_TD_ARGS => "onclick='x()'" } ] ) };
+  like( $@, qr/LABEL_TD_ARGS cannot have onclick/, 'html_tabs_table() booms on onclick in LABEL_TD_ARGS' );
+  my $xtabs = html_tabs_table( $APP, [ { LABEL => 'L1', TEXT => 'T1', LABEL_TD_ARGS => "data-id='k1' data-onclick='y'" } ] );
+  like( $xtabs, qr/data-id='k1'/, 'html_tabs_table() data-id and data-onclick in LABEL_TD_ARGS are not taken as id or onclick' );
   my $utabs = html_tabs_table( $APP, [ { LABEL => 'L1', TEXT => 'T1', ON => 1, LABEL_TD_ARGS => 'class=lbl' } ] );
   like( $utabs, qr/class='lbl/, 'html_tabs_table() takes an unquoted label class' );
   like( $utabs, qr/data-class-keep='lbl'/, 'html_tabs_table() keeps an unquoted label class through tab switches' );
@@ -1641,7 +1679,8 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( html_table( [ [ 'a' ] ], CLASS => q{t'b} ), qr/<table class='t&#39;b'>/, 'html_table() escapes the table CLASS' );
   like( html_table( [ { CLASS => q{r"c}, DATA => [ 'a' ] } ] ), qr/<tr class='r&#34;c'>/, 'html_table() escapes the row CLASS' );
   like( html_table( [ { CCL => [ q{c<l} ], DATA => [ 'a' ] } ] ), qr/<td class='c&#60;l'>/, 'html_table() escapes the column class' );
-  like( html_table( [ { CID => '1.2', DATA => [ 'a' ] } ] ), qr/<tr [^>]*data-cid='1\.2'.*<td [^>]*data-cid='1\.2' onclick='ctable_row_click\( this \)'/s, 'html_table() CID on the row and the first cell' );
+  like( html_table( [ { CID => '1.2', DATA => [ 'a' ] } ] ), qr/<tr [^>]*data-cid='1\.2'.*<td [^>]*onclick='ctable_row_click\( this \)'/s, 'html_table() CID on the row, the click handler on the first cell' );
+  unlike( html_table( [ { CID => '1.2', DATA => [ 'a' ] } ] ), qr/<td [^>]*data-cid/, 'html_table() the first cell has no data-cid, nothing reads it there' );
   eval { html_table( [ { CID => q{1'2}, DATA => [ 'a' ] } ] ) };
   like( $@, qr/invalid table row CID/, 'html_table() booms on an invalid CID' );
   like( html_table( [ [ { DATA => 'w', WIDTH => '20%' } ] ] ), qr/<td style='width: 20%;'>w/, 'html_table() WIDTH goes into the cell style' );
@@ -1685,11 +1724,17 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( $hb, qr/text-align: right; [^>]*>c<\/div>/, 'html_hbox() applies the ">" alignment to the third cell' );
   is( scalar( () = $hb =~ /<div [^>]*style='flex/g ), 3, 'html_hbox() emits one cell per value' );
 
-  like( html_vbox( 'a,b', '1', '2' ), qr/flex-direction: column/, 'html_vbox() is a column' );
+  like( html_vbox( '<,>', '1', '2' ), qr/flex-direction: column/, 'html_vbox() is a column' );
+  my $hw = html_hbox( '<100,1n', 'wide', 'narrow' );
+  like( $hw, qr/style='flex: 100; [^']*'>wide/, 'box format: a number is the flex weight of the cell' );
+  like( $hw, qr/style='flex: 1; white-space: nowrap; [^']*'>narrow/, 'box format: the weight with other flags' );
+  like( html_hbox( '<x2', 'a', 'b' ), qr/flex: 1; [^>]*>a<.*flex: 1; [^>]*>b</s, 'box format: the number after x repeats the spec, it is not a weight' );
+  eval { html_hbox( 'bad', 'a' ) };
+  like( $@, qr/invalid box format spec \[bad\]/, 'box format: an unknown character booms' );
   like( html_hbox( 'n,w,p', '1', '2', '3' ), qr/white-space: nowrap/, 'box format: n means nowrap' );
   like( html_hbox( 'n,w,p', '1', '2', '3' ), qr/white-space: normal/, 'box format: w means normal wrapping' );
   like( html_hbox( '=', '1' ), qr/flex: 1000/, 'box format: = means take all the room' );
-  like( html_hbox( 'a', '1', '2' ), qr/<div style='flex: 1; align-content: center; '>2<\/div>/, 'box format: cells beyond the specs get the default spec' );
+  like( html_hbox( '<', '1', '2' ), qr/<div style='flex: 1; align-content: center; '>2<\/div>/, 'box format: cells beyond the specs get the default spec' );
 }
 
 ##############################################################################
@@ -1907,6 +1952,11 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   like( $f->checkbox( NAME => 'c', ATTRS => { onclick => 'x()', title => 't' } ), qr/onclick='reactor_form_checkbox_toggle\(this\)'.*title='t'|title='t'.*onclick='reactor_form_checkbox_toggle\(this\)'/, 'ATTRS keeps the checkbox toggle' );
   like( $f->textarea( NAME => 't', ATTRS => { id => 'nope' } ), qr/^(?!.*id='nope')/s, 'ATTRS cannot set id' );
   like( $f->checkbox( NAME => 'c', ID => 'cid' ), qr/<input [^>]*id='cid'[^>]*type='checkbox'/, 'checkbox() ID goes on the visible checkbox' );
+  my $cbc = $f->checkbox( NAME => 'c', ATTRS => { checked => 'checked', title => 't' } );
+  unlike( $cbc, qr/\bchecked\b/, 'checkbox() ATTRS cannot check it, the hidden value stays 0' );
+  like(   $cbc, qr/<input [^>]*type='hidden'[^>]*value='0'/, 'checkbox() without VALUE sends 0' );
+  like(   $cbc, qr/title='t'/, 'checkbox() keeps the other ATTRS' );
+  like( $f->checkbox( NAME => 'c', VALUE => 1, ATTRS => { CHECKED => undef } ), qr/<input [^>]*\bchecked\b[^>]*type='checkbox'/, 'checkbox() VALUE still checks it' );
   like( $f->radio( NAME => 'r', KEY => 1, ID => 'rid' ), qr/<input [^>]*id='rid'[^>]*type='radio'/, 'radio() ID' );
   eval { $f->checkbox( NAME => 'c', ID => 'bad id' ) };
   ok( $@, 'checkbox() booms on an invalid ID' );
@@ -1922,9 +1972,15 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   my $ci = $f->input( NAME => 'ci', ID => 'ci1', CLEAR => 1 );
   like( $ci, qr/onclick='return set_value\( &#34;ci1&#34;, &#39;&#39; \)'/, 'input() CLEAR handler quotes the id with html_js_str()' );
   like( $APP->html_hold_get( 'kit_html' ), qr/\[~Clear field\]/, 'input() CLEAR hint is translatable' );
+  unlike( $f->input( NAME => 'cr', CLEAR => 1, READONLY => 1 ), qr/icon-clear/, 'input() CLEAR shows no clear button with READONLY' );
+  unlike( $f->input( NAME => 'cr', CLEAR => 1, RO => 1 ),       qr/icon-clear/, 'input() CLEAR shows no clear button with RO' );
+  unlike( $f->input( NAME => 'cr', CLEAR => 1, DISABLED => 1 ), qr/icon-clear/, 'input() CLEAR shows no clear button with DISABLED' );
   my @dl = ( { KEY => '*', VALUE => '', LABEL => 'none' }, { KEY => '*', VALUE => 5, LABEL => 'Five' } );
   unlike( $f->input( NAME => 'dl', DATALIST => \@dl ), qr/value='none'[^>]*list=|list=[^>]*value='none'/, 'input() DATALIST without a selected value selects nothing' );
   like(   $f->input( NAME => 'dl', DATALIST => \@dl, DATALIST_SELECTED_VALUE => 5 ), qr/<input [^>]*list=[^>]*value='Five'/, 'input() DATALIST_SELECTED_VALUE selects the entry' );
+  my @dll = ( { key => '*', value => 7, label => 'Seven' } );
+  like( $f->input( NAME => 'dll', DATALIST => \@dll, DATALIST_SELECTED_VALUE => 7 ), qr/<input [^>]*list=[^>]*value='Seven'/, 'input() DATALIST takes lower-case entry keys, as select()' );
+  is_deeply( \@dll, [ { key => '*', value => 7, label => 'Seven' } ], 'input() DATALIST does not change the caller entries' );
   my $dld = $f->input( NAME => 'dld', DATALIST => \@dl, DATALIST_SELECTED_VALUE => 5, DISABLED => 1 );
   like( $dld, qr/<input [^>]*disabled='disabled'[^>]*type='hidden'/, 'input() DATALIST DISABLED disables the hidden key input too, it sends no value' );
   unlike( $f->input( NAME => 'dle2', DATALIST => \@dl ), qr/disabled/, 'input() DATALIST without DISABLED has no disabled input' );
@@ -1936,6 +1992,14 @@ my ( $APP ) = request( COOKIE => $COOKIE );
   my $dle = $f->input( NAME => 'dle', DATALIST => [ { KEY => '*', VALUE => 1, LABEL => '&#8709; A&amp;B' } ], DATALIST_SELECTED_VALUE => 1 ); # cc20261017-item-85
   like( $dle, qr/<option [^>]*value='\x{2205} A&#38;B'/, 'input() DATALIST decodes the label character references for the list' ); # cc20261017-item-85
   like( $dle, qr/<input [^>]*list=[^>]*value='\x{2205} A&#38;B'/, 'input() DATALIST decoded label in the input' ); # cc20261017-item-85
+  like( $f->textarea( NAME => 'tg', GEOMETRY => '60*5' ), qr/<textarea [^>]*cols='60'[^>]*rows='5'|<textarea [^>]*rows='5'[^>]*cols='60'/, 'textarea() GEOMETRY sets cols and rows' );
+  like( $f->textarea( NAME => 'tg', GEO => ' 7 / 3 ', ROWS => 9 ), qr/<textarea [^>]*rows='3'/, 'textarea() GEO wins over ROWS, spaces allowed' );
+  eval { $f->textarea( NAME => 'tg', GEOMETRY => '80x25' ) };
+  like( $@, qr/invalid GEOMETRY \[80x25\]/, 'textarea() booms on a GEOMETRY with another separator' );
+  eval { $f->textarea( NAME => 'tg', GEOMETRY => 'w100*20h' ) };
+  like( $@, qr/invalid GEOMETRY/, 'textarea() booms on a GEOMETRY with extra text' );
+  eval { $f->textarea( NAME => 'tg', GEOMETRY => '0*5' ) };
+  like( $@, qr/invalid GEOMETRY/, 'textarea() booms on a GEOMETRY with 0' );
   is( $f->textarea( NAME => 'ta', VALUE => q{a<b "c"} ) =~ m{>(.*)</textarea>}s ? $1 : '', 'a&#60;b "c"', 'textarea() escapes only what element content needs' );
   is( $f->textarea( NAME => 'ta', VALUE => "\nline2" ) =~ m{>(.*)</textarea>}s ? $1 : '', "\n\nline2", 'textarea() keeps a leading empty line, the parser drops the first line feed' );
   is( $f->textarea( NAME => 'ta', VALUE => "line1\n" ) =~ m{>(.*)</textarea>}s ? $1 : '', "line1\n", 'textarea() leaves other values as they are' );
